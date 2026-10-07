@@ -1,9 +1,16 @@
+<img src="frontend/public/brand-logo.jpg" alt="艾哥 SaaS 工作台" width="260" />
+
 # 艾哥 SaaS 工作台 · MVP
 
 一个自托管的服务器统一管控台：**一个界面管好整台服务器**（网站 / 域名 / Docker / 应用部署），
 并对外暴露 **MCP Server**，让 Trae、Cursor 等 AI 工具直接调用它干活。
 
 宝塔面板退居底层，只负责运行本系统和提供基础 API。
+
+> **品牌资源说明**：站点图标、侧栏标识、分享预览全部来自 `frontend/public/brand-logo.jpg`。
+> 小尺寸场合（浏览器标签、侧栏）用的是该 logo 的**头部圆形特写**（整幅插画在 32px 下不可辨识）。
+> 这些 PNG 由 `tools/gen-brand-icons.ps1` 生成 —— 换 logo 时替换 `brand-logo.jpg` 后重跑脚本，
+> **不要手改生成的 PNG**。
 
 ---
 

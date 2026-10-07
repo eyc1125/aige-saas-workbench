@@ -6,8 +6,16 @@
     <div class="login__card surface">
       <!-- ---------------- 品牌侧 ---------------- -->
       <section class="brand">
-        <BrandMark :size="44" label="艾哥 SaaS 工作台" />
-        <h1 class="brand__title">艾哥 SaaS 工作台</h1>
+        <!--
+          这里用完整 logo 插画（含「艾哥 SaaS 工作台」标题字）。
+          插画自带白色底，所以放进一张白色圆角卡片里 —— 直接贴在深色面板上
+          会出现一个生硬的白方块。
+          小尺寸场合（侧栏 / 浏览器标签）用的是同一张 logo 的头部裁切版，
+          见 components/BrandMark.vue 与 .deploy/gen-brand-icons.ps1。
+        -->
+        <div class="brand__plate">
+          <img class="brand__logo" src="/brand-logo.jpg" alt="艾哥 SaaS 工作台" width="640" height="640" />
+        </div>
         <p class="brand__desc">
           一个界面统一管好整台服务器：网站、域名、容器、应用部署，
           并开放 MCP 接口让 AI 直接帮你干活。
@@ -92,7 +100,6 @@ import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
-import BrandMark from '@/components/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
@@ -243,12 +250,22 @@ async function onSubmit() {
   gap: var(--sp-4);
 }
 
-.brand__title {
-  font-size: var(--fs-3xl);
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-  color: #f2f6ff;
+/* logo 自带白底：放进白色圆角卡片，避免深色面板上出现生硬白方块 */
+.brand__plate {
+  align-self: flex-start;
+  padding: var(--sp-3);
+  border-radius: var(--r-xl);
+  background: #fbfdfc;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.brand__logo {
+  display: block;
+  width: 208px;
+  height: auto;
+  border-radius: var(--r-md);
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .brand__desc {

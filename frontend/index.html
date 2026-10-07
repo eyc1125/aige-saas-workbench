@@ -4,9 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#15803d" />
-    <meta name="description" content="艾哥 SaaS 工作台 —— 一台服务器，一个界面，一个 MCP：网站、域名、容器、应用部署统一管控。" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta name="description" content="艾哥 SaaS 工作台 —— 一台服务器，一个界面，一个 MCP：网站、域名、容器、应用部署统一管控，带自愈巡检与告警。" />
+
+    <!-- ==================== 站点图标（浏览器标签页/收藏夹/桌面快捷方式）====================
+         全部使用主人提供的 logo：
+           · favicon-32 / favicon-48 是头部圆形特写（整幅插画在 32px 下会糊成一团）
+           · apple-touch-icon / icon-192 供 iOS 添加到主屏与安卓使用
+         这些文件由 .deploy/gen-brand-icons.ps1 从 frontend/public/brand-logo.jpg 生成，
+         换 logo 时替换 brand-logo.jpg 后重跑该脚本即可，不要手改生成的 PNG。 -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <!-- 分享到微信/飞书/GitHub 等处的链接预览卡片 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="艾哥 SaaS 工作台" />
+    <meta property="og:description" content="一台服务器，一个界面，一个 MCP：网站、域名、容器、应用部署统一管控。" />
+    <meta property="og:image" content="/og-cover.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og-cover.png" />
+
     <title>艾哥 SaaS 工作台</title>
     <!--
       主题预设：在框架加载前把 html 的 dark 类打好，避免刷新时白屏闪烁。
