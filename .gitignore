@@ -22,6 +22,10 @@ backend/public/
 # 多端验收台的截图产物（几十张 PNG，体积大且可随时重跑生成）
 .qa/shots/
 
+# 验收/诊断过程中产生的一次性图片（探针裁切、对比图等）
+.qa/*.png
+.qa/*.jpg
+
 # finesse 的跨次雷同记录（本地工具状态）
 .finesse/
 
