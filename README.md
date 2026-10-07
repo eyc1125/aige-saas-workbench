@@ -17,7 +17,7 @@
 
 | 模块 | 能做什么 |
 | --- | --- |
-| 仪表盘 | CPU / 内存 / 磁盘 / 负载实时曲线，网站·域名·容器·部署统计，**证书到期提醒**，最近操作日志 |
+| 仪表盘 | CPU / 内存 / 磁盘 / 负载 + **资源趋势曲线**（后端落库，2 分钟一条、保留 30 天，可切 1 小时 ~ 30 天），网站·域名·容器·部署统计，**证书到期提醒**，最近操作日志 |
 | 网站管理 | 宝塔站点列表（含**证书剩余天数**）、一键新建静态站、删除、申请 SSL，**站点日志与 Nginx 配置查看** |
 | 证书与安全 | **全站证书台账 + 到期倒计时**（口径与宝塔一致）、巡检结论、单个/批量续签 |
 | 健康巡检 | **6 项自动体检 + 一键修复 + 自动自愈**（带作用域白名单、熔断与全量留痕） |
@@ -25,7 +25,7 @@
 | 域名管理 | Cloudflare 域名区域、DNS 记录增删改、橙色云/灰色云一键切换 |
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
-| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**、管理员账号、运行环境 |
+| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境 |
 | MCP Server | **30 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检），stdio 与 SSE 双传输，供 AI 工具远程或本地调用 |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
@@ -33,15 +33,46 @@
 
 ---
 
-## 一·五、版本管理与 CI
+## 一·五、版本管理、CI 与工程工具链
 
-- 本项目已纳入 Git（分支 `main`）。`.gitattributes` 强制 **LF** 换行 ——
+- 本项目已纳入 Git（分支 `main`），远端 `https://github.com/eyc1125/aige-saas-workbench`。`.gitattributes` 强制 **LF** 换行 ——
   Windows 上开发、Linux 上部署，CRLF 会让 shell 脚本与 GitHub Actions 直接报错。
-- 不入库：`.env`（真实密钥）、`data/`（SQLite）、`.deploy/`（现场脚本）、`.qa/shots/`（验收截图）。
-- CI（`.github/workflows/ci.yml`）三个 job：
-  1. **后端语法** —— `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描
-  2. **MCP 工具分组自检** —— 工具数 / 分组 / 说明文字三者必须一致（防文档漂移）
-  3. **前端构建** —— 真跑 `vite build` 并报告产物 gzip 体积
+- 不入库：`.env`（真实密钥）、`data/`（SQLite）、`.deploy/`（现场脚本）、`.qa/shots/`（验收截图）、`node_modules/`。
+
+### CI（`.github/workflows/ci.yml`）· 4 个 job
+
+| job | 查什么 |
+| --- | --- |
+| **规范检查** | Prettier 格式 + ESLint + commitlint 提交信息规范 |
+| **后端语法** | `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描 |
+| **MCP 工具分组自检** | 工具数 / 分组 / 说明文字三者必须一致（防文档漂移） |
+| **前端构建** | 真跑 `vite build` + 报告产物体积 + **首屏预算看门狗**（>220KB gzip 直接失败） |
+
+> 首屏预算这条是硬闸门：本项目就是从 427KB 压到 154KB 才解决「打开就卡一下」的，
+> 加预算防止后面有人不小心把大依赖又拽回入口。
+
+### 安全扫描（`.github/workflows/security.yml`）· push + 每周一
+
+- **CodeQL** —— 读我们自己写的代码。本项目有一批「把用户输入拼进命令/路径」的地方
+  （宝塔、Docker、证书路径），正是它擅长的场景。
+- **Trivy** —— 读依赖与配置：CVE、Dockerfile/compose 配置问题、误提交的密钥。
+  目前**只报告不拦路**（首次接入先做基线），结果进 GitHub 的 **Security → Code scanning** 面板。
+- **Dependabot** —— 依赖 + GitHub Actions 版本升级，按生态分组、每周一次、同时最多 5 个 PR。
+
+### 本地怎么跑
+
+```bash
+npm install          # 只装仓库级工具（ESLint / Prettier / commitlint），业务依赖在 backend / frontend 各自装
+
+npm run check        # 格式检查 + ESLint（提交前跑一次）
+npm run lint:fix     # 自动修可修的
+npm run format       # Prettier 格式化
+```
+
+> **分工约定**：ESLint 只管「写错会出 bug」（未使用变量、意外全局、`n/no-extraneous-require`），
+> Prettier 只管「长什么样」。两者靠 `eslint-config-prettier` 解耦，不会互相纠正。
+> 不要把格式规则加进 ESLint —— 那会让两边打架，最后所有人都用 `--no-verify` 绕过。
+
 
 ---
 
@@ -343,10 +374,15 @@ stdio 模式由客户端自己拉起进程，天然可信，无需令牌。
 
 ### 9.3 验证连接
 
-- 健康检查：`GET http://<host>:3001/health` 应返回 `tools: 14`
+- 健康检查：`GET http://<host>:3001/health` 应返回当前工具数（**以接口返回为准**，
+  不要在文档里写死数字 —— 历史上就有过「文档写 28、实际 30」的漂移，现在 CI 会盯着这条）
 - 也可用 MCP Inspector：`npx @modelcontextprotocol/inspector`
 
-### 9.4 工具清单（14 个）
+### 9.4 工具清单
+
+> **完整清单（当前 30 个，分组 + 每条说明）见
+> [docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)。**
+> 下表是其中最早落地的 14 个基础工具，保留在此便于快速对照。
 
 | # | 工具 | 参数 | 说明 |
 | --- | --- | --- | --- |
@@ -652,6 +688,43 @@ Missing named parameter "current_step"
 
 `setReverseProxy()` 会探测证书是否已存在（`vhost/letsencrypt/` 与 `vhost/cert/` 两个位置都查），
 存在才一并生成 443 段与 HTTP→HTTPS 跳转。
+
+### 17.14 宝塔 `/system` 的 `load` 是字符串，`cpuRealUsed` 也不准
+
+这三个字段错得很安静，长期没人发现（仪表盘一直显示「系统负载 0」，看着像"很闲"）：
+
+| 字段 | 宝塔返回 | 代码原写法 | 后果 |
+| --- | --- | --- | --- |
+| `load` | `"2.24 1.66 1.55"`（空格分隔**字符串**） | `data.load.one` | 永远 `undefined` → 界面显示 0 |
+| `cpuRealUsed` | 97.5% ~ 100% | 直接用 | 与真实值（≈58%）差一倍 |
+| `setup_time` | 取不到 | 直接用 | 运行时长恒为 `null` |
+
+**解决**：新增 `services/metrics.js` 直读 `/proc/stat`（两次采样算 CPU 差值）、`/proc/loadavg`、
+`/proc/uptime`、`/proc/meminfo`（用 `MemAvailable` 而不是 `MemFree`）、`fs.statfsSync` 取磁盘；
+宝塔只保留它擅长的系统版本与分区明细。**宝塔挂了这套照样出数**。
+
+### 17.15 容器里读 `/proc` 拿到的是宿主机值（这次是好消息）
+
+上面那套「直读 /proc」的方案，一开始担心容器里读到的是容器自己的指标。
+**实测确认：`loadavg` / `uptime` / `/proc/stat` 都不是 namespaced 的，容器内读到的就是宿主机值**
+（容器内 `1.59 1.45 1.28` 与宿主机 `1.55 1.44 1.28` 一致）。所以这个方案在 Docker 里成立。
+
+> 但内存不同：`/proc/meminfo` 读到的是宿主机总量，容器的 cgroup 限额要另读
+> `/sys/fs/cgroup/memory.max`。本项目展示的是「整台服务器」的水位，用宿主机值是对的。
+
+### 17.16 给 element-plus 指定固定 chunk 名 = 把全站组件钉在首屏
+
+`vite.config.js` 里写了 `if (id.includes('element-plus')) return 'element'`，
+本意是「单独切块、吃长缓存」，实际效果却是：
+
+- Rollup 把**全站用到的所有** Element Plus 组件（日期选择器、上传、树、走马灯…）
+  强制塞进同一个 `element-*.js`，哪怕它们只属于设置页/网站页；
+- 入口又静态引用了这个块 → `index.html` 里出现 `modulepreload` →
+  **登录页与仪表盘必须先下 302KB gzip 的 JS**。这就是「打开就卡一下」的真凶。
+
+**解决**：不给 element-plus 指定 chunk，交给 Rollup 按引用关系自己切
+（入口只带走自己用到的，组件跟着各自路由懒加载，多处共用的自动提升成共享块）。
+**首屏 427KB → 154KB gzip（−64%）**。ECharts 与 Vue 仍单独成块吃长缓存。
 
 ---
 
