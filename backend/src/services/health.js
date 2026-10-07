@@ -25,6 +25,7 @@ const settings = require('./settings');
 const baotaService = require('./baota');
 const cloudflareService = require('./cloudflare');
 const dockerService = require('./docker');
+const notify = require('./notify');
 const { writeLog } = require('../utils/logger');
 const { badRequest } = require('../utils/errors');
 
@@ -477,6 +478,38 @@ const CHECKS = [
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2, ok: 3, unknown: 4 };
 
 /**
+ * 把巡检结论同步成告警
+ * ------------------------------------------------------------------
+ * · critical / warning → 产生（或累加）告警，指纹 health:<checkId>
+ * · ok                 → 自动把该告警标记为已解决（问题消失了就该消失）
+ * · info / unknown     → 不产生告警（info 多是「其他项目站点」这类只报告项，
+ *                        每次巡检都提醒会变成噪音）
+ *
+ * 用 raiseDetached 而不是 await：外发 webhook 最长要等 10 秒超时，
+ * 在这里 await 会把 /api/inspect 拖慢（监控不能反过来拖垮主流程）。
+ */
+function syncAlerts(checks) {
+  for (const c of checks) {
+    const fingerprint = `health:${c.id}`;
+
+    if (c.severity === 'critical' || c.severity === 'warning') {
+      notify.raiseDetached({
+        fingerprint,
+        level: c.severity,
+        source: 'health',
+        title: `${c.title}：${c.summary}`,
+        detail: (c.items || [])
+          .slice(0, 8)
+          .map((i) => `· ${i.name} ${i.tag}`)
+          .join('\n'),
+      });
+    } else if (c.severity === 'ok') {
+      notify.resolve(fingerprint);
+    }
+  }
+}
+
+/**
  * 跑一遍全部检查（或指定检查）
  * 单项失败不影响其他项：每一项都独立 try/catch，坏掉的项会显式标 unknown
  */
@@ -524,6 +557,9 @@ async function runChecks({ only } = {}) {
   );
 
   checks.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
+
+  // 结论同步成告警（用 detached，不拖慢本接口）
+  syncAlerts(checks);
 
   const summary = {
     total: checks.length,
@@ -579,7 +615,21 @@ async function applyFix(checkId, actor = {}) {
     ip: actor.ip,
   });
 
-  if (failure) throw failure;
+  if (failure) {
+    // 修复失败要单独告警：这类问题「自动修也修不好」，必须让人看到
+    notify.raiseDetached({
+      fingerprint: `health:${check.id}:fix`,
+      level: 'critical',
+      source: 'health',
+      title: `自愈失败：${check.title}`,
+      detail: `尝试「${inspected.fix.label}」失败：${failure.message}`,
+    });
+    throw failure;
+  }
+
+  // 修复成功 → 把该项的告警一并解决（下一次巡检也会自动解决，这里只是让状态立刻正确）
+  notify.resolve(`health:${check.id}`);
+  notify.resolve(`health:${check.id}:fix`);
 
   return {
     checkId: check.id,

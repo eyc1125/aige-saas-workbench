@@ -36,6 +36,10 @@ const SCHEMA = {
   registry_mirror: { secret: false, label: 'Docker 镜像加速', def: () => config.deploy.registryMirror },
   // MCP 连接令牌：数据库里有值就优先用它（便于在界面上重新生成），否则用 .env 里的
   mcp_auth_token: { secret: true, label: 'MCP 连接令牌', def: () => config.mcpAuthToken },
+  // ---------------- 告警外部通道 ----------------
+  // 这两个地址里通常带着机器人的 access_token，等于凭据，所以按敏感项加密存储
+  alert_webhook_url: { secret: true, label: '告警 Webhook 地址', def: () => '' },
+  alert_feishu_webhook: { secret: true, label: '飞书机器人 Webhook', def: () => '' },
 };
 
 const selectStmt = db.prepare('SELECT key, value, is_secret FROM settings WHERE key = ?');

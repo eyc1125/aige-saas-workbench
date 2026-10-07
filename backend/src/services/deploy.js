@@ -26,6 +26,7 @@ const dockerService = require('./docker');
 const baotaService = require('./baota');
 const cloudflareService = require('./cloudflare');
 const settings = require('./settings');
+const notify = require('./notify');
 const { writeLog } = require('../utils/logger');
 const { AppError, badRequest, upstream } = require('../utils/errors');
 const { request } = require('../utils/http');
@@ -471,6 +472,9 @@ class DeployRunner {
         username: this.actor,
       });
 
+      // 部署成功 → 清掉同一应用同一域名的历史失败告警
+      notify.resolve(`deploy:${this.appKey}:${this.domain}`);
+
       return this.result;
     } catch (err) {
       updateTask({
@@ -491,6 +495,15 @@ class DeployRunner {
         message: err.message,
         detail: { appKey: this.appKey, taskId: this.taskId },
         username: this.actor,
+      });
+
+      // 部署失败要告警：这是「用户已经点了按钮在等结果」的场景，不能只躺在日志里
+      notify.raiseDetached({
+        fingerprint: `deploy:${this.appKey}:${this.domain}`,
+        level: 'critical',
+        source: 'deploy',
+        title: `应用部署失败：${this.appTitle || this.appKey} → ${this.domain}`,
+        detail: `${err.message}\n任务号：${this.taskId}`,
       });
 
       throw err;

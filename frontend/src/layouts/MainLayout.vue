@@ -76,6 +76,20 @@
             <span class="chip__text">{{ missingConfig.length }} 项对接待配置</span>
           </button>
 
+          <!-- 告警铃铛：有未读时亮红点并显示数量 -->
+          <button
+            class="topbar__icon-btn bell"
+            :class="{ 'bell--alert': alertSummary.unread > 0, 'bell--critical': alertSummary.level === 'critical' }"
+            type="button"
+            :aria-label="alertSummary.unread ? `${alertSummary.unread} 条未读告警` : '告警中心'"
+            @click="openAlerts"
+          >
+            <el-icon><Bell /></el-icon>
+            <span v-if="alertSummary.unread" class="bell__badge tnum">
+              {{ alertSummary.unread > 99 ? '99+' : alertSummary.unread }}
+            </span>
+          </button>
+
           <button class="topbar__icon-btn" type="button" :aria-label="theme.isDark ? '切换到浅色' : '切换到深色'" @click="theme.toggle()">
             <el-icon><component :is="theme.isDark ? 'Sunny' : 'Moon'" /></el-icon>
           </button>
@@ -107,6 +121,48 @@
         <router-view />
       </main>
     </div>
+
+    <!-- ==================== 告警中心抽屉 ==================== -->
+    <el-drawer v-model="alertDrawer" title="告警中心" size="440px" @opened="loadAlerts">
+      <div class="alerts">
+        <header class="alerts__head">
+          <span class="alerts__stat tnum">
+            未解决 <strong>{{ alertSummary.total }}</strong> 条
+            <template v-if="alertSummary.critical">· 紧急 <strong>{{ alertSummary.critical }}</strong></template>
+            <template v-if="alertSummary.warning">· 警告 {{ alertSummary.warning }}</template>
+          </span>
+          <el-button v-if="alertSummary.unread" link type="primary" @click="markAllRead">全部已读</el-button>
+        </header>
+
+        <p class="alerts__channels">
+          外部通道：{{ channelText }}（在「系统设置 → 告警通知」里配置）
+        </p>
+
+        <StateBlock v-if="alertLoading" state="loading" loading-text="正在读取告警…" />
+        <StateBlock
+          v-else-if="!alertItems.length"
+          state="empty"
+          title="没有未解决的告警"
+          description="巡检异常、部署失败、自愈失败都会出现在这里；问题消失后会自动关闭。"
+        />
+        <ul v-else class="alert-list">
+          <li v-for="a in alertItems" :key="a.id" class="alert-item" :class="`alert-item--${a.level}`">
+            <div class="alert-item__top">
+              <span class="alert-item__dot" aria-hidden="true" />
+              <strong class="alert-item__title">{{ a.title }}</strong>
+              <span v-if="a.occurrences > 1" class="alert-item__times tnum" :title="`累计出现 ${a.occurrences} 次`">
+                ×{{ a.occurrences }}
+              </span>
+            </div>
+            <pre v-if="a.detail" class="alert-item__detail">{{ a.detail }}</pre>
+            <div class="alert-item__foot">
+              <span class="alert-item__meta">{{ sourceText(a.source) }} · {{ a.updated_at }}</span>
+              <el-button link type="primary" @click="resolveAlert(a)">标记解决</el-button>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -114,11 +170,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import BrandMark from '@/components/BrandMark.vue';
+import StateBlock from '@/components/StateBlock.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
-import { settingApi } from '@/api';
+import { settingApi, alertApi } from '@/api';
 
 const route = useRoute();
 const router = useRouter();
@@ -185,14 +243,107 @@ async function loadConfigStatus() {
   }
 }
 
+// ============================================================
+// 告警中心
+// ------------------------------------------------------------------
+// 顶栏只轮询「汇总」（一个 COUNT 查询，很轻），列表在打开抽屉时才拉 ——
+// 避免为了一个红点把整张告警表每 60 秒查一遍。
+// ============================================================
+const alertSummary = ref({ total: 0, critical: 0, warning: 0, info: 0, unread: 0, level: 'ok' });
+const alertItems = ref([]);
+const alertChannels = ref({ webhook: { enabled: false }, feishu: { enabled: false } });
+const alertDrawer = ref(false);
+const alertLoading = ref(false);
+let alertTimer = null;
+
+const SOURCE_TEXT = { health: '巡检', deploy: '部署', auth: '登录', system: '系统' };
+const sourceText = (s) => SOURCE_TEXT[s] || s || '系统';
+
+const channelText = computed(() => {
+  const on = [];
+  if (alertChannels.value.webhook?.enabled) on.push('Webhook 已配');
+  if (alertChannels.value.feishu?.enabled) on.push('飞书已配');
+  return on.length ? on.join('、') : '仅站内（未配外部通道）';
+});
+
+async function loadAlertSummary() {
+  try {
+    alertSummary.value = await alertApi.summary();
+  } catch {
+    // 轮询失败静默：顶栏红点不该因为一次网络抖动就清空
+  }
+}
+
+async function loadAlerts() {
+  alertLoading.value = true;
+  try {
+    const data = await alertApi.list({ status: 'open', limit: 100 });
+    alertItems.value = data.items || [];
+    alertSummary.value = data.summary || alertSummary.value;
+    alertChannels.value = data.channels || alertChannels.value;
+  } catch {
+    alertItems.value = [];
+  } finally {
+    alertLoading.value = false;
+  }
+}
+
+async function openAlerts() {
+  alertDrawer.value = true;
+  // 打开即已读（红点消失），但告警本身仍在列表里，不会因为"看过"就被清掉
+  if (alertSummary.value.unread > 0) {
+    try {
+      await alertApi.readAll();
+      alertSummary.value = { ...alertSummary.value, unread: 0 };
+    } catch {
+      /* 静默 */
+    }
+  }
+}
+
+async function markAllRead() {
+  try {
+    await alertApi.readAll();
+    alertSummary.value = { ...alertSummary.value, unread: 0 };
+  } catch {
+    /* 静默 */
+  }
+}
+
+async function resolveAlert(a) {
+  try {
+    await ElMessageBox.confirm(
+      '标记为已解决只是把它从列表里移除。如果问题真的还在，下一次巡检会重新报出来。',
+      '标记解决',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+    );
+  } catch {
+    return;
+  }
+  try {
+    await alertApi.resolve(a.id);
+    ElMessage.success('已标记为已解决');
+    await loadAlerts();
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
 onMounted(async () => {
   theme.init();
   window.addEventListener('resize', onResize);
   if (!auth.user) await auth.fetchProfile();
   loadConfigStatus();
+
+  // 告警红点：60 秒轮询一次汇总（很轻），不拉列表
+  loadAlertSummary();
+  alertTimer = setInterval(loadAlertSummary, 60000);
 });
 
-onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize);
+  if (alertTimer) clearInterval(alertTimer);
+});
 </script>
 
 <style scoped>
@@ -490,6 +641,155 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
   flex: 1;
   padding: var(--sp-5);
   min-width: 0;
+}
+
+/* ==================== 告警铃铛与抽屉 ==================== */
+.bell {
+  position: relative;
+}
+
+/* 有待处理告警时，铃铛本身变色（比只挂一个小红点更容易被注意到） */
+.bell--alert {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.bell--critical {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+}
+
+.bell__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: #fbf5f5;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+
+.alerts__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.alerts__stat {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.alerts__stat strong {
+  color: var(--text-primary);
+}
+
+.alerts__channels {
+  margin: var(--sp-3) 0 var(--sp-4);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 左侧 2px 严重度细线，与巡检页保持同一套视觉语言 */
+.alert-item {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-hairline);
+  border-left: 2px solid var(--sev, var(--text-tertiary));
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+.alert-item--critical {
+  --sev: var(--danger);
+}
+.alert-item--warning {
+  --sev: var(--warning);
+}
+.alert-item--info {
+  --sev: var(--info);
+}
+
+.alert-item__top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.alert-item__dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--sev, var(--text-tertiary));
+}
+
+.alert-item__title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.alert-item__times {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: var(--bg-subtle);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+}
+
+.alert-item__detail {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 160px;
+  overflow-y: auto;
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.alert-item__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.alert-item__meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* ==================== 移动端 ==================== */

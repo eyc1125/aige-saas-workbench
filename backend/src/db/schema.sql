@@ -70,3 +70,30 @@ CREATE TABLE IF NOT EXISTS deploy_logs (
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_deploy_logs_task ON deploy_logs (task_id, id);
+
+-- ---------------- 告警中心 ----------------
+-- 设计要点（这几条决定了告警会不会把人淹掉）：
+--   1. `fingerprint` 是「同一个问题」的唯一身份（如 health:ssl_expiring）。
+--      同一个 fingerprint 未解决时**不新建行**，只累加 occurrences 并刷新时间；
+--      否则巡检每跑一次就刷出 6 条一模一样的告警，页面立刻不可用。
+--   2. `notified_at` 配合静默窗口：同一告警 30 分钟内只对外推一次，
+--      避免 webhook / 飞书被刷屏。
+--   3. `read_at` 为 null 即未读，用于顶栏红点。
+CREATE TABLE IF NOT EXISTS alerts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  fingerprint TEXT    NOT NULL,                    -- 去重指纹，如 health:ssl_expiring
+  level       TEXT    NOT NULL DEFAULT 'warning',  -- critical / warning / info
+  source      TEXT    NOT NULL DEFAULT 'system',   -- health / deploy / auth / system
+  title       TEXT    NOT NULL,
+  detail      TEXT,
+  status      TEXT    NOT NULL DEFAULT 'open',     -- open / resolved
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  notified_at TEXT,
+  read_at     TEXT,
+  created_at  TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at  TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_open   ON alerts (status, level, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_fp     ON alerts (fingerprint, status);
+

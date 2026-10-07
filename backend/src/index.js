@@ -67,7 +67,20 @@ async function bootstrap() {
     console.error(`[health] 自动自愈定时器启动失败：${err.message}`);
   }
 
-  // ---------------- 5. 优雅退出 ----------------
+  // ---------------- 5. 告警表清理 ----------------
+  // 已解决的告警只保留最近 200 条：表本身很小，但不清理会随部署次数无限增长。
+  // 启动时清一次，之后每天一次。
+  try {
+    // eslint-disable-next-line global-require
+    const notify = require('./services/notify');
+    const removed = notify.prune();
+    if (removed) console.log(`[alert] 启动清理：移除 ${removed} 条历史告警`);
+    setInterval(() => notify.prune(), 24 * 60 * 60 * 1000).unref();
+  } catch (err) {
+    console.error(`[alert] 告警清理失败：${err.message}`);
+  }
+
+  // ---------------- 6. 优雅退出 ----------------
   const shutdown = (signal) => {
     console.log(`\n[app] 收到 ${signal}，正在关闭服务 …`);
     const done = () => {

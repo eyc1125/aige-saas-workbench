@@ -200,6 +200,78 @@
       </div>
     </section>
 
+    <!-- ==================== 告警通知 ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--warning); background: var(--warning-soft)">
+          <el-icon><Bell /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">
+            告警通知
+            <span class="section__state" :class="isAlertOn ? 'is-on' : 'is-off'">
+              {{ isAlertOn ? '已配外部通道' : '仅站内' }}
+            </span>
+          </h2>
+          <p class="section__sub">巡检异常、部署失败、自愈失败都会生成告警；这里配置往站外推的通道</p>
+        </div>
+      </header>
+
+      <div class="section__body">
+        <el-alert
+          class="mcp-note"
+          type="info"
+          :closable="false"
+          show-icon
+          title="站内告警始终开启"
+          description="顶栏铃铛就是站内告警中心：未读亮红点，问题消失后自动关闭。下面的外部通道是可选的 —— 不配就只有打开页面才看得到。"
+        />
+
+        <el-form label-position="top">
+          <el-form-item label="通用 Webhook（可选）">
+            <el-input
+              v-model="form.alert_webhook_url"
+              :placeholder="settingsMeta.alert_webhook_url?.hasValue ? `已保存（${settingsMeta.alert_webhook_url.masked}），留空表示不修改` : 'https://你的地址/alert'"
+              clearable
+            />
+            <p class="field-tip">
+              告警产生时向该地址 POST 一段 JSON（含 level / title / detail / 时间），方便接你自己的系统。
+            </p>
+          </el-form-item>
+
+          <el-form-item label="飞书机器人 Webhook（可选，推荐）">
+            <el-input
+              v-model="form.alert_feishu_webhook"
+              :placeholder="settingsMeta.alert_feishu_webhook?.hasValue ? `已保存（${settingsMeta.alert_feishu_webhook.masked}），留空表示不修改` : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'"
+              clearable
+            />
+            <p class="field-tip">
+              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。国内可达、零成本。
+              ⚠️ 若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
+            </p>
+          </el-form-item>
+        </el-form>
+
+        <p class="field-tip">
+          防刷屏机制：同一问题 30 分钟内只推一次；问题重复出现只累加次数（不会刷出一堆重复告警）。
+        </p>
+
+        <div class="section__actions">
+          <el-button :loading="testing === 'alert'" @click="testAlert">
+            <el-icon><Bell /></el-icon>发送测试告警
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="saving === 'alert'"
+            :disabled="!isDirty(ALERT_KEYS)"
+            @click="saveKeys(ALERT_KEYS, 'alert')"
+          >
+            保存
+          </el-button>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== 管理员账号 ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -281,7 +353,7 @@ import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 // 两级降级的复制实现（https 剪贴板 API → execCommand 兜底），避免 http 访问时点了没反应
 import { copyText } from '@/composables/useCopy';
-import { settingApi } from '@/api';
+import { settingApi, alertApi } from '@/api';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -303,6 +375,9 @@ const form = reactive({
   deploy_data_dir: '',
   host_data_dir: '',
   registry_mirror: '',
+  // 告警外部通道（敏感项，留空=不修改）
+  alert_webhook_url: '',
+  alert_feishu_webhook: '',
 });
 
 /** 保存时的初始快照，用于判断「是否有改动」 */
@@ -313,6 +388,13 @@ const testing = ref('');
 const testResults = reactive({});
 
 const DEPLOY_KEYS = ['server_public_ip', 'deploy_network', 'deploy_data_dir', 'host_data_dir', 'registry_mirror'];
+/** 告警外部通道（两个都是敏感项，留空表示不修改） */
+const ALERT_KEYS = ['alert_webhook_url', 'alert_feishu_webhook'];
+
+/** 是否已配置任一外部通道（只用于界面上的状态徽标） */
+const isAlertOn = computed(
+  () => !!(settingsMeta.value.alert_webhook_url?.hasValue || settingsMeta.value.alert_feishu_webhook?.hasValue)
+);
 
 // ---------------- 分组定义 ----------------
 const connectionGroups = computed(() => [
@@ -479,6 +561,19 @@ async function regenerateToken() {
     loadMcp();
   } catch {
     /* 拦截器已提示 */
+  }
+}
+
+async function testAlert() {
+  testing.value = 'alert';
+  try {
+    const r = await alertApi.test();
+    if (r.ok) ElMessage.success(r.message);
+    else ElMessage.warning(r.message);
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    testing.value = '';
   }
 }
 

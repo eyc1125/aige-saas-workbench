@@ -37,6 +37,20 @@ export const websiteApi = {
   renewSsl: (sites) => request.post('/websites/ssl-certs/renew', { sites }),
 };
 
+// ==================== 告警中心 ====================
+export const alertApi = {
+  /** 告警列表 + 汇总 + 通道状态 */
+  list: (params) => request.get('/alerts', { params, silent: true }),
+  /** 只要汇总（顶栏红点轮询，很轻） */
+  summary: () => request.get('/alerts/summary', { silent: true }),
+  /** 全部标记已读 */
+  readAll: () => request.post('/alerts/read', {}),
+  /** 手动解决某条 */
+  resolve: (id) => request.post(`/alerts/${id}/resolve`, {}),
+  /** 发一条测试告警验证通道 */
+  test: () => request.post('/alerts/test', {}),
+};
+
 // ==================== 健康巡检与自愈 ====================
 export const inspectApi = {
   /** 跑一遍巡检，返回各项结论 + 自动自愈状态 */

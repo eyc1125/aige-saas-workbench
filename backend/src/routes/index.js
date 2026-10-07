@@ -38,6 +38,7 @@ router.use('/auth', require('./auth'));
 router.use('/dashboard', requireAuth, require('./dashboard'));
 router.use('/websites', requireAuth, require('./websites'));
 router.use('/inspect', requireAuth, require('./inspect'));
+router.use('/alerts', requireAuth, require('./alerts'));
 router.use('/domains', requireAuth, require('./domains'));
 router.use('/docker', requireAuth, require('./docker'));
 router.use('/apps', requireAuth, require('./apps'));

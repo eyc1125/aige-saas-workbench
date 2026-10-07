@@ -77,6 +77,9 @@ function initSettings() {
     ['deploy_data_dir', config.deploy.dataDir, 0],
     ['host_data_dir', config.deploy.hostDataDir, 0],
     ['registry_mirror', config.deploy.registryMirror, 0],
+    // 告警外部通道（留空=只用站内告警；在「系统设置 → 告警通知」里填）
+    ['alert_webhook_url', '', 1],
+    ['alert_feishu_webhook', '', 1],
   ];
 
   const insert = db.prepare(
