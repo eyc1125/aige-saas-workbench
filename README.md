@@ -22,6 +22,19 @@
 | MCP Server | **30 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检），stdio 与 SSE 双传输，供 AI 工具远程或本地调用 |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
+> 后续优化路线与优先级见 **[docs/全面优化方案.md](docs/全面优化方案.md)**。
+
+---
+
+## 一·五、版本管理与 CI
+
+- 本项目已纳入 Git（分支 `main`）。`.gitattributes` 强制 **LF** 换行 ——
+  Windows 上开发、Linux 上部署，CRLF 会让 shell 脚本与 GitHub Actions 直接报错。
+- 不入库：`.env`（真实密钥）、`data/`（SQLite）、`.deploy/`（现场脚本）、`.qa/shots/`（验收截图）。
+- CI（`.github/workflows/ci.yml`）三个 job：
+  1. **后端语法** —— `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描
+  2. **MCP 工具分组自检** —— 工具数 / 分组 / 说明文字三者必须一致（防文档漂移）
+  3. **前端构建** —— 真跑 `vite build` 并报告产物 gzip 体积
 
 ---
 
