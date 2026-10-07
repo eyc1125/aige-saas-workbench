@@ -7,10 +7,15 @@
 #               正是 CodeQL 擅长的场景。
 #   · Trivy  —— 读**依赖与配置**，找 CVE、Dockerfile/compose 的配置问题、误提交的密钥。
 #
-# ⚠️ 现在是「只报告不拦路」（trivy --exit-code 0）：
+# ⚠️ 现在是「只报告不拦路」（trivy exit-code 0）：
 #    首次接入没做过基线，直接拦会把 CI 常年标红，最后所有人都学会忽略它。
-#    正确顺序是先看清存量问题 → 修掉关键的 → 再把 --exit-code 改成 1 转为强制。
+#    正确顺序是先看清存量问题 → 修掉关键的 → 再把 exit-code 改成 1 转为强制。
 #    结果统一进 GitHub 的 Security → Code scanning 面板，不用去翻日志。
+#
+# ⚠️ Trivy 走官方 action 而不是手写 `docker run aquasecurity/trivy`：
+#    第一版就是那么写的，在 GitHub runner 上两步都秒挂（拉镜像那一步没起来）。
+#    action 自己下载 trivy 二进制来跑，不依赖 Docker Hub 匿名拉取，
+#    也省掉缓存目录、SARIF 输出路径这些手工拼装的坑。
 #
 # 为什么每周还要跑一次：CVE 是**新披露**的 —— 代码一行没改，
 # 昨天干净的依赖今天可能就中招了。只在 push 时跑会漏掉这种情况。
@@ -68,37 +73,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 扫描（依赖漏洞 + Dockerfile/compose 配置 + 明文密钥）
-        run: |
-          set -e
-          # 直接用官方镜像而不是 action：action 的版本号要跟着升，
-          # 用镜像标签能少一层"action 本身过期"的维护负担。
-          docker run --rm \
-            -v "$PWD:/src" \
-            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
-            aquasecurity/trivy:latest fs \
-            --scanners vuln,misconfig,secret \
-            --severity HIGH,CRITICAL \
-            --ignore-unfixed \
-            --format sarif \
-            --output /src/trivy-results.sarif \
-            --exit-code 0 \
-            /src
+      - name: 扫描并生成 SARIF（依赖漏洞 + Dockerfile/compose 配置 + 明文密钥）
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          # 只报「有修复版本」的问题：没有升级路径的漏洞只会制造焦虑，
+          # 又没法处理（这类要靠换基础镜像或等上游，不该天天提醒）
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          # 只报告不拦路，见文件头说明
+          exit-code: '0'
+          skip-dirs: node_modules,dist,backend/public
 
-      - name: 打印可读摘要（CI 日志里直接能看）
-        if: always()
-        run: |
-          docker run --rm \
-            -v "$PWD:/src" \
-            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
-            aquasecurity/trivy:latest fs \
-            --scanners vuln,misconfig,secret \
-            --severity HIGH,CRITICAL \
-            --ignore-unfixed \
-            --format table \
-            /src || true
-
-      - name: 上传 SARIF 到 Security 面板
+      - name: 上传到 Security 面板
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
