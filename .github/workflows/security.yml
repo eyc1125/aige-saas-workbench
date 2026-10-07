@@ -1,0 +1,106 @@
+# ============================================================
+# 安全扫描 · 代码与依赖
+# ------------------------------------------------------------------
+# 两个独立的扫描器，互补关系：
+#   · CodeQL —— 读**我们自己写的代码**，找注入、路径穿越、XSS 这类逻辑漏洞；
+#               这个项目有一批"把用户输入拼进命令/路径"的地方（宝塔、Docker、证书路径），
+#               正是 CodeQL 擅长的场景。
+#   · Trivy  —— 读**依赖与配置**，找 CVE、Dockerfile/compose 的配置问题、误提交的密钥。
+#
+# ⚠️ 现在是「只报告不拦路」（trivy --exit-code 0）：
+#    首次接入没做过基线，直接拦会把 CI 常年标红，最后所有人都学会忽略它。
+#    正确顺序是先看清存量问题 → 修掉关键的 → 再把 --exit-code 改成 1 转为强制。
+#    结果统一进 GitHub 的 Security → Code scanning 面板，不用去翻日志。
+#
+# 为什么每周还要跑一次：CVE 是**新披露**的 —— 代码一行没改，
+# 昨天干净的依赖今天可能就中招了。只在 push 时跑会漏掉这种情况。
+# ============================================================
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    # 每周一 09:00（北京时间）跑一次，与 Dependabot 的开 PR 时间对齐
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------- 1. CodeQL：静态代码分析 ----------------
+  codeql:
+    name: CodeQL 代码分析
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 初始化 CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # 前后端都是 JS，一个语言即可覆盖
+          languages: javascript-typescript
+          # security-and-quality 比默认多查一类「可维护性」问题
+          queries: security-and-quality
+
+      - name: 分析并上传结果
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+
+  # ---------------- 2. Trivy：依赖 / 配置 / 密钥 ----------------
+  trivy:
+    name: Trivy 依赖与配置扫描
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 扫描（依赖漏洞 + Dockerfile/compose 配置 + 明文密钥）
+        run: |
+          set -e
+          # 直接用官方镜像而不是 action：action 的版本号要跟着升，
+          # 用镜像标签能少一层"action 本身过期"的维护负担。
+          docker run --rm \
+            -v "$PWD:/src" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasecurity/trivy:latest fs \
+            --scanners vuln,misconfig,secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format sarif \
+            --output /src/trivy-results.sarif \
+            --exit-code 0 \
+            /src
+
+      - name: 打印可读摘要（CI 日志里直接能看）
+        if: always()
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasecurity/trivy:latest fs \
+            --scanners vuln,misconfig,secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format table \
+            /src || true
+
+      - name: 上传 SARIF 到 Security 面板
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy

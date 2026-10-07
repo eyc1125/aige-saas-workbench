@@ -4,10 +4,14 @@
 # 为什么要有这个：本轮就是靠这类机械检查逮到「两个对象展开合并时同名字段互相覆盖」
 # 那种肉眼看不出来的 bug。人写代码会漏，机器不会。
 #
-# 三个 job 互相独立，哪个挂了一眼能看出是哪一层的问题：
-#   1. backend-syntax —— 纯语法检查，不装依赖，几秒钟出结果
-#   2. mcp-tools      —— 装后端依赖，验证「工具总数与分组一致」（防文档漂移）
-#   3. frontend-build —— 真跑一次 vite build，前端类型/引用错误在这里暴露
+# 四个 job 互相独立，哪个挂了一眼能看出是哪一层的问题：
+#   1. lint           —— ESLint（正确性）+ Prettier（格式）+ 提交信息规范
+#   2. backend-syntax —— 纯语法检查，不装依赖，几秒钟出结果
+#   3. mcp-tools      —— 装后端依赖，验证「工具总数与分组一致」（防文档漂移）
+#   4. frontend-build —— 真跑一次 vite build，前端类型/引用错误在这里暴露
+#
+# 分工：ESLint 只管「写错会出 bug」，Prettier 只管「长什么样」，
+#      两者靠 eslint-config-prettier 解耦，不会互相纠正。
 # ============================================================
 name: CI
 
@@ -21,8 +25,59 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  # ---------------- 1. 后端语法（快，不用装依赖） ----------------
+  # ---------------- 1. 代码规范（ESLint + Prettier + 提交信息） ----------------
+  lint:
+    name: 规范检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # commitlint 要读提交历史，默认的浅克隆只有 1 个提交，会校验失败
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装仓库级工具（ESLint / Prettier / commitlint）
+        run: npm install --no-audit --no-fund --registry=https://registry.npmmirror.com
+
+      - name: Prettier 格式检查
+        run: npm run format:check
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 提交信息规范（Conventional Commits）
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FROM="${{ github.event.pull_request.base.sha }}"
+            TO="${{ github.event.pull_request.head.sha }}"
+          else
+            BEFORE="${{ github.event.before }}"
+            case "$BEFORE" in
+              ''|0000000000000000000000000000000000000000)
+                # 新建分支 / 首次推送：before 是全 0，退回只校验本次 HEAD
+                FROM="HEAD~1"; TO="HEAD" ;;
+              *)
+                FROM="$BEFORE"; TO="${{ github.sha }}" ;;
+            esac
+          fi
+          echo "校验范围：$FROM..$TO"
+          # 分支刚建立时 HEAD~1 可能不存在，此时只需校验 HEAD 这一条
+          if ! git rev-parse --verify --quiet "$FROM" >/dev/null; then
+            echo "范围起点不存在，改为只校验 HEAD"
+            npx commitlint --verbose <<< "$(git log -1 --pretty=%B)"
+            exit 0
+          fi
+          npx commitlint --from "$FROM" --to "$TO" --verbose
+
+  # ---------------- 2. 后端语法（快，不用装依赖） ----------------
   backend-syntax:
     name: 后端语法检查
     runs-on: ubuntu-latest
@@ -72,7 +127,7 @@ jobs:
           fi
           echo "✅ 未发现明文密钥"
 
-  # ---------------- 2. MCP 工具清单一致性 ----------------
+  # ---------------- 3. MCP 工具清单一致性 ----------------
   mcp-tools:
     name: MCP 工具分组自检
     runs-on: ubuntu-latest
@@ -112,7 +167,7 @@ jobs:
             console.log('✅ 工具清单、分组、说明文字三者一致');
           "
 
-  # ---------------- 3. 前端构建 ----------------
+  # ---------------- 4. 前端构建 ----------------
   frontend-build:
     name: 前端构建
     runs-on: ubuntu-latest
@@ -140,3 +195,20 @@ jobs:
           TOTAL=$(find dist/assets -name '*.js' | xargs gzip -c | wc -c)
           echo "---"
           echo "JS 合计（gzip）：$(echo "$TOTAL" | awk '{printf "%.1fKB", $1/1024}')"
+
+      - name: 首屏预算看门狗
+        working-directory: frontend
+        run: |
+          # 首屏 = index.html 里 modulepreload/stylesheet 直接引用的那几个文件。
+          # 这条是硬闸门：本轮就是从 427KB 压到 154KB 才解决「打开就卡一下」的，
+          # 加预算防止后面有人不小心把大依赖又拽回入口。
+          BUDGET_KB=220
+          TOTAL=0
+          for f in $(grep -oE 'assets/[A-Za-z0-9_.-]+\.(js|css)' dist/index.html | sort -u); do
+            [ -f "dist/$f" ] || continue
+            SZ=$(gzip -c "dist/$f" | wc -c)
+            TOTAL=$((TOTAL + SZ))
+          done
+          KB=$(echo "$TOTAL" | awk '{printf "%.1f", $1/1024}')
+          echo "首屏合计（gzip）：${KB}KB（预算 ${BUDGET_KB}KB）"
+          awk -v v="$KB" -v b="$BUDGET_KB" 'BEGIN{ if (v+0 > b+0) { printf "❌ 超出首屏预算\n"; exit 1 } printf "✅ 在预算内\n" }'

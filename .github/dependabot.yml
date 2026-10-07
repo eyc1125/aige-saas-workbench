@@ -1,0 +1,111 @@
+# ============================================================
+# Dependabot —— 依赖与 Actions 的自动升级 PR
+# ------------------------------------------------------------------
+# 为什么开：这个项目依赖不少（后端 8 个、前端 8 个、CI 里一串 action），
+# 手动盯 CVE 和版本几乎不可能。让它每周开 PR，我们只需要看 CI 绿不绿。
+#
+# 节奏刻意压到「每周一次 + 同时最多 5 个 PR」：
+#   · 每天开 PR 会淹没真正的业务改动；
+#   · 这台 2 核服务器 + 一次 docker build 要几分钟，
+#     多个依赖 PR 同时来会互相插队，反而更难合。
+#
+# 分组（groups）是关键：把同一生态的补丁合并到一个 PR 里，
+# 否则 pinia / vue-router / axios 会各开一个 PR，看不过来。
+# ============================================================
+version: 2
+updates:
+  # ---------------- 后端依赖 ----------------
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    labels: [dependencies, backend]
+    groups:
+      backend-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # 大版本升级必须人工看迁移说明，不要自动开 PR 制造噪音
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  # ---------------- 前端依赖 ----------------
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    labels: [dependencies, frontend]
+    groups:
+      frontend-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  # ---------------- 仓库级工具链 ----------------
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    labels: [dependencies, tooling]
+    groups:
+      tooling-all:
+        patterns: ['*']
+
+  # ---------------- GitHub Actions ----------------
+  # action 被投毒是真事（tj-actions 那次），保持版本最新是必要的
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(ci)'
+      include: scope
+    labels: [dependencies, ci]
+
+  # ---------------- 基础镜像 ----------------
+  # node / nginx 的 alpine 基础镜像也会修 CVE
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: monthly
+      timezone: Asia/Shanghai
+    commit-message:
+      prefix: 'chore(docker)'
+      include: scope
+    labels: [dependencies, docker]
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: monthly
+      timezone: Asia/Shanghai
+    commit-message:
+      prefix: 'chore(docker)'
+      include: scope
+    labels: [dependencies, docker]
