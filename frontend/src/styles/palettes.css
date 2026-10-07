@@ -1,0 +1,199 @@
+/* ============================================================
+ * 配色预设（主题色）
+ * ------------------------------------------------------------------
+ * 主人提过两件事，这份文件就是答案：
+ *   ① 「别光使用绿色的颜色，试用好几种颜色」→ 主色做成可切换的预设；
+ *   ② 「整个 logo 全部使用」→ 默认预设直接取自 logo 的青色，
+ *      连登录页那块品牌面板也一起跟着变。
+ *
+ * 怎么切：给 <html> 加 data-brand="<id>"（store 见 stores/theme.js，
+ *        首屏防闪脚本见 index.html）。
+ *
+ * 一个预设只改 7 个值（浅色 + 深色各一套）：品牌色一族 + 图形标色 + 主色底文字。
+ * 渐变、带色阴影、聚焦环、登录页面板渐变都由共享块从 --brand 算出来，
+ * 所以新增一个预设 = 加 14 行，不用碰别的地方。
+ *
+ * 硬指标（每个预设都逐一手工验过）：
+ *   · --on-brand 压在 --brand 上 ≥ 4.5:1（按钮文字要求）
+ *   · 深色主题的品牌色一律提亮一档，否则压在深底上不达标
+ *
+ * ⚠️ success 不跟随品牌色。绿色 = 健康，那是语义不是风格：
+ *    品牌换成紫色时，「运行正常」不该变成紫色。只有 green 预设下两者同值。
+ * ============================================================ */
+
+/* ---------- 共享推导：所有预设共用，跟着 --brand 走 ---------- */
+:root {
+  /* 渐变两端都压得住白字：深端用 brand-active，不是只亮一端的那种 */
+  --brand-gradient: linear-gradient(135deg, var(--brand) 0%, var(--brand-active) 100%);
+  --shadow-brand: 0 4px 14px color-mix(in oklab, var(--brand) 34%, transparent);
+  --border-focus: color-mix(in oklab, var(--brand) 35%, transparent);
+
+  /* 登录页左侧品牌面板：把品牌色压暗当底，三档递进出一点纵深 */
+  --panel-gradient: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--brand) 30%, #04100c) 0%,
+    color-mix(in oklab, var(--brand) 46%, #04100c) 55%,
+    color-mix(in oklab, var(--brand) 66%, #04100c) 100%
+  );
+}
+
+html.dark {
+  --brand-gradient: linear-gradient(135deg, var(--brand) 0%, var(--brand-active) 100%);
+  --shadow-brand: 0 4px 16px color-mix(in oklab, var(--brand) 40%, transparent);
+  --border-focus: color-mix(in oklab, var(--brand) 45%, transparent);
+  --panel-gradient: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--brand) 12%, #060d0b) 0%,
+    color-mix(in oklab, var(--brand) 20%, #060d0b) 55%,
+    color-mix(in oklab, var(--brand) 30%, #060d0b) 100%
+  );
+}
+
+/* ---------- 非绿预设的 success 保持绿色（语义不跟风格走） ---------- */
+html[data-brand]:not([data-brand='green']) {
+  --success: #15803d;
+  --success-soft: #e8f5ec;
+}
+
+html.dark[data-brand]:not([data-brand='green']) {
+  --success: #3ddc84;
+  --success-soft: #0d2a1a;
+}
+
+/* ============================================================
+ * 预设 1 · 元气青（默认）—— 取自 logo 主色
+ * ============================================================ */
+html[data-brand='teal'] {
+  --brand: #0f766e;
+  --brand-hover: #0d6660;
+  --brand-active: #0b5751;
+  --brand-soft: #e6f4f2;
+  --brand-soft-border: #a6d5d0;
+  --brand-on-light: #12a89b;
+  --on-brand: #f0fbf9;
+}
+
+html.dark[data-brand='teal'] {
+  --brand: #2dd4bf;
+  --brand-hover: #5eead4;
+  --brand-active: #14b8a6;
+  --brand-soft: #0a2a28;
+  --brand-soft-border: #155e57;
+  --brand-on-light: #2dd4bf;
+  --on-brand: #04201e;
+}
+
+/* ============================================================
+ * 预设 2 · 森林绿 —— 上一版默认（主人指定过的「真正的绿色」）
+ * ============================================================ */
+html[data-brand='green'] {
+  --brand: #15803d;
+  --brand-hover: #116a32;
+  --brand-active: #0d5729;
+  --brand-soft: #e8f5ec;
+  --brand-soft-border: #a9d9b9;
+  --brand-on-light: #1a9c4d;
+  --on-brand: #f3fbf5;
+}
+
+html.dark[data-brand='green'] {
+  --brand: #3ddc84;
+  --brand-hover: #63e6a0;
+  --brand-active: #2ec473;
+  --brand-soft: #0d2a1a;
+  --brand-soft-border: #1c4a2e;
+  --brand-on-light: #4ee394;
+  --on-brand: #052312;
+}
+
+/* ============================================================
+ * 预设 3 · 科技蓝 —— 最稳的后台色，久看不累
+ * ============================================================ */
+html[data-brand='blue'] {
+  --brand: #1d4ed8;
+  --brand-hover: #1a45c0;
+  --brand-active: #163ba6;
+  --brand-soft: #e8eefe;
+  --brand-soft-border: #aebff5;
+  --brand-on-light: #3b74f0;
+  --on-brand: #f2f5ff;
+}
+
+html.dark[data-brand='blue'] {
+  --brand: #60a5fa;
+  --brand-hover: #93c5fd;
+  --brand-active: #3b82f6;
+  --brand-soft: #101c33;
+  --brand-soft-border: #1e3a8a;
+  --brand-on-light: #60a5fa;
+  --on-brand: #061224;
+}
+
+/* ============================================================
+ * 预设 4 · 暖阳金 —— 取自 logo 的黄色调（压暗到能压住白字）
+ * ============================================================ */
+html[data-brand='amber'] {
+  --brand: #9c4508;
+  --brand-hover: #8b3d07;
+  --brand-active: #763405;
+  --brand-soft: #fdf1e3;
+  --brand-soft-border: #e9c391;
+  --brand-on-light: #d97706;
+  --on-brand: #fff8f0;
+}
+
+html.dark[data-brand='amber'] {
+  --brand: #fbbf24;
+  --brand-hover: #fcd34d;
+  --brand-active: #f59e0b;
+  --brand-soft: #2b2110;
+  --brand-soft-border: #78350f;
+  --brand-on-light: #fbbf24;
+  --on-brand: #241a05;
+}
+
+/* ============================================================
+ * 预设 5 · 夜幕紫
+ * ============================================================ */
+html[data-brand='violet'] {
+  --brand: #6d28d9;
+  --brand-hover: #5f22c2;
+  --brand-active: #521da8;
+  --brand-soft: #f1ebfe;
+  --brand-soft-border: #c8b2f3;
+  --brand-on-light: #8b5cf6;
+  --on-brand: #f8f4ff;
+}
+
+html.dark[data-brand='violet'] {
+  --brand: #a78bfa;
+  --brand-hover: #c4b5fd;
+  --brand-active: #8b5cf6;
+  --brand-soft: #1b1430;
+  --brand-soft-border: #4c1d95;
+  --brand-on-light: #a78bfa;
+  --on-brand: #120b26;
+}
+
+/* ============================================================
+ * 预设 6 · 玫瑰红
+ * ============================================================ */
+html[data-brand='rose'] {
+  --brand: #be123c;
+  --brand-hover: #a81035;
+  --brand-active: #910d2d;
+  --brand-soft: #fdeef1;
+  --brand-soft-border: #f2b6c3;
+  --brand-on-light: #e11d48;
+  --on-brand: #fff5f7;
+}
+
+html.dark[data-brand='rose'] {
+  --brand: #fb7185;
+  --brand-hover: #fda4af;
+  --brand-active: #f43f5e;
+  --brand-soft: #2b1216;
+  --brand-soft-border: #881337;
+  --brand-on-light: #fb7185;
+  --on-brand: #220a0f;
+}

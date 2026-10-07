@@ -18,6 +18,8 @@ export const authApi = {
 export const dashboardApi = {
   overview: () => request.get('/dashboard/overview', { silent: true }),
   server: () => request.get('/dashboard/server', { silent: true }),
+  /** 历史趋势：range = 1h / 6h / 24h / 7d / 30d（后端按时间桶聚合后返回） */
+  metrics: (range = '1h') => request.get('/dashboard/metrics', { params: { range }, silent: true }),
 };
 
 // ==================== 网站管理 ====================

@@ -7,10 +7,9 @@
 
 宝塔面板退居底层，只负责运行本系统和提供基础 API。
 
-> **品牌资源说明**：站点图标、侧栏标识、分享预览全部来自 `frontend/public/brand-logo.jpg`。
-> 小尺寸场合（浏览器标签、侧栏）用的是该 logo 的**头部圆形特写**（整幅插画在 32px 下不可辨识）。
-> 这些 PNG 由 `tools/gen-brand-icons.ps1` 生成 —— 换 logo 时替换 `brand-logo.jpg` 后重跑脚本，
-> **不要手改生成的 PNG**。
+> **品牌资源说明**：站点图标、侧栏标识、分享预览全部来自 `frontend/public/brand-logo.jpg`，
+> **所有尺寸都使用整幅 logo，不做裁切**。这些 PNG 由 `tools/gen-brand-icons.ps1` 生成 ——
+> 换 logo 时替换 `brand-logo.jpg` 后重跑脚本，**不要手改生成的 PNG**。
 
 ---
 

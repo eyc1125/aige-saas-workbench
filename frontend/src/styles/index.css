@@ -13,6 +13,8 @@
  * ============================================================ */
 
 @import './tokens.css';
+/* 配色预设必须排在 tokens 之后：它靠覆盖令牌实现换主题色 */
+@import './palettes.css';
 
 /* ---------------- reset ---------------- */
 *,
@@ -88,8 +90,12 @@ a {
  * ============================================================ */
 :root {
   --el-color-primary: var(--brand);
-  --el-color-primary-light-3: var(--brand-hover);
-  --el-color-primary-light-5: #57a56f;
+  /* light-3 / light-5 由品牌色与当前底色混合而来 —— 这样换主题色时
+     它们自动跟着走，也不用为「浅色下要变浅、深色下要变亮」写两套值。
+     （以前 light-3 写死成 --brand-hover，那其实比主色还深，是反的；
+       light-5 写死成 #57a56f，换主题色后会露出一块绿色。） */
+  --el-color-primary-light-3: color-mix(in oklab, var(--brand) 72%, var(--bg-surface));
+  --el-color-primary-light-5: color-mix(in oklab, var(--brand) 55%, var(--bg-surface));
   --el-color-primary-light-7: var(--brand-soft-border);
   --el-color-primary-light-8: var(--brand-soft);
   --el-color-primary-light-9: var(--brand-soft);
@@ -381,6 +387,12 @@ html.dark .el-button--primary:not(.is-disabled) {
   .el-tabs__item {
     height: 48px;
     line-height: 48px;
+  }
+
+  /* 分段控件（仪表盘的「1 小时 / 6 小时…」）：本体只有 26px 高，
+     手指点不准，手机上抬到 44px（.qa/audit.mjs 会盯着这条） */
+  .range-switch__btn {
+    min-height: 44px;
   }
 
   .el-pagination button,

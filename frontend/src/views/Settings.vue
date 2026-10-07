@@ -306,6 +306,64 @@
       </div>
     </section>
 
+    <!-- ==================== 外观 ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--brand); background: var(--brand-soft)">
+          <el-icon><Sunny /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">外观</h2>
+          <p class="section__sub">
+            主题色与明暗模式 · 选择只保存在本机浏览器（默认「{{ theme.brandName }}」）
+          </p>
+        </div>
+      </header>
+
+      <div class="appearance">
+        <div class="appearance__row">
+          <span class="appearance__label">主题色</span>
+          <div class="swatches" role="radiogroup" aria-label="主题色">
+            <button
+              v-for="item in theme.brandPresets"
+              :key="item.id"
+              type="button"
+              class="swatch"
+              :class="{ 'is-active': theme.brand === item.id }"
+              role="radio"
+              :aria-checked="theme.brand === item.id ? 'true' : 'false'"
+              :title="`${item.name} · ${item.hint}`"
+              @click="theme.setBrand(item.id)"
+            >
+              <span class="swatch__dot" :style="{ background: item.color }" aria-hidden="true">
+                <el-icon v-if="theme.brand === item.id"><Check /></el-icon>
+              </span>
+              <span class="swatch__name">{{ item.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="appearance__row">
+          <span class="appearance__label">明暗模式</span>
+          <div class="mode-switch" role="radiogroup" aria-label="明暗模式">
+            <button
+              v-for="mode in MODES"
+              :key="mode.id"
+              type="button"
+              class="mode-switch__btn"
+              :class="{ 'is-active': theme.theme === mode.id }"
+              role="radio"
+              :aria-checked="theme.theme === mode.id ? 'true' : 'false'"
+              @click="setThemeMode(mode.id)"
+            >
+              <el-icon><component :is="mode.icon" /></el-icon>
+              {{ mode.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== 运行环境 ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -355,8 +413,22 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import { copyText } from '@/composables/useCopy';
 import { settingApi, alertApi } from '@/api';
 import { useAuthStore } from '@/stores/auth';
+import { useThemeStore } from '@/stores/theme';
 
 const auth = useAuthStore();
+const theme = useThemeStore();
+
+/** 明暗模式选项（图标走 main.js 里的全局注册） */
+const MODES = [
+  { id: 'light', label: '浅色', icon: 'Sunny' },
+  { id: 'dark', label: '深色', icon: 'Moon' },
+];
+
+function setThemeMode(mode) {
+  if (theme.theme === mode) return;
+  theme.theme = mode;
+  theme.apply();
+}
 
 const loading = ref(true);
 const settingsMeta = ref({});
@@ -899,6 +971,127 @@ onMounted(async () => {
   user-select: all;
 }
 
+/* ---------------- 外观 ---------------- */
+.appearance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5);
+}
+
+.appearance__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+}
+
+.appearance__label {
+  flex: 0 0 64px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* 主题色选择：色点 + 名称，选中态用外圈 + 勾号双重表达
+   （只靠颜色区分对色觉障碍不友好，所以必须有勾号这一层） */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 10px 6px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.swatch:hover {
+  background: var(--bg-hover);
+}
+
+.swatch.is-active {
+  border-color: var(--brand-soft-border);
+  background: var(--brand-soft);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.swatch__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 1px var(--border-hairline);
+  color: #fdfefe;
+  font-size: 12px;
+}
+
+.swatch__name {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.swatch.is-active .swatch__name {
+  color: var(--brand);
+  font-weight: 500;
+}
+
+/* 明暗模式：与仪表盘的范围切换用同一套分段控件语言 */
+.mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+}
+
+.mode-switch__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.mode-switch__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mode-switch__btn.is-active {
+  background: var(--bg-surface);
+  color: var(--brand);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-switch__btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
 /* ---------------- 运行环境 ---------------- */
 .runtime {
   display: grid;
@@ -943,6 +1136,16 @@ onMounted(async () => {
 
   .runtime__item {
     padding: var(--sp-3) var(--sp-4);
+  }
+
+  /* 外观选择器在手机上也要够高，手指点得准 */
+  .swatch,
+  .mode-switch__btn {
+    min-height: 44px;
+  }
+
+  .appearance {
+    padding: var(--sp-4);
   }
 
   .tools li {

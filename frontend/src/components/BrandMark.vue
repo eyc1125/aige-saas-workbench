@@ -2,12 +2,15 @@
   <!--
     品牌标识（艾哥 SaaS 工作台）
     ------------------------------------------------------------------
-    图源：frontend/public/brand-mark.png —— 由主人提供的 logo 插画
-         （brand-logo.jpg）裁切生成，取其中吉祥物头部的圆形特写。
-    为什么要裁切而不是直接用整幅插画：整幅是「笔电 + 仪表盘 + 吉祥物 +
-    标题」的完整插画，缩到侧栏的 34px 会糊成一团、认不出是什么；
-    头部特写在这个尺寸依然清晰可辨。
-    完整插画用在登录页等大尺寸场合（见 views/Login.vue）。
+    图源：frontend/public/brand-mark.png —— 主人提供的整幅 logo 插画
+         （brand-logo.jpg）等比缩放的 256px 版本。
+
+    ⚠️ 这里**刻意不做任何裁切**：主人明确要求所有场合都使用整张 logo，
+       而不是只取其中一部分。早期版本曾用「头部特写」做小尺寸图标，
+       已按要求改回整幅图 —— 不要再改回去。
+
+    插画自带白色底，而侧栏也是近白色，所以外面加一圈发丝线 + 圆角，
+    让它读起来是「一枚品牌徽标」而不是一块浮出来的白斑。
 
     生成脚本：tools/gen-brand-icons.ps1
     ⚠️ 换 logo 时替换 frontend/public/brand-logo.jpg 后重跑该脚本，
@@ -38,7 +41,7 @@ const props = defineProps({
 });
 
 /**
- * 图源固定走 brand-mark.png（256×256）。
+ * 图源固定走 brand-mark.png（256×256 整幅插画）。
  * 不做 2x/3x 多倍图：256px 在 34px 显示尺寸下相当于 7.5 倍，高清屏也够用。
  */
 const src = computed(() => '/brand-mark.png');
@@ -49,13 +52,10 @@ const src = computed(() => '/brand-mark.png');
   display: block;
   flex: 0 0 auto;
   object-fit: contain;
-  /* 圆图本身带白底，在深色主题下加一圈发丝线以免"糊"在背景里 */
-  border-radius: 50%;
+  border-radius: var(--r-md);
+  /* 插画是白底，贴在近白背景上需要一条发丝线界定边界 */
+  box-shadow: 0 0 0 1px var(--border-hairline);
   user-select: none;
   -webkit-user-drag: none;
 }
-
-/* 上一版是主色渐变方块，换 logo 后不再需要渐变令牌，
-   MainLayout / Login 里若还传了 from/to 属性会静默无效（Vue 只警告不报错），
-   已一并清理调用处。 */
 </style>

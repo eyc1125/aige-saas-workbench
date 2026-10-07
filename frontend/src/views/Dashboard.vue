@@ -76,10 +76,27 @@
       <div class="surface card">
         <header class="card__head">
           <div>
-            <h2 class="card__title">实时资源曲线</h2>
-            <p class="card__sub">每 10 秒采样一次，保留最近 10 分钟</p>
+            <h2 class="card__title">资源趋势</h2>
+            <p class="card__sub">
+              后端每 {{ metricsStats?.intervalMinutes || 2 }} 分钟采样一次，保留 {{ metricsStats?.keepDays || 30 }} 天{{
+                metricsStats?.firstAt ? ` · 数据始于 ${metricsStats.firstAt}` : ' · 刚开始采集'
+              }}
+              <template v-if="updatedAt"> · {{ updatedAt }}</template>
+            </p>
           </div>
-          <span class="card__meta">{{ updatedAt || '—' }}</span>
+          <div class="range-switch" role="group" aria-label="趋势时间范围">
+            <button
+              v-for="opt in RANGE_OPTIONS"
+              :key="opt.value"
+              type="button"
+              class="range-switch__btn"
+              :class="{ 'is-active': metricsRange === opt.value }"
+              :aria-pressed="metricsRange === opt.value"
+              @click="metricsRange = opt.value; onRangeChange()"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
         </header>
         <div class="card__body">
           <StateBlock
@@ -275,6 +292,7 @@ const counts = ref({});
 const network = ref({});
 const recentLogs = ref([]);
 const updatedAt = ref('');
+// 供「资源趋势」卡片旁显示最近一次刷新时间用
 
 // 证书巡检（独立加载：它要逐站读证书文件，比服务器指标慢，不该拖住首屏）
 const certLoading = ref(true);
@@ -352,15 +370,19 @@ async function loadCerts() {
   }
 }
 
-// 客户端累积的采样点（后端只给瞬时值，曲线由前端拼出来，不占存储）
+/**
+ * 趋势曲线数据（由后端落库样本聚合而来，见 loadMetrics）
+ * 以前这里是「客户端累积」—— 后端只给瞬时值、前端自己攒点，
+ * 结果刷新页面曲线就空了，这是本次修正的核心问题。
+ */
 const samples = ref({ times: [], cpu: [], mem: [] });
-const MAX_POINTS = 60;
 
 const lineRef = ref(null);
 const donutRef = ref(null);
 let lineChart = null;
 let donutChart = null;
 let timer = null;
+let trendTimer = null;
 
 /** 是否降低动效偏好 */
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -370,11 +392,14 @@ const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyV
 
 const metric = computed(() => {
   const s = server.value || {};
+  // cpuUsage 可能为 null：后端刚启动、还没攒够两次采样算差值。
+  // 这时显示「—」而不是显示 0 —— 0% 是个会让人误判的假数字。
+  const num = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : Number(v));
   return {
-    cpu: s.available ? Number(s.cpuUsage ?? 0) : '—',
-    mem: s.available ? Number(s.memUsage ?? 0) : '—',
-    disk: s.available ? Number(s.disk?.root?.usage ?? 0) : '—',
-    load1: s.available ? Number(s.load?.one ?? 0) : '—',
+    cpu: s.available ? num(s.cpuUsage) : '—',
+    mem: s.available ? num(s.memUsage) : '—',
+    disk: s.available ? num(s.disk?.root?.usage) : '—',
+    load1: s.available ? num(s.load?.one) : '—',
   };
 });
 
@@ -659,16 +684,48 @@ function disposeCharts() {
 
 // ==================== 数据加载 ====================
 
-function pushSample(cpu, mem, label) {
-  const s = samples.value;
-  s.times.push(label);
-  s.cpu.push(cpu);
-  s.mem.push(mem);
-  if (s.times.length > MAX_POINTS) {
-    s.times.shift();
-    s.cpu.shift();
-    s.mem.shift();
+/** 趋势范围选项（与后端 metricsStore.RANGES 一一对应） */
+const RANGE_OPTIONS = [
+  { value: '1h', label: '1 小时' },
+  { value: '6h', label: '6 小时' },
+  { value: '24h', label: '24 小时' },
+  { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
+];
+
+const metricsRange = ref('1h');
+const metricsStats = ref(null);
+
+/** 时间轴标签：长范围只显示到日期，短范围显示到分钟 */
+function axisLabel(at, range) {
+  const s = String(at || '');
+  return range === '7d' || range === '30d' ? s.slice(5, 10) : s.slice(11, 16);
+}
+
+/**
+ * 拉历史趋势 —— 数据来自后端落库样本（services/metricsStore.js）
+ * 以前是前端轮询时自己在内存里攒样本，结果一刷新页面曲线就空了。
+ */
+async function loadMetrics() {
+  try {
+    const data = await dashboardApi.metrics(metricsRange.value);
+    const points = data.points || [];
+    samples.value = {
+      times: points.map((p) => axisLabel(p.at, metricsRange.value)),
+      cpu: points.map((p) => (p.cpu === null || p.cpu === undefined ? null : Number(p.cpu))),
+      mem: points.map((p) =>
+        p.memPercent === null || p.memPercent === undefined ? null : Number(p.memPercent)
+      ),
+    };
+    metricsStats.value = data.stats || null;
+    renderCharts();
+  } catch {
+    // 拉取失败不清空已有曲线，避免界面闪一下变空
   }
+}
+
+async function onRangeChange() {
+  await loadMetrics();
 }
 
 async function loadServer() {
@@ -676,7 +733,6 @@ async function loadServer() {
     const data = await dashboardApi.server();
     server.value = data.server;
     if (data.server?.available) {
-      pushSample(Number(data.server.cpuUsage ?? 0), Number(data.server.memUsage ?? 0), data.time);
       updatedAt.value = `${data.time} 更新`;
     }
     if (counts.value.containers) {
@@ -701,9 +757,6 @@ async function loadOverview() {
   counts.value = data.counts || {};
   network.value = data.network || {};
   recentLogs.value = data.recentLogs || [];
-  if (data.server?.available && !samples.value.times.length) {
-    pushSample(Number(data.server.cpuUsage ?? 0), Number(data.server.memUsage ?? 0), new Date().toLocaleTimeString('zh-CN').slice(0, 8));
-  }
 }
 
 async function loadAll() {
@@ -715,7 +768,8 @@ async function loadAll() {
     await loadOverview();
     await nextTick();
     initCharts();
-    renderCharts();
+    // 趋势来自落库样本，与 overview 并行拉即可
+    await loadMetrics();
   } catch (err) {
     // 顶层失败（例如后端不可达）：用 server 区块承载错误信息
     server.value = { available: false, reason: err.message || '加载失败，请检查后端服务是否正常' };
@@ -727,13 +781,17 @@ async function loadAll() {
 
 onMounted(async () => {
   await loadAll();
-  // 每 10 秒刷新一次服务器指标，累积成曲线
+  // 每 10 秒刷新 KPI 卡（瞬时值）
   timer = setInterval(loadServer, 10000);
+  // 趋势每 2 分钟刷新一次 —— 后端就是这个采样周期，刷得再快也没有新点，
+  // 反而白占带宽（这条是「别让监控拖垮主流程」的同一原则）
+  trendTimer = setInterval(loadMetrics, 120000);
   window.addEventListener('resize', resizeCharts);
 });
 
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer);
+  if (trendTimer) clearInterval(trendTimer);
   window.removeEventListener('resize', resizeCharts);
   disposeCharts();
 });
@@ -862,6 +920,49 @@ watch(
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+/* 趋势范围切换：分段控件（选中态用主色描边+浅底，未选保持中性） */
+.range-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+}
+
+.range-switch__btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: calc(var(--r-sm) - 2px);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 180ms var(--ease), color 180ms var(--ease);
+}
+
+.range-switch__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.range-switch__btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.range-switch__btn.is-active {
+  background: var(--bg-surface);
+  color: var(--brand);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 
 .card__body {
@@ -1297,6 +1398,21 @@ watch(
   /* 手机上到期时间与倒计时抢宽度，先保倒计时（用户最关心的信息） */
   .certs__until {
     display: none;
+  }
+
+  /* 5 个范围按钮在窄屏放不进一行，换行后平铺整行 */
+  .card__head {
+    flex-wrap: wrap;
+  }
+
+  .range-switch {
+    width: 100%;
+  }
+
+  .range-switch__btn {
+    flex: 1 1 auto;
+    padding-inline: 6px;
+    text-align: center;
   }
 
   .chart--line {

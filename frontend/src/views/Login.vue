@@ -7,11 +7,11 @@
       <!-- ---------------- 品牌侧 ---------------- -->
       <section class="brand">
         <!--
-          这里用完整 logo 插画（含「艾哥 SaaS 工作台」标题字）。
+          整幅 logo 插画（含「艾哥 SaaS 工作台」标题字）。
           插画自带白色底，所以放进一张白色圆角卡片里 —— 直接贴在深色面板上
           会出现一个生硬的白方块。
-          小尺寸场合（侧栏 / 浏览器标签）用的是同一张 logo 的头部裁切版，
-          见 components/BrandMark.vue 与 .deploy/gen-brand-icons.ps1。
+          小尺寸场合（侧栏 / 浏览器标签）用的是同一张图等比缩放的版本，
+          同样不裁切，见 components/BrandMark.vue。
         -->
         <div class="brand__plate">
           <img class="brand__logo" src="/brand-logo.jpg" alt="艾哥 SaaS 工作台" width="640" height="640" />
@@ -243,7 +243,9 @@ async function onSubmit() {
 /* ---------------- 品牌侧 ---------------- */
 .brand {
   padding: var(--sp-7) var(--sp-6);
-  background: linear-gradient(160deg, #052012 0%, #08331e 55%, #0b4a2a 100%);
+  /* 面板底色跟着主题色走（见 styles/palettes.css 的 --panel-gradient）：
+     换主题色时这块、按钮、图表会一起变，不会只剩这里还是绿的 */
+  background: var(--panel-gradient);
   color: var(--text-on-dark);
   display: flex;
   flex-direction: column;
@@ -256,7 +258,37 @@ async function onSubmit() {
   padding: var(--sp-3);
   border-radius: var(--r-xl);
   background: #fbfdfc;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  /* 不是纯黑投影：带一点面板的冷暗调，才不会像贴在图上的一块黑影 */
+  box-shadow: 0 8px 24px rgba(6, 20, 16, 0.3);
+  /* 进场：从「向前倾一点」翻正，用 -14° 而不是 -40°，
+     小角度是"放上去"，大角度是"转出来"，后者在登录页太吵 */
+  animation: login-plate-in 620ms var(--ease-out) 60ms both;
+}
+
+/* ---------------- 进场时序（整段约 0.9s，但表单 0.6s 就能用） ----------------
+   顺序：logo 翻正 → 说明淡入 → 能力列表逐条上浮 → 页脚收尾；
+   表单面板从 120ms 就开始淡入，不等装饰演完 —— 进来是要登录的，
+   不是来看动画的，所以**不阻塞输入**是第一原则。 */
+@keyframes login-plate-in {
+  from {
+    opacity: 0;
+    transform: perspective(900px) rotateX(-14deg) translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(900px) rotateX(0deg) translateY(0) scale(1);
+  }
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .brand__logo {
@@ -273,6 +305,7 @@ async function onSubmit() {
   line-height: 1.7;
   color: rgba(226, 236, 255, 0.72);
   max-width: 42ch;
+  animation: login-rise 420ms var(--ease-out) 220ms both;
 }
 
 .brand__list {
@@ -288,6 +321,18 @@ async function onSubmit() {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
+  animation: login-rise 420ms var(--ease-out) both;
+}
+
+/* 逐条上浮：每条差 60ms，三条合计 180ms —— 再多就成了"一行一行往外挤" */
+.brand__list li:nth-child(1) {
+  animation-delay: 300ms;
+}
+.brand__list li:nth-child(2) {
+  animation-delay: 360ms;
+}
+.brand__list li:nth-child(3) {
+  animation-delay: 420ms;
 }
 
 .brand__list span {
@@ -313,7 +358,7 @@ async function onSubmit() {
   height: 6px;
   margin-top: 8px;
   border-radius: 50%;
-  background: #4ade80;
+  background: var(--brand-on-light);
 }
 
 .brand__foot {
@@ -322,6 +367,7 @@ async function onSubmit() {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   font-size: var(--fs-xs);
   color: rgba(214, 228, 250, 0.55);
+  animation: login-rise 420ms var(--ease-out) 520ms both;
 }
 
 /* ---------------- 表单侧 ---------------- */
@@ -331,6 +377,8 @@ async function onSubmit() {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* 只等 120ms —— 表单是主角，不让它等装饰 */
+  animation: login-rise 460ms var(--ease-out) 120ms both;
 }
 
 .form-panel__head {
@@ -426,6 +474,19 @@ async function onSubmit() {
 
   .form-panel {
     padding: var(--sp-6) var(--sp-5) calc(var(--sp-6) + env(safe-area-inset-bottom));
+  }
+}
+
+/* 降低动效偏好：直接给终止态。
+   全局规则只把 duration 压到 0.01ms，delay 还在 —— 带 both 填充的元素会
+   先"隐身"一段时间才出现，那不是降低动效而是更糟。所以这里把动画整个去掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .brand__plate,
+  .brand__desc,
+  .brand__list li,
+  .brand__foot,
+  .form-panel {
+    animation: none;
   }
 }
 </style>
