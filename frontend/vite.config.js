@@ -49,13 +49,32 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
-        // 大依赖单独切块：首屏只加载 Vue 与按需引入的 Element Plus 组件，
-        // ECharts 随「仪表盘」路由按需加载，不拖慢登录页
+        /**
+         * ⚠️ 这里**刻意不给 element-plus 指定 chunk**（历史踩坑）
+         * ------------------------------------------------------------------
+         * 之前写的是 `if (id.includes('element-plus')) return 'element'`，
+         * 结果 Rollup 把**全站用到的所有** Element Plus 组件（日期选择器、
+         * 上传、树、走马灯… 大多只属于设置页/网站页）强制塞进同一个
+         * `element-*.js`，而入口又静态引用了它 → index.html 里出现
+         * `<link rel="modulepreload" href="/assets/element-*.js">`，
+         * 于是**首屏（登录页/仪表盘）就要先下 302KB gzip 的 JS**，
+         * 这正是"打开就卡一下"的根因。
+         *
+         * 交给 Rollup 自己切：入口只带走它真正用到的部分，组件跟着各自的
+         * 路由懒加载 chunk 走，多个路由共用的部分由 Rollup 自动提升成共享块。
+         *
+         * ECharts 仍单独切块 —— 它只被仪表盘用，独立成块能吃到长缓存，
+         * 且不会因为改业务代码而失效。
+         *
+         * Vue / Pinia / vue-router 也单独成块：首屏本来就要它，
+         * 拆出来是为了业务代码频繁改动时它仍能命中浏览器缓存。
+         */
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('echarts') || id.includes('zrender')) return 'echarts';
-          if (id.includes('element-plus') || id.includes('@element-plus')) return 'element';
-          if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) return 'vue';
+          if (id.includes('/vue/') || id.includes('/@vue/') || id.includes('vue-router') || id.includes('pinia')) {
+            return 'vue';
+          }
           return undefined;
         },
       },
