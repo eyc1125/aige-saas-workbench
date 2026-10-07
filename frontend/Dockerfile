@@ -33,7 +33,7 @@ COPY . .
 RUN npm run build
 
 # ---------------- 阶段二：运行 ----------------
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 
 ENV TZ=Asia/Shanghai
 
