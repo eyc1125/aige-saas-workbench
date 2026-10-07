@@ -19,7 +19,9 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn';
 <style scoped>
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity var(--dur-card) var(--ease), transform var(--dur-card) var(--ease);
+  transition:
+    opacity var(--dur-card) var(--ease),
+    transform var(--dur-card) var(--ease);
 }
 
 .page-fade-enter-from {

@@ -30,9 +30,11 @@ export const websiteApi = {
   remove: (name) => request.delete(`/websites/${encodeURIComponent(name)}`),
   applySsl: (name, data) => request.post(`/websites/${encodeURIComponent(name)}/ssl`, data),
   /** 站点访问 / 错误日志（type: access | error） */
-  logs: (name, params) => request.get(`/websites/${encodeURIComponent(name)}/logs`, { params, silent: true }),
+  logs: (name, params) =>
+    request.get(`/websites/${encodeURIComponent(name)}/logs`, { params, silent: true }),
   /** 站点 Nginx 配置（只读） */
-  nginxConfig: (name) => request.get(`/websites/${encodeURIComponent(name)}/nginx-config`, { silent: true }),
+  nginxConfig: (name) =>
+    request.get(`/websites/${encodeURIComponent(name)}/nginx-config`, { silent: true }),
   /** SSL 证书台账：含剩余天数与状态（expired | expiring | ok） */
   sslCerts: () => request.get('/websites/ssl-certs', { silent: true }),
   /** 批量续签即将到期的证书 */
@@ -68,10 +70,13 @@ export const inspectApi = {
 // ==================== 域名管理 ====================
 export const domainApi = {
   zones: () => request.get('/domains/zones', { silent: true }),
-  records: (zoneId, params) => request.get(`/domains/zones/${zoneId}/records`, { params, silent: true }),
+  records: (zoneId, params) =>
+    request.get(`/domains/zones/${zoneId}/records`, { params, silent: true }),
   addRecord: (zoneId, data) => request.post(`/domains/zones/${zoneId}/records`, data),
-  updateRecord: (zoneId, recordId, data) => request.put(`/domains/zones/${zoneId}/records/${recordId}`, data),
-  removeRecord: (zoneId, recordId) => request.delete(`/domains/zones/${zoneId}/records/${recordId}`),
+  updateRecord: (zoneId, recordId, data) =>
+    request.put(`/domains/zones/${zoneId}/records/${recordId}`, data),
+  removeRecord: (zoneId, recordId) =>
+    request.delete(`/domains/zones/${zoneId}/records/${recordId}`),
   quickAdd: (data) => request.post('/domains/quick-add', data),
 };
 

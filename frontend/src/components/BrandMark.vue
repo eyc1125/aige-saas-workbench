@@ -33,7 +33,8 @@
 <script setup>
 import { computed } from 'vue';
 
-const props = defineProps({
+// 只需要声明 props，模板里直接按名字用（size / label），不需要 props 对象本身
+defineProps({
   /** 渲染尺寸（正方形边长，px） */
   size: { type: Number, default: 34 },
   /** 无障碍标签；留空则视为纯装饰 */

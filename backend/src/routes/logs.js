@@ -43,7 +43,9 @@ router.get(
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const total = db.prepare(`SELECT COUNT(*) AS count FROM operation_logs ${whereSql}`).get(params).count;
+    const total = db
+      .prepare(`SELECT COUNT(*) AS count FROM operation_logs ${whereSql}`)
+      .get(params).count;
     const list = db
       .prepare(
         `SELECT id, username, module, action, target, detail, source, status, message, ip, duration_ms, created_at

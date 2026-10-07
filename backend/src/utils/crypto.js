@@ -52,7 +52,10 @@ function decrypt(value) {
     const [ivB64, tagB64, dataB64] = text.slice(PREFIX.length).split(':');
     const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), Buffer.from(ivB64, 'base64'));
     decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
-    return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64')), decipher.final()]).toString('utf8');
+    return Buffer.concat([
+      decipher.update(Buffer.from(dataB64, 'base64')),
+      decipher.final(),
+    ]).toString('utf8');
   } catch {
     // 密钥被换过 / 数据损坏：返回空串而不是抛错，让上层给出「请重新填写」的提示
     console.warn('[crypto] 配置解密失败（ENCRYPTION_KEY 可能已变更），请到系统设置重新填写该配置');

@@ -14,11 +14,17 @@
           同样不裁切，见 components/BrandMark.vue。
         -->
         <div class="brand__plate">
-          <img class="brand__logo" src="/brand-logo.jpg" alt="艾哥 SaaS 工作台" width="640" height="640" />
+          <img
+            class="brand__logo"
+            src="/brand-logo.jpg"
+            alt="艾哥 SaaS 工作台"
+            width="640"
+            height="640"
+          />
         </div>
         <p class="brand__desc">
-          一个界面统一管好整台服务器：网站、域名、容器、应用部署，
-          并开放 MCP 接口让 AI 直接帮你干活。
+          一个界面统一管好整台服务器：网站、域名、容器、应用部署， 并开放 MCP 接口让 AI
+          直接帮你干活。
         </p>
 
         <ul class="brand__list">
@@ -50,8 +56,15 @@
           @submit.prevent="onSubmit"
         >
           <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="请输入用户名" autocomplete="username" clearable>
-              <template #prefix><el-icon><User /></el-icon></template>
+            <el-input
+              v-model="form.username"
+              placeholder="请输入用户名"
+              autocomplete="username"
+              clearable
+            >
+              <template #prefix
+                ><el-icon><User /></el-icon
+              ></template>
             </el-input>
           </el-form-item>
 
@@ -64,7 +77,9 @@
               show-password
               @keyup.enter="onSubmit"
             >
-              <template #prefix><el-icon><Lock /></el-icon></template>
+              <template #prefix
+                ><el-icon><Lock /></el-icon
+              ></template>
             </el-input>
           </el-form-item>
 
@@ -131,7 +146,8 @@ const encodeB64 = (text) => {
   return btoa(binary);
 };
 
-const decodeB64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+const decodeB64 = (b64) =>
+  new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
 
 function loadRemembered() {
   try {
@@ -158,7 +174,10 @@ function loadRemembered() {
 function persistRemembered() {
   try {
     if (remember.value) {
-      localStorage.setItem(REMEMBER_KEY, encodeB64(JSON.stringify({ u: form.username.trim(), p: form.password })));
+      localStorage.setItem(
+        REMEMBER_KEY,
+        encodeB64(JSON.stringify({ u: form.username.trim(), p: form.password }))
+      );
     } else {
       localStorage.removeItem(REMEMBER_KEY);
     }
@@ -226,8 +245,16 @@ async function onSubmit() {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(60% 50% at 12% 0%, color-mix(in srgb, var(--brand) 8%, transparent) 0%, transparent 70%),
-    radial-gradient(50% 45% at 100% 100%, color-mix(in srgb, var(--brand) 6%, transparent) 0%, transparent 72%);
+    radial-gradient(
+      60% 50% at 12% 0%,
+      color-mix(in srgb, var(--brand) 8%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      50% 45% at 100% 100%,
+      color-mix(in srgb, var(--brand) 6%, transparent) 0%,
+      transparent 72%
+    );
   pointer-events: none;
 }
 

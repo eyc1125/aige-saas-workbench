@@ -51,9 +51,18 @@ router.post(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const status = req.query.status === 'resolved' ? 'resolved' : req.query.status === 'all' ? '' : 'open';
-    const items = notifyService.list({ status, level: String(req.query.level || ''), limit: req.query.limit });
-    return success(res, { items, summary: notifyService.summary(), channels: notifyService.getChannels() });
+    const status =
+      req.query.status === 'resolved' ? 'resolved' : req.query.status === 'all' ? '' : 'open';
+    const items = notifyService.list({
+      status,
+      level: String(req.query.level || ''),
+      limit: req.query.limit,
+    });
+    return success(res, {
+      items,
+      summary: notifyService.summary(),
+      channels: notifyService.getChannels(),
+    });
   })
 );
 

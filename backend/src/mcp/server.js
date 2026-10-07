@@ -22,7 +22,10 @@ const express = require('express');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
-const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
+const {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+} = require('@modelcontextprotocol/sdk/types.js');
 
 const config = require('../config');
 const settings = require('../services/settings');
@@ -163,7 +166,9 @@ async function startMcpServer() {
 
   return new Promise((resolve) => {
     const httpServer = app.listen(config.mcpPort, '0.0.0.0', () => {
-      console.log(`[mcp] SSE 服务已启动：http://0.0.0.0:${config.mcpPort}/sse（共 ${TOOL_DEFINITIONS.length} 个工具）`);
+      console.log(
+        `[mcp] SSE 服务已启动：http://0.0.0.0:${config.mcpPort}/sse（共 ${TOOL_DEFINITIONS.length} 个工具）`
+      );
       resolve(httpServer);
     });
   });

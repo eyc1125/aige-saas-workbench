@@ -29,33 +29,33 @@
   --brand: #15803d;
   --brand-hover: #116a32;
   --brand-active: #0d5729;
-  --brand-soft: #e8f5ec;         /* 主色浅底：选中行、Tag 背景 */
+  --brand-soft: #e8f5ec; /* 主色浅底：选中行、Tag 背景 */
   --brand-soft-border: #a9d9b9;
   /* 渐变两端都经过对比度校验（5.0:1 / 6.7:1），不用只亮一端的那种"好看但压不住白字"的渐变 */
   --brand-gradient: linear-gradient(135deg, #15803d 0%, #106a32 100%);
-  --brand-on-light: #1a9c4d;     /* 品牌标记专用：图形标按 3:1 判定，可以更艳一点 */
-  --on-brand: #f3fbf5;           /* 主色底上的文字（对 #15803d = 5.0:1） */
+  --brand-on-light: #1a9c4d; /* 品牌标记专用：图形标按 3:1 判定，可以更艳一点 */
+  --on-brand: #f3fbf5; /* 主色底上的文字（对 #15803d = 5.0:1） */
 
   /* ---------- 语义色 ---------- */
-  --success: #15803d;            /* 见文件头说明：与主色同值，刻意为之 */
+  --success: #15803d; /* 见文件头说明：与主色同值，刻意为之 */
   --success-soft: #e8f5ec;
   --warning: #a9600a;
   --warning-soft: #fdf3e5;
   --danger: #c62f2f;
   --danger-soft: #fbeeee;
-  --info: #2563eb;               /* 信息用蓝，与绿色主色区分 */
+  --info: #2563eb; /* 信息用蓝，与绿色主色区分 */
   --info-soft: #ecf2fe;
 
   /* ---------- 中性色阶（带品牌绿冷调，非纯灰） ---------- */
-  --bg-page: #f3f8f4;            /* 页面底色 */
-  --bg-surface: #fcfdfc;         /* 卡片 / 面板（近白，但不纯白） */
-  --bg-subtle: #f5faf6;          /* 表头、内嵌区块 */
-  --bg-hover: #edf6f0;           /* 行/项悬停 */
-  --bg-active: #e4f0e8;          /* 行/项按下 */
+  --bg-page: #f3f8f4; /* 页面底色 */
+  --bg-surface: #fcfdfc; /* 卡片 / 面板（近白，但不纯白） */
+  --bg-subtle: #f5faf6; /* 表头、内嵌区块 */
+  --bg-hover: #edf6f0; /* 行/项悬停 */
+  --bg-active: #e4f0e8; /* 行/项按下 */
   --bg-sidebar: #fcfdfc;
 
-  --border-hairline: rgba(10, 50, 28, 0.09);   /* 普通发丝线 */
-  --border-strong: #d8eadf;                    /* 需要稍微清晰一点的分隔 */
+  --border-hairline: rgba(10, 50, 28, 0.09); /* 普通发丝线 */
+  --border-strong: #d8eadf; /* 需要稍微清晰一点的分隔 */
   --border-focus: rgba(21, 128, 61, 0.35);
 
   /* 文字对比度（对 --bg-surface #fcfdfc 实测）：
@@ -101,8 +101,8 @@
 
   /* ---------- 动效：统一曲线与时长 ---------- */
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);   /* 进场：先快后缓，收得住 */
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);       /* 退场：先缓后快，走得干脆 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* 进场：先快后缓，收得住 */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* 退场：先缓后快，走得干脆 */
   --dur-fast: 150ms;
   --dur-base: 200ms;
   --dur-card: 250ms;

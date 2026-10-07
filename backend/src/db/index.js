@@ -35,9 +35,12 @@ function initAdmin() {
 
   if (count === 0) {
     const hash = bcrypt.hashSync(config.admin.password, 10);
-    db.prepare(
-      'INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)'
-    ).run(config.admin.username, hash, '超级管理员', 'admin');
+    db.prepare('INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)').run(
+      config.admin.username,
+      hash,
+      '超级管理员',
+      'admin'
+    );
     console.log(
       `[db] 已创建默认管理员：${config.admin.username} / ${config.admin.password}  ← 登录后请立即修改`
     );
@@ -46,15 +49,22 @@ function initAdmin() {
 
   if (!existing.get(config.admin.username)) {
     const hash = bcrypt.hashSync(config.admin.password, 10);
-    db.prepare(
-      'INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)'
-    ).run(config.admin.username, hash, '超级管理员', 'admin');
+    db.prepare('INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)').run(
+      config.admin.username,
+      hash,
+      '超级管理员',
+      'admin'
+    );
     console.log(`[db] 已补建管理员账号：${config.admin.username}`);
   }
 
   // 清掉「从未被改动过」的历史默认账号，只认 admin/admin888 这一种形态
   const legacy = existing.get('admin');
-  if (legacy && config.admin.username !== 'admin' && bcrypt.compareSync('admin888', legacy.password)) {
+  if (
+    legacy &&
+    config.admin.username !== 'admin' &&
+    bcrypt.compareSync('admin888', legacy.password)
+  ) {
     db.prepare('DELETE FROM users WHERE id = ?').run(legacy.id);
     console.log('[db] 已移除未使用的历史默认账号 admin（弱口令，避免公网风险）');
   }

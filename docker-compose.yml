@@ -21,19 +21,25 @@ services:
       - NODE_ENV=production
     ports:
       # REST API（宝塔反代也可直接指向这里，此时前端静态文件由后端一并托管）
-      - "3000:3000"
+      - '3000:3000'
       # MCP Server（SSE 传输，给 Trae 等 AI 工具连接）
-      - "3001:3001"
+      - '3001:3001'
     extra_hosts:
       # 容器内访问宿主机服务（如宝塔面板）用：https://host.docker.internal:端口
-      - "host.docker.internal:host-gateway"
+      - 'host.docker.internal:host-gateway'
     volumes:
       # Docker Socket：容器管理功能依赖它（只读挂载即可满足 API 调用）
       - /var/run/docker.sock:/var/run/docker.sock
       # SQLite 数据 + 部署应用的数据目录，持久化到宿主机 ./data
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -55,7 +61,7 @@ services:
       # 宝塔反代指向这个端口：aige-saas-panel.miaocaieyc.com.cn -> localhost:8083
       # ⚠️ 默认给的是 8083 而不是 8080 —— 8080 在不少服务器上已被别的服务占用，
       #    部署前先用 `ss -lnt` 确认端口空闲，冲突时改这里的左侧数字即可。
-      - "8083:80"
+      - '8083:80'
     depends_on:
       - backend
     networks:

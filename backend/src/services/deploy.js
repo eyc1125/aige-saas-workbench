@@ -28,7 +28,7 @@ const cloudflareService = require('./cloudflare');
 const settings = require('./settings');
 const notify = require('./notify');
 const { writeLog } = require('../utils/logger');
-const { AppError, badRequest, upstream } = require('../utils/errors');
+const { AppError, badRequest } = require('../utils/errors');
 const { request } = require('../utils/http');
 
 /** 步骤定义：名称 + 权重（用于计算总进度） */
@@ -105,12 +105,17 @@ const token = (len = 6) => crypto.randomBytes(16).toString('hex').slice(0, len);
 function randomSecret(spec) {
   const m = /^random:(\d+)$/.exec(String(spec || ''));
   const size = m ? Number(m[1]) : 24;
-  return crypto.randomBytes(Math.ceil(size / 2)).toString('hex').slice(0, size);
+  return crypto
+    .randomBytes(Math.ceil(size / 2))
+    .toString('hex')
+    .slice(0, size);
 }
 
 /** 把域名整理成合法的 DNS 名称 */
 function normalizeDomain(domain) {
-  const clean = String(domain || '').trim().toLowerCase()
+  const clean = String(domain || '')
+    .trim()
+    .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')
     .replace(/\.$/, '');
@@ -181,7 +186,8 @@ class DeployRunner {
       .replace(/\{\{domain\}\}/g, this.domain)
       .replace(/\{\{appUrl\}\}/g, `https://${this.domain}`)
       .replace(/\{\{secret:([A-Z0-9_]+)\}\}/g, (_m, name) => {
-        if (!this.secrets[name]) this.secrets[name] = randomSecret(this.template.secrets?.[name] || 'random:24');
+        if (!this.secrets[name])
+          this.secrets[name] = randomSecret(this.template.secrets?.[name] || 'random:24');
         return this.secrets[name];
       })
       .replace(/\{\{serviceHost:([a-z0-9_-]+)\}\}/gi, (_m, svc) => serviceHosts.get(svc) || svc)
@@ -209,7 +215,10 @@ class DeployRunner {
     const dockerCfg = settings.getDockerConfig();
     if (!dockerCfg.host) throw badRequest('Docker 连接地址未配置');
 
-    this.log('success', `模板校验通过：${this.template.name}（${this.template.services.length} 个服务）`);
+    this.log(
+      'success',
+      `模板校验通过：${this.template.name}（${this.template.services.length} 个服务）`
+    );
     this.log('info', `推荐内存：${this.template.recommendMemory || '未标注'}`);
   }
 
@@ -221,7 +230,10 @@ class DeployRunner {
     let ip = settings.get('server_public_ip');
     if (!ip) {
       this.log('info', '未配置服务器公网 IP，正在自动探测 …');
-      ip = await request('https://api.ipify.org?format=json', { timeout: 10000, serviceName: '公网 IP 探测' })
+      ip = await request('https://api.ipify.org?format=json', {
+        timeout: 10000,
+        serviceName: '公网 IP 探测',
+      })
         .then((r) => (typeof r === 'object' ? r.ip : String(r).trim()))
         .catch(() => '');
       if (ip) {
@@ -250,7 +262,12 @@ class DeployRunner {
       this.log('warn', `A 记录已存在，直接复用：${record.name} → ${record.content}（未重复添加）`);
     }
 
-    this.result.dns = { zoneId: zone.id, recordId: record.id, ip, proxied: record.proxied !== false };
+    this.result.dns = {
+      zoneId: zone.id,
+      recordId: record.id,
+      ip,
+      proxied: record.proxied !== false,
+    };
   }
 
   /** 步骤 3：准备运行环境（端口 + 数据卷 + 网络） */
@@ -266,7 +283,10 @@ class DeployRunner {
     const primary = this.template.services.find((s) => s.primary) || this.template.services[0];
     this.hostPort = await docker.findFreePort(31000, 31999);
     this.primaryService = primary;
-    this.log('success', `已分配宿主机端口：${this.hostPort}（对应容器端口 ${primary.containerPort}）`);
+    this.log(
+      'success',
+      `已分配宿主机端口：${this.hostPort}（对应容器端口 ${primary.containerPort}）`
+    );
 
     // 数据卷：优先使用宿主机目录（便于备份/查看）；未配置宿主机目录时用 Docker 命名卷
     this.useBind = !!settings.get('host_data_dir');
@@ -290,6 +310,7 @@ class DeployRunner {
   async stepImage() {
     const docker = dockerService.createClient();
     for (const svc of this.template.services) {
+      // eslint-disable-next-line no-await-in-loop -- 逐镜像串行拉取：并发拉会把这台 2 核机的带宽和磁盘打满
       await docker.pullImage(svc.image, (msg) => this.log('info', msg));
     }
     this.log('success', '所有镜像已就绪');
@@ -305,6 +326,7 @@ class DeployRunner {
       const containerName = this.serviceHosts.get(svc.name);
 
       // 容器已存在 → 说明上次部署残留，直接报错让人处理，不静默覆盖
+      // eslint-disable-next-line no-await-in-loop -- 每个服务各查一次重名，串行才能指准是哪一个撞名
       const exists = (await docker.listContainers(true)).find((c) => c.name === containerName);
       if (exists) {
         throw new AppError(
@@ -335,6 +357,7 @@ class DeployRunner {
         containerPort: isPrimary ? svc.containerPort : undefined,
       };
 
+      // eslint-disable-next-line no-await-in-loop -- 建容器必须按模板顺序：后者可能依赖前者先建好的网络/卷
       const { id } = await docker.createContainer({
         name: containerName,
         image: svc.image,
@@ -351,6 +374,7 @@ class DeployRunner {
       });
       this.log('success', `容器已创建：${containerName}`);
 
+      // eslint-disable-next-line no-await-in-loop -- 启动顺序即依赖顺序（先起库再起应用），不能并发
       await docker.startContainer(id);
       this.log('success', `容器已启动：${containerName}`);
       created.push({ name: containerName, id, service: svc.name, image: svc.image });
@@ -384,7 +408,11 @@ class DeployRunner {
       this.log('warn', '自动重载 Nginx 未成功，若域名打不开，请到宝塔面板手动重载一次 Nginx');
     }
 
-    this.result.proxy = { confPath: info.confPath, upstream: upstreamUrl, backupPath: info.backupPath };
+    this.result.proxy = {
+      confPath: info.confPath,
+      upstream: upstreamUrl,
+      backupPath: info.backupPath,
+    };
   }
 
   /**
@@ -405,7 +433,10 @@ class DeployRunner {
     try {
       // 证书申请的前置条件：站点必须已存在
       if (!(await baota.siteExists(this.domain))) {
-        await baota.addSite({ domain: this.domain, ps: `艾哥SaaS工作台部署 ${this.template.name}` });
+        await baota.addSite({
+          domain: this.domain,
+          ps: `艾哥SaaS工作台部署 ${this.template.name}`,
+        });
         this.log('info', `已创建宝塔站点（证书申请的前置条件）：${this.domain}`);
       }
 

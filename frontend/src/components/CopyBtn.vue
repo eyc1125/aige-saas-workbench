@@ -6,13 +6,7 @@
       否则点复制会顺手触发行点击（例如打开详情弹窗）。
     · 样式写在全局 index.css 的 .copy-btn —— 那里统一处理了手机上 44px 的点击区。
   -->
-  <button
-    class="copy-btn"
-    type="button"
-    :title="title"
-    :aria-label="title"
-    @click.stop="onCopy"
-  >
+  <button class="copy-btn" type="button" :title="title" :aria-label="title" @click.stop="onCopy">
     <el-icon><DocumentCopy /></el-icon>
   </button>
 </template>

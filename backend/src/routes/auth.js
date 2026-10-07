@@ -22,9 +22,15 @@ const { writeLog, clientIp } = require('../utils/logger');
 const router = express.Router();
 
 const findUser = db.prepare('SELECT * FROM users WHERE username = ?');
-const touchLogin = db.prepare("UPDATE users SET last_login_at = datetime('now','localtime') WHERE id = ?");
-const findById = db.prepare('SELECT id, username, nickname, role, last_login_at, created_at FROM users WHERE id = ?');
-const updatePassword = db.prepare("UPDATE users SET password = ?, updated_at = datetime('now','localtime') WHERE id = ?");
+const touchLogin = db.prepare(
+  "UPDATE users SET last_login_at = datetime('now','localtime') WHERE id = ?"
+);
+const findById = db.prepare(
+  'SELECT id, username, nickname, role, last_login_at, created_at FROM users WHERE id = ?'
+);
+const updatePassword = db.prepare(
+  "UPDATE users SET password = ?, updated_at = datetime('now','localtime') WHERE id = ?"
+);
 
 /** 用户信息脱敏输出 */
 const publicUser = (u) => ({
@@ -76,7 +82,11 @@ router.post(
       ip,
     });
 
-    return success(res, { token, user: publicUser({ ...user, last_login_at: new Date().toLocaleString('zh-CN') }) }, '登录成功');
+    return success(
+      res,
+      { token, user: publicUser({ ...user, last_login_at: new Date().toLocaleString('zh-CN') }) },
+      '登录成功'
+    );
   })
 );
 

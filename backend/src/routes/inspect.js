@@ -64,7 +64,11 @@ router.put(
       ip: clientIp(req),
     });
 
-    return success(res, { ...cfg, running: runtime.running }, runtime.running ? '自动自愈已开启' : '自动自愈已关闭');
+    return success(
+      res,
+      { ...cfg, running: runtime.running },
+      runtime.running ? '自动自愈已开启' : '自动自愈已关闭'
+    );
   })
 );
 

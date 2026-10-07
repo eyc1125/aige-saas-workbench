@@ -190,7 +190,7 @@ class BaotaClient {
     const data = this._unwrap(res, '获取系统信息');
     const memTotal = Number(data.memTotal || 0);
     // 宝塔字段在不同版本略有差异，这里做兼容取值
-    const memUsed = Number(data.memRealUsed ?? (memTotal - Number(data.memFree || 0)));
+    const memUsed = Number(data.memRealUsed ?? memTotal - Number(data.memFree || 0));
 
     return {
       system: data.system || '-',
@@ -200,11 +200,12 @@ class BaotaClient {
       memTotalMb: memTotal,
       memUsedMb: memUsed,
       memFreeMb: Number(data.memFree || 0),
-      memUsage: data.memRealPercent !== undefined
-        ? Number(data.memRealPercent)
-        : memTotal > 0
-          ? Number(((memUsed / memTotal) * 100).toFixed(1))
-          : 0,
+      memUsage:
+        data.memRealPercent !== undefined
+          ? Number(data.memRealPercent)
+          : memTotal > 0
+            ? Number(((memUsed / memTotal) * 100).toFixed(1))
+            : 0,
       load: {
         one: Number(data.load?.one ?? 0),
         five: Number(data.load?.five ?? 0),
@@ -311,7 +312,12 @@ class BaotaClient {
       //    早前按 domain 解析，导致域名被解析成 "1"，申请证书时报「网站丢失」。
       const domainText =
         [s.rname, s.domain, s.name].find((v) => typeof v === 'string' && v.includes('.')) || '';
-      const domains = domainText ? domainText.split(',').map((d) => d.trim()).filter(Boolean) : [];
+      const domains = domainText
+        ? domainText
+            .split(',')
+            .map((d) => d.trim())
+            .filter(Boolean)
+        : [];
 
       return {
         id: s.id,
@@ -373,7 +379,13 @@ class BaotaClient {
    * @param {string} [opts.type]   站点类型：static（纯静态，默认）/ PHP
    * @param {string} [opts.version] PHP 版本（static 固定 00）
    */
-  async addSite({ domain, path: sitePath, ps = '艾哥SaaS工作台创建', type = 'static', version = '00' }) {
+  async addSite({
+    domain,
+    path: sitePath,
+    ps = '艾哥SaaS工作台创建',
+    type = 'static',
+    version = '00',
+  }) {
     if (!domain) throw badRequest('域名不能为空');
 
     const webname = JSON.stringify({ domain, domainlist: [], count: 0 });
@@ -511,7 +523,9 @@ class BaotaClient {
       `/www/server/panel/vhost/letsencrypt/${domain}`,
       `/www/server/panel/vhost/cert/${domain}`,
     ]) {
+      // eslint-disable-next-line no-await-in-loop -- 两个候选目录按优先级逐个探测，命中即跳出
       const pem = await this.readFile(`${candidate}/fullchain.pem`).catch(() => null);
+      // eslint-disable-next-line no-await-in-loop
       const key = await this.readFile(`${candidate}/privkey.pem`).catch(() => null);
       if (pem && pem.includes('BEGIN CERTIFICATE') && key && key.includes('PRIVATE KEY')) {
         certDir = candidate;
@@ -722,7 +736,11 @@ ${proxyBlock}
     if (!site.id) throw upstream(`无法取得站点 ${siteName} 的数字 ID，无法申请证书`);
 
     const domainList =
-      Array.isArray(domains) && domains.length ? domains : (site.domains.length ? site.domains : [siteName]);
+      Array.isArray(domains) && domains.length
+        ? domains
+        : site.domains.length
+          ? site.domains
+          : [siteName];
 
     const res = await this.call(
       '/acme?action=apply_cert_api',
@@ -826,7 +844,12 @@ ${proxyBlock}
    */
   async listDir(dirPath) {
     if (!dirPath) throw badRequest('目录不能为空');
-    const res = await this.call('/files?action=GetDir', { path: dirPath, p: 1, show_row: 200 }, 'POST', 30000);
+    const res = await this.call(
+      '/files?action=GetDir',
+      { path: dirPath, p: 1, show_row: 200 },
+      'POST',
+      30000
+    );
 
     const parse = (raw, isDir) =>
       (Array.isArray(raw) ? raw : []).map((line) => {
@@ -868,6 +891,7 @@ ${proxyBlock}
     for (const site of list) {
       const domains = site.domains.length ? site.domains : [site.name];
       // site.ssl 为假说明该站点本来就没有证书，不必去读文件
+      // eslint-disable-next-line no-await-in-loop -- 逐站读证书文件，一次只读一个，避免打满这台机器的磁盘 IO
       const info = site.ssl ? await this.readCertInfo(domains[0]) : null;
       out.push({
         siteName: site.name,
@@ -879,7 +903,13 @@ ${proxyBlock}
 
     const expiring = out.filter((x) => x.status === 'expiring').length;
     const expired = out.filter((x) => x.status === 'expired').length;
-    return { total: out.length, withCert: out.filter((x) => x.hasCert).length, expiring, expired, certs: out };
+    return {
+      total: out.length,
+      withCert: out.filter((x) => x.hasCert).length,
+      expiring,
+      expired,
+      certs: out,
+    };
   }
 
   /**
@@ -899,7 +929,8 @@ ${proxyBlock}
         const daysLeft = Math.floor((validTo.getTime() - Date.now()) / 86400000);
 
         // 从签发者里抠出 CN（Let's Encrypt 会返回 R10/R11/YR2 这类短名）
-        const issuerCn = /CN=([^,\n]+)/.exec(cert.issuer.replace(/\n/g, ' '))?.[1]?.trim() || cert.issuer;
+        const issuerCn =
+          /CN=([^,\n]+)/.exec(cert.issuer.replace(/\n/g, ' '))?.[1]?.trim() || cert.issuer;
 
         return {
           issuer: issuerCn,

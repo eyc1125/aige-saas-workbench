@@ -50,7 +50,8 @@ const TEMPLATES = [
     key: 'n8n',
     name: 'n8n',
     title: '自动化工作流',
-    description: '开源工作流自动化平台，400+ 节点连接各类服务，适合做数据同步、通知机器人、定时任务。',
+    description:
+      '开源工作流自动化平台，400+ 节点连接各类服务，适合做数据同步、通知机器人、定时任务。',
     category: '自动化',
     color: '#EA4B71',
     iconText: 'n8n',
@@ -99,7 +100,10 @@ const TEMPLATES = [
     tags: ['表格', '数据库', '协作'],
     recommendMemory: '512 MB',
     docsUrl: 'https://docs.nocodb.com/',
-    notes: ['默认使用内置 SQLite，数据存于宿主机应用数据目录', '也可改 NC_DB 环境变量接入外部 MySQL/PostgreSQL'],
+    notes: [
+      '默认使用内置 SQLite，数据存于宿主机应用数据目录',
+      '也可改 NC_DB 环境变量接入外部 MySQL/PostgreSQL',
+    ],
     secrets: {},
     services: [
       {
@@ -129,7 +133,10 @@ const TEMPLATES = [
     tags: ['CMS', '博客', '建站'],
     recommendMemory: '768 MB',
     docsUrl: 'https://cn.wordpress.org/',
-    notes: ['包含 MySQL 8 数据库容器，数据各自持久化到宿主机', '数据库密码自动生成，可到容器环境变量中查看'],
+    notes: [
+      '包含 MySQL 8 数据库容器，数据各自持久化到宿主机',
+      '数据库密码自动生成，可到容器环境变量中查看',
+    ],
     secrets: {
       DB_PASSWORD: 'random:24',
       DB_ROOT_PASSWORD: 'random:28',
@@ -161,7 +168,8 @@ const TEMPLATES = [
           WORDPRESS_DB_USER: 'wordpress',
           WORDPRESS_DB_PASSWORD: '{{secret:DB_PASSWORD}}',
           // 让站点地址跟随域名，避免装完跳回 http://localhost
-          WORDPRESS_CONFIG_EXTRA: "define('WP_HOME','{{appUrl}}');define('WP_SITEURL','{{appUrl}}');",
+          WORDPRESS_CONFIG_EXTRA:
+            "define('WP_HOME','{{appUrl}}');define('WP_SITEURL','{{appUrl}}');",
         },
       },
     ],

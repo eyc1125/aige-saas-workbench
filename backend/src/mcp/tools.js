@@ -39,7 +39,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_websites',
-    description: '获取宝塔面板中所有网站列表，包含域名、站点目录、运行状态、PHP 版本、备注与创建时间。支持关键词搜索与分页。',
+    description:
+      '获取宝塔面板中所有网站列表，包含域名、站点目录、运行状态、PHP 版本、备注与创建时间。支持关键词搜索与分页。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,13 +82,21 @@ const TOOL_DEFINITIONS = [
   {
     name: 'apply_ssl',
     description:
-      '为指定网站申请或部署 SSL 证书。mode=letsencrypt（默认）时调用宝塔自动申请 Let\'s Encrypt 免费证书；mode=manual 时需要额外传入证书与私钥内容。',
+      "为指定网站申请或部署 SSL 证书。mode=letsencrypt（默认）时调用宝塔自动申请 Let's Encrypt 免费证书；mode=manual 时需要额外传入证书与私钥内容。",
     inputSchema: {
       type: 'object',
       properties: {
         domain: { type: 'string', description: '网站域名（站点名）' },
-        mode: { type: 'string', enum: ['letsencrypt', 'manual'], description: '申请方式，默认 letsencrypt' },
-        domains: { type: 'array', items: { type: 'string' }, description: '证书需要覆盖的域名列表，可省略（默认使用网站自身域名）' },
+        mode: {
+          type: 'string',
+          enum: ['letsencrypt', 'manual'],
+          description: '申请方式，默认 letsencrypt',
+        },
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '证书需要覆盖的域名列表，可省略（默认使用网站自身域名）',
+        },
         cert: { type: 'string', description: 'mode=manual 时的证书内容（PEM）' },
         key: { type: 'string', description: 'mode=manual 时的私钥内容（PEM）' },
       },
@@ -97,7 +106,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_domains',
-    description: '获取 Cloudflare 账号下所有域名区域（zone）列表，包含 zone_id、域名、状态、套餐类型。后续操作 DNS 解析需要用到 zone_id。',
+    description:
+      '获取 Cloudflare 账号下所有域名区域（zone）列表，包含 zone_id、域名、状态、套餐类型。后续操作 DNS 解析需要用到 zone_id。',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -106,7 +116,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_dns_records',
-    description: '获取某个域名区域下的全部 DNS 解析记录。可传 zone_id，也可只传 domain（会自动定位所属区域）。',
+    description:
+      '获取某个域名区域下的全部 DNS 解析记录。可传 zone_id，也可只传 domain（会自动定位所属区域）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -125,11 +136,20 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        type: { type: 'string', description: '记录类型：A / AAAA / CNAME / TXT / MX / NS / SRV / CAA' },
+        type: {
+          type: 'string',
+          description: '记录类型：A / AAAA / CNAME / TXT / MX / NS / SRV / CAA',
+        },
         name: { type: 'string', description: '记录名，填完整域名即可，例如 test.example.com' },
-        content: { type: 'string', description: '记录值：A 记录填 IP，CNAME 填目标域名，TXT 填文本' },
+        content: {
+          type: 'string',
+          description: '记录值：A 记录填 IP，CNAME 填目标域名，TXT 填文本',
+        },
         zone_id: { type: 'string', description: '域名区域 ID，可省略（推荐省略，会自动定位）' },
-        proxied: { type: 'boolean', description: '是否开启 Cloudflare 代理（橙色云），仅 A/AAAA/CNAME 有效，默认 true' },
+        proxied: {
+          type: 'boolean',
+          description: '是否开启 Cloudflare 代理（橙色云），仅 A/AAAA/CNAME 有效，默认 true',
+        },
         ttl: { type: 'number', description: 'TTL 秒数，1 表示自动，默认 1' },
         priority: { type: 'number', description: 'MX 记录的优先级，可省略' },
       },
@@ -139,7 +159,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'delete_dns_record',
-    description: '删除一条 DNS 解析记录。需要 zone_id 与 record_id；如果不确定 record_id，请先用 list_dns_records 查询。⚠️ 删除后不可恢复。',
+    description:
+      '删除一条 DNS 解析记录。需要 zone_id 与 record_id；如果不确定 record_id，请先用 list_dns_records 查询。⚠️ 删除后不可恢复。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -152,12 +173,17 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_containers',
-    description: '获取 Docker 容器列表，包含容器名、镜像、运行状态、端口映射、创建时间，并标记哪些是本系统部署的应用。支持筛选与搜索。',
+    description:
+      '获取 Docker 容器列表，包含容器名、镜像、运行状态、端口映射、创建时间，并标记哪些是本系统部署的应用。支持筛选与搜索。',
     inputSchema: {
       type: 'object',
       properties: {
         all: { type: 'boolean', description: '是否包含已停止的容器，默认 true' },
-        state: { type: 'string', enum: ['running', 'stopped'], description: '只看运行中或已停止，可省略' },
+        state: {
+          type: 'string',
+          enum: ['running', 'stopped'],
+          description: '只看运行中或已停止，可省略',
+        },
         search: { type: 'string', description: '按容器名或镜像名搜索，可省略' },
         managed: { type: 'boolean', description: '只看由本工作台部署的容器，默认 false' },
       },
@@ -166,7 +192,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'restart_container',
-    description: '重启指定容器。container_id 可以是容器 ID，也可以是容器名（如 aige-uptime-kuma-a1b2c3）。',
+    description:
+      '重启指定容器。container_id 可以是容器 ID，也可以是容器名（如 aige-uptime-kuma-a1b2c3）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -183,9 +210,18 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        app_name: { type: 'string', description: '应用模板标识，如 uptime-kuma / n8n / nocodb / wordpress / dify' },
-        domain: { type: 'string', description: '要绑定的域名，例如 kuma.example.com（需已托管在 Cloudflare）' },
-        wait: { type: 'boolean', description: '是否等待部署完成再返回，默认 true（最长等 3 分钟）' },
+        app_name: {
+          type: 'string',
+          description: '应用模板标识，如 uptime-kuma / n8n / nocodb / wordpress / dify',
+        },
+        domain: {
+          type: 'string',
+          description: '要绑定的域名，例如 kuma.example.com（需已托管在 Cloudflare）',
+        },
+        wait: {
+          type: 'boolean',
+          description: '是否等待部署完成再返回，默认 true（最长等 3 分钟）',
+        },
       },
       required: ['app_name', 'domain'],
       additionalProperties: false,
@@ -193,7 +229,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_deploy_logs',
-    description: '查询部署任务的进度与日志。deploy_app 返回的 task_id 传入即可；since_id 用于增量拉取（只看新产生的日志）。',
+    description:
+      '查询部署任务的进度与日志。deploy_app 返回的 task_id 传入即可；since_id 用于增量拉取（只看新产生的日志）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -207,7 +244,8 @@ const TOOL_DEFINITIONS = [
   // ---- 便捷工具（需求之外补充，让 AI 少绕路；不影响上面 13 个） ----
   {
     name: 'list_app_templates',
-    description: '列出应用商店中所有可一键部署的应用模板（名称、简介、推荐内存、容器数量）。部署前可先调用它确认应用标识。',
+    description:
+      '列出应用商店中所有可一键部署的应用模板（名称、简介、推荐内存、容器数量）。部署前可先调用它确认应用标识。',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -229,7 +267,11 @@ const TOOL_DEFINITIONS = [
       type: 'object',
       properties: {
         site: { type: 'string', description: '网站域名，例如 aige-saas-panel.miaocaieyc.com.cn' },
-        type: { type: 'string', enum: ['access', 'error'], description: '日志类型：access 访问日志（默认）/ error 错误日志' },
+        type: {
+          type: 'string',
+          enum: ['access', 'error'],
+          description: '日志类型：access 访问日志（默认）/ error 错误日志',
+        },
         lines: { type: 'number', description: '读取末尾多少行，默认 100，最大 2000' },
       },
       required: ['site'],
@@ -277,17 +319,21 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_directory',
-    description: '列出服务器上某个目录的内容（名称、大小、修改时间、权限、属主）。常用于确认站点目录、备份目录里有什么。',
+    description:
+      '列出服务器上某个目录的内容（名称、大小、修改时间、权限、属主）。常用于确认站点目录、备份目录里有什么。',
     inputSchema: {
       type: 'object',
-      properties: { path: { type: 'string', description: '目录绝对路径，例如 /www/wwwroot 或 /www/backup' } },
+      properties: {
+        path: { type: 'string', description: '目录绝对路径，例如 /www/wwwroot 或 /www/backup' },
+      },
       required: ['path'],
       additionalProperties: false,
     },
   },
   {
     name: 'list_backups',
-    description: '列出宝塔的备份目录（/www/backup 下按用途分子目录：site 网站、database 数据库、backup_restore 一键还原）。',
+    description:
+      '列出宝塔的备份目录（/www/backup 下按用途分子目录：site 网站、database 数据库、backup_restore 一键还原）。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -309,7 +355,10 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        checkId: { type: 'string', description: '检查项 id，例如 ssl_expiring / container_down / disk_watermark' },
+        checkId: {
+          type: 'string',
+          description: '检查项 id，例如 ssl_expiring / container_down / disk_watermark',
+        },
       },
       required: ['checkId'],
       additionalProperties: false,
@@ -322,7 +371,10 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        endpoint: { type: 'string', description: '宝塔 API 路径，例如 /system?action=GetSystemTotal 或 /data?action=getData' },
+        endpoint: {
+          type: 'string',
+          description: '宝塔 API 路径，例如 /system?action=GetSystemTotal 或 /data?action=getData',
+        },
         params: { type: 'object', description: '请求参数对象，可省略' },
         method: { type: 'string', enum: ['POST', 'GET'], description: '请求方法，默认 POST' },
       },
@@ -338,7 +390,10 @@ const TOOL_DEFINITIONS = [
       type: 'object',
       properties: {
         zone_id: { type: 'string', description: '区域 ID，省略时由 domain 自动定位' },
-        domain: { type: 'string', description: '完整域名，用于自动定位 zone，例如 sub.example.com' },
+        domain: {
+          type: 'string',
+          description: '完整域名，用于自动定位 zone，例如 sub.example.com',
+        },
         record_id: { type: 'string', description: '记录 ID，省略时用 name 定位' },
         name: { type: 'string', description: '记录名（完整域名），用于定位记录' },
         type: { type: 'string', description: '记录类型，配合 name 精确定位，例如 A / CNAME' },
@@ -360,7 +415,8 @@ const TOOL_DEFINITIONS = [
         urls: {
           type: 'array',
           items: { type: 'string' },
-          description: '要清理的完整 URL 列表，省略则全量清理，例如 ["https://example.com/index.html"]',
+          description:
+            '要清理的完整 URL 列表，省略则全量清理，例如 ["https://example.com/index.html"]',
         },
       },
       additionalProperties: false,
@@ -368,7 +424,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_zone_info',
-    description: '获取某个域名区域的详情：状态、套餐、DNS 服务器、SSL 模式（off / flexible / full / strict）。',
+    description:
+      '获取某个域名区域的详情：状态、套餐、DNS 服务器、SSL 模式（off / flexible / full / strict）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -385,8 +442,15 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        container: { type: 'string', description: '容器名或 ID（ID 支持前几位前缀），例如 aige-workbench-backend' },
-        action: { type: 'string', enum: ['start', 'stop', 'restart', 'remove'], description: '要执行的动作' },
+        container: {
+          type: 'string',
+          description: '容器名或 ID（ID 支持前几位前缀），例如 aige-workbench-backend',
+        },
+        action: {
+          type: 'string',
+          enum: ['start', 'stop', 'restart', 'remove'],
+          description: '要执行的动作',
+        },
       },
       required: ['container', 'action'],
       additionalProperties: false,
@@ -407,7 +471,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_images',
-    description: '列出服务器上的 Docker 镜像（标签、大小、被多少容器引用、创建时间）。清理磁盘前先看这个。',
+    description:
+      '列出服务器上的 Docker 镜像（标签、大小、被多少容器引用、创建时间）。清理磁盘前先看这个。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
 ];
@@ -419,7 +484,10 @@ const ok = (data, message = '操作成功') => ({ success: true, data: data ?? n
 async function resolveZoneId({ zone_id, domain }) {
   if (zone_id) return zone_id;
   if (!domain) {
-    throw Object.assign(new Error('需要提供 zone_id，或提供完整域名以便自动定位'), { expected: true, status: 400 });
+    throw Object.assign(new Error('需要提供 zone_id，或提供完整域名以便自动定位'), {
+      expected: true,
+      status: 400,
+    });
   }
   const cf = cloudflareService.createClient();
   const zone = await cf.findZoneByDomain(domain);
@@ -443,10 +511,13 @@ const TOOL_HANDLERS = {
   /** 自愈巡检：执行某项修复（受熔断约束） */
   async apply_health_fix({ checkId }) {
     if (!checkId) {
-      throw Object.assign(new Error('需要提供 checkId（如 ssl_expiring / container_down / disk_watermark）'), {
-        expected: true,
-        status: 400,
-      });
+      throw Object.assign(
+        new Error('需要提供 checkId（如 ssl_expiring / container_down / disk_watermark）'),
+        {
+          expected: true,
+          status: 400,
+        }
+      );
     }
     const r = await healthService.applyFix(String(checkId), { username: 'mcp', source: 'mcp' });
     return ok(r, r.message || `已执行修复：${r.title}`);
@@ -456,10 +527,22 @@ const TOOL_HANDLERS = {
   async get_server_status() {
     const [server, disk, sites, zones, containers] = await Promise.all([
       baotaService.createClient().getSystemTotal(),
-      baotaService.createClient().getDiskInfo().catch(() => ({ disks: [], root: null })),
-      baotaService.createClient().getSiteList({ page: 1, limit: 500 }).catch(() => ({ list: [], total: 0 })),
-      cloudflareService.createClient().listZones().catch(() => []),
-      dockerService.createClient().listContainers(true).catch(() => []),
+      baotaService
+        .createClient()
+        .getDiskInfo()
+        .catch(() => ({ disks: [], root: null })),
+      baotaService
+        .createClient()
+        .getSiteList({ page: 1, limit: 500 })
+        .catch(() => ({ list: [], total: 0 })),
+      cloudflareService
+        .createClient()
+        .listZones()
+        .catch(() => []),
+      dockerService
+        .createClient()
+        .listContainers(true)
+        .catch(() => []),
     ]);
 
     const running = containers.filter((c) => c.running).length;
@@ -504,21 +587,32 @@ const TOOL_HANDLERS = {
     const baota = baotaService.createClient();
     const { list, total } = await baota.getSiteList({ page, limit, search });
     const filtered = search
-      ? list.filter((s) => s.name.includes(search) || s.domain.includes(search) || s.ps.includes(search))
+      ? list.filter(
+          (s) => s.name.includes(search) || s.domain.includes(search) || s.ps.includes(search)
+        )
       : list;
-    return ok({ list: filtered, total: search ? filtered.length : total }, `共 ${filtered.length} 个网站`);
+    return ok(
+      { list: filtered, total: search ? filtered.length : total },
+      `共 ${filtered.length} 个网站`
+    );
   },
 
   /** 3. 新建网站 */
   async create_website({ domain, path, ps }) {
-    const clean = String(domain || '').trim().toLowerCase();
+    const clean = String(domain || '')
+      .trim()
+      .toLowerCase();
     if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(clean)) {
       return { success: false, data: null, message: `域名格式不正确：${domain}` };
     }
 
     const baota = baotaService.createClient();
     if (await baota.siteExists(clean)) {
-      return { success: false, data: { domain: clean, exists: true }, message: `网站已存在：${clean}，未重复创建` };
+      return {
+        success: false,
+        data: { domain: clean, exists: true },
+        message: `网站已存在：${clean}，未重复创建`,
+      };
     }
 
     const result = await baota.addSite({ domain: clean, path, ps: ps || '由 MCP 创建的站点' });
@@ -527,7 +621,9 @@ const TOOL_HANDLERS = {
 
   /** 4. 删除网站 */
   async delete_website({ domain }) {
-    const clean = String(domain || '').trim().toLowerCase();
+    const clean = String(domain || '')
+      .trim()
+      .toLowerCase();
     if (!clean) return { success: false, data: null, message: 'domain 不能为空' };
 
     const baota = baotaService.createClient();
@@ -545,12 +641,23 @@ const TOOL_HANDLERS = {
     if (!site) return { success: false, data: null, message: `网站不存在：${domain}` };
 
     if (mode === 'manual') {
-      if (!cert || !key) return { success: false, data: null, message: 'mode=manual 时必须同时提供 cert 与 key' };
-      const result = await baota.setSsl({ siteName: site.name, cert, key, domains: domains || site.domains });
+      if (!cert || !key)
+        return { success: false, data: null, message: 'mode=manual 时必须同时提供 cert 与 key' };
+      const result = await baota.setSsl({
+        siteName: site.name,
+        cert,
+        key,
+        domains: domains || site.domains,
+      });
       return ok(result, `证书已部署到 ${site.name}`);
     }
 
-    const list = Array.isArray(domains) && domains.length ? domains : (site.domains.length ? site.domains : [site.name]);
+    const list =
+      Array.isArray(domains) && domains.length
+        ? domains
+        : site.domains.length
+          ? site.domains
+          : [site.name];
     const result = await baota.applyLetsEncrypt({ siteName: site.name, domains: list });
     return ok(result, `证书申请已提交（覆盖：${list.join(', ')}），通常 10-60 秒完成签发`);
   },
@@ -596,7 +703,8 @@ const TOOL_HANDLERS = {
 
   /** 9. 删除 DNS 记录 */
   async delete_dns_record({ zone_id, record_id }) {
-    if (!zone_id || !record_id) return { success: false, data: null, message: 'zone_id 与 record_id 均为必填' };
+    if (!zone_id || !record_id)
+      return { success: false, data: null, message: 'zone_id 与 record_id 均为必填' };
     const result = await cloudflareService.createClient().deleteDnsRecord(zone_id, record_id);
     return ok(result, `解析已删除（record_id: ${record_id}）`);
   },
@@ -610,7 +718,9 @@ const TOOL_HANDLERS = {
     if (state === 'stopped') list = list.filter((c) => !c.running);
     if (search) {
       const kw = String(search).toLowerCase();
-      list = list.filter((c) => c.name.toLowerCase().includes(kw) || c.image.toLowerCase().includes(kw));
+      list = list.filter(
+        (c) => c.name.toLowerCase().includes(kw) || c.image.toLowerCase().includes(kw)
+      );
     }
     return ok(
       {
@@ -640,7 +750,8 @@ const TOOL_HANDLERS = {
     // 允许直接传容器名：先按名字找到真实 ID，避免调用方还要先查列表
     let id = container_id;
     const list = await docker.listContainers(true);
-    const matched = list.find((c) => c.name === container_id) || list.find((c) => c.id.startsWith(container_id));
+    const matched =
+      list.find((c) => c.name === container_id) || list.find((c) => c.id.startsWith(container_id));
     if (matched) id = matched.id;
 
     await docker.restartContainer(id);
@@ -661,10 +772,18 @@ const TOOL_HANDLERS = {
       };
     }
 
-    const started = deployService.startDeploy({ appKey: app_name, domain, actor: 'mcp', source: 'mcp' });
+    const started = deployService.startDeploy({
+      appKey: app_name,
+      domain,
+      actor: 'mcp',
+      source: 'mcp',
+    });
 
     if (!wait) {
-      return ok(started, `部署任务已创建（task_id: ${started.taskId}），可用 get_deploy_logs 查询进度`);
+      return ok(
+        started,
+        `部署任务已创建（task_id: ${started.taskId}），可用 get_deploy_logs 查询进度`
+      );
     }
 
     const task = await deployService.waitForTask(started.taskId, 180000);
@@ -673,7 +792,13 @@ const TOOL_HANDLERS = {
     if (task.status === 'failed') {
       return {
         success: false,
-        data: { taskId: task.id, status: task.status, progress: task.progress, error: task.error, logs },
+        data: {
+          taskId: task.id,
+          status: task.status,
+          progress: task.progress,
+          error: task.error,
+          logs,
+        },
         message: `部署失败：${task.error}`,
       };
     }
@@ -718,7 +843,13 @@ const TOOL_HANDLERS = {
         stepName: task.steps?.[task.current_step] || null,
         error: task.error,
         result: task.result,
-        logs: logs.map((l) => ({ id: l.id, step: l.step, level: l.level, message: l.message, time: l.created_at })),
+        logs: logs.map((l) => ({
+          id: l.id,
+          step: l.step,
+          level: l.level,
+          message: l.message,
+          time: l.created_at,
+        })),
       },
       `任务状态：${task.status}（进度 ${task.progress}%）`
     );
@@ -738,7 +869,10 @@ const TOOL_HANDLERS = {
   async get_site_logs({ site, type = 'access', lines = 100 }) {
     if (!site) return { success: false, data: null, message: '需要提供 site（网站域名）' };
     const res = await baotaService.createClient().getSiteLogs(site, { type, lines });
-    return ok(res, `${site} 的${type === 'error' ? '错误' : '访问'}日志（末尾 ${res.returnedLines} 行，共 ${res.totalLines} 行）`);
+    return ok(
+      res,
+      `${site} 的${type === 'error' ? '错误' : '访问'}日志（末尾 ${res.returnedLines} 行，共 ${res.totalLines} 行）`
+    );
   },
 
   /** 15. 读取站点 Nginx 配置 */
@@ -750,7 +884,8 @@ const TOOL_HANDLERS = {
 
   /** 16. 写入站点 Nginx 配置（自动备份 + 试载） */
   async save_nginx_config({ site, content }) {
-    if (!site || !content) return { success: false, data: null, message: '需要提供 site 与 content' };
+    if (!site || !content)
+      return { success: false, data: null, message: '需要提供 site 与 content' };
     const res = await baotaService.createClient().saveNginxConfig(site, content);
     return ok(res, `已写入 ${site} 的配置${res.backupPath ? '（原文件已备份）' : ''}并重载 Nginx`);
   },
@@ -783,13 +918,17 @@ const TOOL_HANDLERS = {
   /** 20. 证书台账（含剩余天数，与宝塔口径一致） */
   async list_ssl_certs() {
     const res = await baotaService.createClient().listSslCerts();
-    const warn = res.expiring || res.expired ? `；⚠️ ${res.expiring} 个 15 天内到期、${res.expired} 个已过期` : '';
+    const warn =
+      res.expiring || res.expired
+        ? `；⚠️ ${res.expiring} 个 15 天内到期、${res.expired} 个已过期`
+        : '';
     return ok(res, `共 ${res.total} 个站点，其中 ${res.withCert} 个已配证书${warn}`);
   },
 
   /** 21. 万能兜底：调用宝塔任意 API */
   async call_bt_api({ endpoint, params, method }) {
-    if (!endpoint) return { success: false, data: null, message: '需要提供 endpoint（宝塔 API 路径）' };
+    if (!endpoint)
+      return { success: false, data: null, message: '需要提供 endpoint（宝塔 API 路径）' };
     const res = await baotaService.createClient().callRaw(endpoint, params || {}, method || 'POST');
     return ok(res, `已调用宝塔接口 ${res.endpoint}`);
   },
@@ -797,7 +936,11 @@ const TOOL_HANDLERS = {
   /** 22. 修改 DNS 记录 */
   async update_dns_record({ zone_id, domain, record_id, name, type, content, proxied }) {
     if (content === undefined && proxied === undefined) {
-      return { success: false, data: null, message: 'content 与 proxied 至少要给一个，否则没有要改的内容' };
+      return {
+        success: false,
+        data: null,
+        message: 'content 与 proxied 至少要给一个，否则没有要改的内容',
+      };
     }
     const cf = cloudflareService.createClient();
     const zoneId = await resolveZoneId({ zone_id, domain });
@@ -805,10 +948,22 @@ const TOOL_HANDLERS = {
     // 没给 record_id 就用 name（+可选 type）定位
     let recordId = record_id;
     if (!recordId) {
-      if (!name) return { success: false, data: null, message: '需要提供 record_id，或提供 name 以便定位记录' };
+      if (!name)
+        return {
+          success: false,
+          data: null,
+          message: '需要提供 record_id，或提供 name 以便定位记录',
+        };
       const records = await cf.listDnsRecords(zoneId, {});
-      const hit = records.find((r) => r.name === name && (!type || r.type === String(type).toUpperCase()));
-      if (!hit) return { success: false, data: null, message: `在区域里找不到记录：${name}${type ? ` (${type})` : ''}` };
+      const hit = records.find(
+        (r) => r.name === name && (!type || r.type === String(type).toUpperCase())
+      );
+      if (!hit)
+        return {
+          success: false,
+          data: null,
+          message: `在区域里找不到记录：${name}${type ? ` (${type})` : ''}`,
+        };
       recordId = hit.id;
     }
 
@@ -824,14 +979,20 @@ const TOOL_HANDLERS = {
   async purge_cloudflare_cache({ zone_id, domain, urls }) {
     const zoneId = await resolveZoneId({ zone_id, domain });
     const res = await cloudflareService.createClient().purgeCache(zoneId, { urls });
-    return ok(res, res.mode === 'everything' ? '已提交全量缓存清理' : `已提交 ${urls.length} 个 URL 的缓存清理`);
+    return ok(
+      res,
+      res.mode === 'everything' ? '已提交全量缓存清理' : `已提交 ${urls.length} 个 URL 的缓存清理`
+    );
   },
 
   /** 24. 区域详情 */
   async get_zone_info({ zone_id, domain }) {
     const zoneId = await resolveZoneId({ zone_id, domain });
     const res = await cloudflareService.createClient().getZone(zoneId);
-    return ok(res, `${res.name}：状态 ${res.status}，套餐 ${res.plan || '-'}，SSL ${res.sslMode || '-'}`);
+    return ok(
+      res,
+      `${res.name}：状态 ${res.status}，套餐 ${res.plan || '-'}，SSL ${res.sslMode || '-'}`
+    );
   },
 
   /** 25. 容器生命周期管理 */
@@ -844,10 +1005,18 @@ const TOOL_HANDLERS = {
     else if (action === 'stop') res = await docker.stopContainer(hit.id);
     else if (action === 'restart') res = await docker.restartContainer(hit.id);
     else if (action === 'remove') res = await docker.removeContainer(hit.id);
-    else return { success: false, data: null, message: `不支持的 action：${action}（可用 start / stop / restart / remove）` };
+    else
+      return {
+        success: false,
+        data: null,
+        message: `不支持的 action：${action}（可用 start / stop / restart / remove）`,
+      };
 
     const verb = { start: '已启动', stop: '已停止', restart: '已重启', remove: '已删除' }[action];
-    return ok({ container: hit.name, containerId: hit.id, action, detail: res }, `${hit.name} ${verb}`);
+    return ok(
+      { container: hit.name, containerId: hit.id, action, detail: res },
+      `${hit.name} ${verb}`
+    );
   },
 
   /** 26. 容器日志 */
@@ -927,7 +1096,14 @@ async function callTool(name, args = {}) {
       username: 'mcp',
       module: 'mcp',
       action: name,
-      target: args.domain || args.name || args.container_id || args.task_id || args.app_name || args.checkId || null,
+      target:
+        args.domain ||
+        args.name ||
+        args.container_id ||
+        args.task_id ||
+        args.app_name ||
+        args.checkId ||
+        null,
       source: 'mcp',
       status: result.success ? 'success' : 'failed',
       message: result.message,
@@ -940,7 +1116,14 @@ async function callTool(name, args = {}) {
       username: 'mcp',
       module: 'mcp',
       action: name,
-      target: args.domain || args.name || args.container_id || args.task_id || args.app_name || args.checkId || null,
+      target:
+        args.domain ||
+        args.name ||
+        args.container_id ||
+        args.task_id ||
+        args.app_name ||
+        args.checkId ||
+        null,
       source: 'mcp',
       status: 'failed',
       message: err.message,

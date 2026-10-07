@@ -52,7 +52,9 @@ const stmtTouch = db.prepare(`
          updated_at = datetime('now', 'localtime')
    WHERE id = ?
 `);
-const stmtMarkNotified = db.prepare("UPDATE alerts SET notified_at = datetime('now','localtime') WHERE id = ?");
+const stmtMarkNotified = db.prepare(
+  "UPDATE alerts SET notified_at = datetime('now','localtime') WHERE id = ?"
+);
 const stmtResolveByFp = db.prepare(`
   UPDATE alerts
      SET status = 'resolved', resolved_at = datetime('now','localtime'),
@@ -94,7 +96,9 @@ async function raise({ fingerprint, level = 'warning', source = 'system', title,
 
   // 外发：新建的立刻推；已存在的看静默窗口
   const row = db.prepare('SELECT * FROM alerts WHERE id = ?').get(id);
-  const lastNotified = row?.notified_at ? new Date(String(row.notified_at).replace(' ', 'T')).getTime() : 0;
+  const lastNotified = row?.notified_at
+    ? new Date(String(row.notified_at).replace(' ', 'T')).getTime()
+    : 0;
   const quiet = lastNotified && Date.now() - lastNotified < QUIET_WINDOW_MS;
   let notified = false;
 
@@ -186,25 +190,40 @@ function summary() {
     warning: open.warning || 0,
     info: open.info || 0,
     unread: open.unread || 0,
-    level: (open.critical || 0) > 0 ? 'critical' : (open.warning || 0) > 0 ? 'warning' : open.total ? 'info' : 'ok',
+    level:
+      (open.critical || 0) > 0
+        ? 'critical'
+        : (open.warning || 0) > 0
+          ? 'warning'
+          : open.total
+            ? 'info'
+            : 'ok',
     latestAt: latest?.t || null,
   };
 }
 
 /** 全部标记已读 */
 function markAllRead() {
-  return db.prepare("UPDATE alerts SET read_at = datetime('now','localtime') WHERE status = 'open' AND read_at IS NULL").run().changes || 0;
+  return (
+    db
+      .prepare(
+        "UPDATE alerts SET read_at = datetime('now','localtime') WHERE status = 'open' AND read_at IS NULL"
+      )
+      .run().changes || 0
+  );
 }
 
 /** 清理：已解决的只留最近 200 条（避免表无限增长） */
 function prune() {
-  return db
-    .prepare(
-      `DELETE FROM alerts
+  return (
+    db
+      .prepare(
+        `DELETE FROM alerts
         WHERE status = 'resolved'
           AND id NOT IN (SELECT id FROM alerts WHERE status = 'resolved' ORDER BY id DESC LIMIT 200)`
-    )
-    .run().changes || 0;
+      )
+      .run().changes || 0
+  );
 }
 
 // ============================================================
@@ -294,7 +313,11 @@ async function dispatch(payload) {
           // 飞书成功返回 {code:0}；开了签名校验时会返回非 0
           const code = res && typeof res === 'object' ? res.code : undefined;
           if (code !== undefined && code !== 0) {
-            return { channel: 'feishu', ok: false, message: `飞书返回 code=${code}（若机器人开了签名校验，需关闭或改用 Webhook）` };
+            return {
+              channel: 'feishu',
+              ok: false,
+              message: `飞书返回 code=${code}（若机器人开了签名校验，需关闭或改用 Webhook）`,
+            };
           }
           return { channel: 'feishu', ok: true };
         })
@@ -322,7 +345,10 @@ async function sendTest() {
     detail: '来自「系统设置 → 告警通知」的手动测试，可以忽略。',
     fingerprint: 'system:test',
   });
-  return { ok, message: ok ? '测试告警已发出，请检查接收端' : '发送失败，请检查地址是否正确（详见后端日志）' };
+  return {
+    ok,
+    message: ok ? '测试告警已发出，请检查接收端' : '发送失败，请检查地址是否正确（详见后端日志）',
+  };
 }
 
 module.exports = {

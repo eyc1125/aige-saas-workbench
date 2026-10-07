@@ -31,7 +31,9 @@ router.get(
     const all = String(req.query.all ?? 'true') !== 'false';
     const onlyManaged = String(req.query.managed || '') === 'true';
     const state = String(req.query.state || '').trim(); // running / stopped
-    const search = String(req.query.search || '').trim().toLowerCase();
+    const search = String(req.query.search || '')
+      .trim()
+      .toLowerCase();
 
     const docker = dockerService.createClient();
     let list = await docker.listContainers(all);
@@ -39,7 +41,10 @@ router.get(
     if (onlyManaged) list = list.filter((c) => c.managedByWorkbench);
     if (state === 'running') list = list.filter((c) => c.running);
     if (state === 'stopped') list = list.filter((c) => !c.running);
-    if (search) list = list.filter((c) => c.name.toLowerCase().includes(search) || c.image.toLowerCase().includes(search));
+    if (search)
+      list = list.filter(
+        (c) => c.name.toLowerCase().includes(search) || c.image.toLowerCase().includes(search)
+      );
 
     // 运行中的排前面，其次按创建时间倒序
     list.sort((a, b) => (a.running === b.running ? b.created - a.created : a.running ? -1 : 1));

@@ -184,7 +184,9 @@ router.post(
     return success(
       res,
       { zoneId: zone.id, zoneName: zone.name, created, record },
-      created ? `解析已添加：${record.name} → ${record.content}` : `解析已存在，直接复用：${record.name} → ${record.content}`
+      created
+        ? `解析已添加：${record.name} → ${record.content}`
+        : `解析已存在，直接复用：${record.name} → ${record.content}`
     );
   })
 );

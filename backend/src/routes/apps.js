@@ -15,7 +15,6 @@ const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/response');
 const { badRequest, notFound } = require('../utils/errors');
-const { clientIp } = require('../utils/logger');
 const { listTemplates, getTemplate, toComposeYaml } = require('../services/apps');
 const deployService = require('../services/deploy');
 

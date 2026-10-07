@@ -10,7 +10,7 @@
 
 const { AppError } = require('../utils/errors');
 
-// eslint-disable-next-line no-unused-vars
+// Express 靠「4 个参数」识别错误处理中间件，_next 不能省（下划线前缀表示有意不用）
 function errorHandler(err, req, res, _next) {
   const isExpected = err instanceof AppError || err.expected === true;
   const status = isExpected ? err.status || 400 : 500;

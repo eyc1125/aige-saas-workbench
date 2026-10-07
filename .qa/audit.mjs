@@ -312,7 +312,6 @@ const AUDIT_FN = `(() => {
     let lastErr;
     for (let i = 0; i <= retries; i += 1) {
       try {
-        // eslint-disable-next-line no-await-in-loop
         const r = await cdp.send('Runtime.evaluate', {
           expression: expr,
           awaitPromise,
@@ -322,7 +321,6 @@ const AUDIT_FN = `(() => {
         return r.result?.value;
       } catch (err) {
         lastErr = err;
-        // eslint-disable-next-line no-await-in-loop
         await sleep(1200);
       }
     }
@@ -347,7 +345,9 @@ const AUDIT_FN = `(() => {
     );
     const r = JSON.parse(raw);
     if (!r.mounted || r.textLen < 20) {
-      throw new Error(`页面未真正渲染（#app 挂载=${r.mounted}，文字=${r.textLen} 字，readyState=${r.ready}）`);
+      throw new Error(
+        `页面未真正渲染（#app 挂载=${r.mounted}，文字=${r.textLen} 字，readyState=${r.ready}）`
+      );
     }
     return r;
   };
@@ -409,36 +409,43 @@ const AUDIT_FN = `(() => {
 
     for (const page of PAGES_TO_RUN) {
       try {
-        // eslint-disable-next-line no-await-in-loop
         await evaluate(`location.hash = ${JSON.stringify(`#${page.hash}`)}`);
       } catch (err) {
         console.log(`  ❌ ${page.title.padEnd(10)} 路由切换失败 —— ${err.message}`);
-        findings.push({ vp: vp.name, page: page.title, kind: '体检查询失败（截图可人工复核）', detail: err.message });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: '体检查询失败（截图可人工复核）',
+          detail: err.message,
+        });
         try {
-          // eslint-disable-next-line no-await-in-loop
           await cdp.send('Page.reload', { ignoreCache: false });
-          // eslint-disable-next-line no-await-in-loop
           await sleep(5000);
         } catch {
           /* 复位失败无妨，下一页继续 */
         }
         continue;
       }
-      // eslint-disable-next-line no-await-in-loop
       await sleep((page.hash === '/login' ? 1800 : 3000) + SETTLE_MS);
 
       // 地基断言：页面必须先真的渲染出来，否则后面的「全绿」毫无意义
       try {
-        // eslint-disable-next-line no-await-in-loop
         await assertRendered();
       } catch (err) {
         console.log(`  ❌ ${page.title.padEnd(10)} 未渲染 —— ${err.message}`);
-        findings.push({ vp: vp.name, page: page.title, kind: '页面未渲染（严重）', detail: err.message });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: '页面未渲染（严重）',
+          detail: err.message,
+        });
         if (page.shot) {
           try {
-            // eslint-disable-next-line no-await-in-loop
             const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-            writeFileSync(join(SHOT_DIR, `${vp.name}__${page.name}.png`), Buffer.from(shot.data, 'base64'));
+            writeFileSync(
+              join(SHOT_DIR, `${vp.name}__${page.name}.png`),
+              Buffer.from(shot.data, 'base64')
+            );
           } catch {
             /* 截图失败不影响结论 */
           }
@@ -466,16 +473,36 @@ const AUDIT_FN = `(() => {
       );
 
       if (audit.docScrollW > audit.vw + 1) {
-        findings.push({ vp: vp.name, page: page.title, kind: 'M1 整页横向溢出', detail: `scrollWidth ${audit.docScrollW} > 视口 ${audit.vw}` });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: 'M1 整页横向溢出',
+          detail: `scrollWidth ${audit.docScrollW} > 视口 ${audit.vw}`,
+        });
       }
       audit.overflow.slice(0, 4).forEach((o) => {
-        findings.push({ vp: vp.name, page: page.title, kind: 'M2 元素溢出', detail: `${o.el} 右边界 ${o.right}（超 ${o.right - audit.vw}px）「${o.text}」` });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: 'M2 元素溢出',
+          detail: `${o.el} 右边界 ${o.right}（超 ${o.right - audit.vw}px）「${o.text}」`,
+        });
       });
       audit.smallTap.slice(0, 4).forEach((t) => {
-        findings.push({ vp: vp.name, page: page.title, kind: '触控 <44px', detail: `${t.el} ${t.h}px「${t.text}」` });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: '触控 <44px',
+          detail: `${t.el} ${t.h}px「${t.text}」`,
+        });
       });
       audit.wrapped.slice(0, 4).forEach((w) => {
-        findings.push({ vp: vp.name, page: page.title, kind: 'M3 按钮折行', detail: `${w.el} 折 ${w.lines} 行「${w.text}」` });
+        findings.push({
+          vp: vp.name,
+          page: page.title,
+          kind: 'M3 按钮折行',
+          detail: `${w.el} 折 ${w.lines} 行「${w.text}」`,
+        });
       });
 
       if (page.shot) {

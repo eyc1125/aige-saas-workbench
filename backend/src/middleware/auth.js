@@ -14,11 +14,9 @@ const { unauthorized } = require('../utils/errors');
 
 /** 生成令牌 */
 function signToken(user) {
-  return jwt.sign(
-    { uid: user.id, username: user.username, role: user.role },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
-  );
+  return jwt.sign({ uid: user.id, username: user.username, role: user.role }, config.jwtSecret, {
+    expiresIn: config.jwtExpiresIn,
+  });
 }
 
 /** 从请求头里取出令牌 */

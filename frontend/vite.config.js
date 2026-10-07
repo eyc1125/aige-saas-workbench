@@ -72,7 +72,12 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('echarts') || id.includes('zrender')) return 'echarts';
-          if (id.includes('/vue/') || id.includes('/@vue/') || id.includes('vue-router') || id.includes('pinia')) {
+          if (
+            id.includes('/vue/') ||
+            id.includes('/@vue/') ||
+            id.includes('vue-router') ||
+            id.includes('pinia')
+          ) {
             return 'vue';
           }
           return undefined;

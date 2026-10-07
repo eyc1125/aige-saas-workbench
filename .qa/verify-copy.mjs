@@ -111,12 +111,21 @@ class CDP {
   }
 
   const ev = async (expr, awaitPromise = false) => {
-    const r = await cdp.send('Runtime.evaluate', { expression: expr, awaitPromise, returnByValue: true });
+    const r = await cdp.send('Runtime.evaluate', {
+      expression: expr,
+      awaitPromise,
+      returnByValue: true,
+    });
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.text || '页面脚本异常');
     return r.result?.value;
   };
 
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
 
   console.log('--- 1. 打开站点并登录 ---');
   await cdp.send('Page.navigate', { url: `${ORIGIN}/` });
@@ -174,9 +183,21 @@ class CDP {
   console.log(`  按钮坐标：(${x}, ${y})`);
 
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
   await sleep(60);
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
   console.log('  ✅ 已派发真实点击');
 
   await sleep(1500);

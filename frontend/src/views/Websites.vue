@@ -11,7 +11,9 @@
           @keyup.enter="reload(1)"
           @clear="reload(1)"
         >
-          <template #prefix><el-icon><Search /></el-icon></template>
+          <template #prefix
+            ><el-icon><Search /></el-icon
+          ></template>
         </el-input>
         <el-button :loading="loading" @click="reload(1)">
           <el-icon><Refresh /></el-icon>刷新
@@ -30,11 +32,7 @@
 
     <!-- ==================== 列表 ==================== -->
     <section class="surface">
-      <StateBlock
-        v-if="state === 'loading'"
-        state="loading"
-        loading-text="正在读取宝塔站点列表…"
-      />
+      <StateBlock v-if="state === 'loading'" state="loading" loading-text="正在读取宝塔站点列表…" />
       <StateBlock
         v-else-if="state === 'error'"
         state="error"
@@ -47,7 +45,11 @@
         v-else-if="state === 'empty'"
         state="empty"
         :title="query.search ? '没有匹配的网站' : '还没有任何网站'"
-        :description="query.search ? '换个关键词试试，或清空搜索条件。' : '点击右上角「新建网站」创建第一个站点。'"
+        :description="
+          query.search
+            ? '换个关键词试试，或清空搜索条件。'
+            : '点击右上角「新建网站」创建第一个站点。'
+        "
         :action-text="query.search ? '清空搜索' : ''"
         @action="onEmptyAction"
       />
@@ -76,7 +78,9 @@
               <div class="card__meta-row">
                 <dt>证书</dt>
                 <dd>
-                  <span class="cert" :class="`cert--${certTone(row.cert)}`">{{ certText(row.cert) }}</span>
+                  <span class="cert" :class="`cert--${certTone(row.cert)}`">{{
+                    certText(row.cert)
+                  }}</span>
                 </dd>
               </div>
               <div class="card__meta-row">
@@ -128,7 +132,9 @@
 
             <el-table-column label="证书" width="118">
               <template #default="{ row }">
-                <span class="cert" :class="`cert--${certTone(row.cert)}`">{{ certText(row.cert) }}</span>
+                <span class="cert" :class="`cert--${certTone(row.cert)}`">{{
+                  certText(row.cert)
+                }}</span>
               </template>
             </el-table-column>
 
@@ -172,19 +178,37 @@
     </section>
 
     <!-- ==================== 新建网站 ==================== -->
-    <el-dialog v-model="createVisible" title="新建网站" width="520px" :close-on-click-modal="false" @closed="resetCreate">
+    <el-dialog
+      v-model="createVisible"
+      title="新建网站"
+      width="520px"
+      :close-on-click-modal="false"
+      @closed="resetCreate"
+    >
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top">
         <el-form-item label="网站域名" prop="domain">
           <el-input v-model="createForm.domain" placeholder="例如 demo.example.com" clearable />
-          <p class="form-tip">会在宝塔创建一个「纯静态」站点，目录默认为 /www/wwwroot/&lt;域名&gt;</p>
+          <p class="form-tip">
+            会在宝塔创建一个「纯静态」站点，目录默认为 /www/wwwroot/&lt;域名&gt;
+          </p>
         </el-form-item>
 
         <el-form-item label="网站目录（选填）" prop="path">
-          <el-input v-model="createForm.path" placeholder="留空则自动填 /www/wwwroot/<域名>" clearable />
+          <el-input
+            v-model="createForm.path"
+            placeholder="留空则自动填 /www/wwwroot/<域名>"
+            clearable
+          />
         </el-form-item>
 
         <el-form-item label="备注（选填）" prop="ps">
-          <el-input v-model="createForm.ps" placeholder="例如：公司官网" clearable maxlength="60" show-word-limit />
+          <el-input
+            v-model="createForm.ps"
+            placeholder="例如：公司官网"
+            clearable
+            maxlength="60"
+            show-word-limit
+          />
         </el-form-item>
       </el-form>
 
@@ -205,36 +229,52 @@
             <el-descriptions :column="1" border>
               <el-descriptions-item label="站点名称">{{ detail.name }}</el-descriptions-item>
               <el-descriptions-item label="绑定域名">
-                <span v-if="detail.domains.length" class="mono">{{ detail.domains.join('、') }}</span>
+                <span v-if="detail.domains.length" class="mono">{{
+                  detail.domains.join('、')
+                }}</span>
                 <span v-else class="muted">—</span>
               </el-descriptions-item>
               <el-descriptions-item label="运行状态">
                 {{ detail.status === 'running' ? '运行中' : '已停止' }}
               </el-descriptions-item>
               <el-descriptions-item label="证书状态">
-                <span class="cert" :class="`cert--${certTone(detail.cert)}`">{{ certText(detail.cert) }}</span>
-                <span v-if="detail.cert?.hasCert" class="muted-xs">（{{ detail.cert.validToText }} 到期）</span>
+                <span class="cert" :class="`cert--${certTone(detail.cert)}`">{{
+                  certText(detail.cert)
+                }}</span>
+                <span v-if="detail.cert?.hasCert" class="muted-xs"
+                  >（{{ detail.cert.validToText }} 到期）</span
+                >
               </el-descriptions-item>
-              <el-descriptions-item label="项目类型">{{ detail.projectType }} · PHP {{ detail.phpVersion }}</el-descriptions-item>
+              <el-descriptions-item label="项目类型"
+                >{{ detail.projectType }} · PHP {{ detail.phpVersion }}</el-descriptions-item
+              >
               <el-descriptions-item label="网站目录">
                 <span class="mono">{{ detail.path || '—' }}</span>
               </el-descriptions-item>
               <el-descriptions-item label="备注">{{ detail.ps || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="添加时间">{{ detail.addTime || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="添加时间">{{
+                detail.addTime || '—'
+              }}</el-descriptions-item>
             </el-descriptions>
           </el-tab-pane>
 
           <!-- ---------- 日志（访问 / 错误共用一套面板） ---------- -->
           <el-tab-pane label="访问日志" name="access" lazy>
             <div class="logbar">
-              <el-select v-model="logPanel.lines" size="small" class="logbar__lines" @change="loadLogs">
+              <el-select
+                v-model="logPanel.lines"
+                size="small"
+                class="logbar__lines"
+                @change="loadLogs"
+              >
                 <el-option :value="100" label="最后 100 行" />
                 <el-option :value="200" label="最后 200 行" />
                 <el-option :value="500" label="最后 500 行" />
                 <el-option :value="1000" label="最后 1000 行" />
               </el-select>
               <span class="logbar__meta tnum">
-                {{ logPanel.path || '—' }}<template v-if="logPanel.totalLines"> · 共 {{ logPanel.totalLines }} 行</template>
+                {{ logPanel.path || '—'
+                }}<template v-if="logPanel.totalLines"> · 共 {{ logPanel.totalLines }} 行</template>
               </span>
               <el-button size="small" :loading="logPanel.loading" @click="loadLogs">
                 <el-icon><Refresh /></el-icon>
@@ -242,21 +282,39 @@
               <CopyBtn :text="logPanel.content" title="复制日志内容" ok-message="日志已复制" />
             </div>
             <StateBlock v-if="logPanel.loading" state="loading" loading-text="正在读取日志…" />
-            <StateBlock v-else-if="logPanel.error" state="error" title="日志读取失败" :description="logPanel.error" action-text="重试" @action="loadLogs" />
-            <StateBlock v-else-if="!logPanel.content.trim()" state="empty" title="日志还是空的" description="该站点还没有产生访问记录。" />
+            <StateBlock
+              v-else-if="logPanel.error"
+              state="error"
+              title="日志读取失败"
+              :description="logPanel.error"
+              action-text="重试"
+              @action="loadLogs"
+            />
+            <StateBlock
+              v-else-if="!logPanel.content.trim()"
+              state="empty"
+              title="日志还是空的"
+              description="该站点还没有产生访问记录。"
+            />
             <pre v-else class="console">{{ logPanel.content }}</pre>
           </el-tab-pane>
 
           <el-tab-pane label="错误日志" name="error" lazy>
             <div class="logbar">
-              <el-select v-model="logPanel.lines" size="small" class="logbar__lines" @change="loadLogs">
+              <el-select
+                v-model="logPanel.lines"
+                size="small"
+                class="logbar__lines"
+                @change="loadLogs"
+              >
                 <el-option :value="100" label="最后 100 行" />
                 <el-option :value="200" label="最后 200 行" />
                 <el-option :value="500" label="最后 500 行" />
                 <el-option :value="1000" label="最后 1000 行" />
               </el-select>
               <span class="logbar__meta tnum">
-                {{ logPanel.path || '—' }}<template v-if="logPanel.totalLines"> · 共 {{ logPanel.totalLines }} 行</template>
+                {{ logPanel.path || '—'
+                }}<template v-if="logPanel.totalLines"> · 共 {{ logPanel.totalLines }} 行</template>
               </span>
               <el-button size="small" :loading="logPanel.loading" @click="loadLogs">
                 <el-icon><Refresh /></el-icon>
@@ -264,8 +322,20 @@
               <CopyBtn :text="logPanel.content" title="复制日志内容" ok-message="日志已复制" />
             </div>
             <StateBlock v-if="logPanel.loading" state="loading" loading-text="正在读取日志…" />
-            <StateBlock v-else-if="logPanel.error" state="error" title="日志读取失败" :description="logPanel.error" action-text="重试" @action="loadLogs" />
-            <StateBlock v-else-if="!logPanel.content.trim()" state="empty" title="没有错误日志" description="这是好事 —— 该站点近期没有产生错误。" />
+            <StateBlock
+              v-else-if="logPanel.error"
+              state="error"
+              title="日志读取失败"
+              :description="logPanel.error"
+              action-text="重试"
+              @action="loadLogs"
+            />
+            <StateBlock
+              v-else-if="!logPanel.content.trim()"
+              state="empty"
+              title="没有错误日志"
+              description="这是好事 —— 该站点近期没有产生错误。"
+            />
             <pre v-else class="console">{{ logPanel.content }}</pre>
           </el-tab-pane>
 
@@ -279,10 +349,18 @@
               <CopyBtn :text="configPanel.content" title="复制配置内容" ok-message="配置已复制" />
             </div>
             <StateBlock v-if="configPanel.loading" state="loading" loading-text="正在读取配置…" />
-            <StateBlock v-else-if="configPanel.error" state="error" title="配置读取失败" :description="configPanel.error" action-text="重试" @action="loadConfig" />
+            <StateBlock
+              v-else-if="configPanel.error"
+              state="error"
+              title="配置读取失败"
+              :description="configPanel.error"
+              action-text="重试"
+              @action="loadConfig"
+            />
             <pre v-else class="console">{{ configPanel.content }}</pre>
             <p class="drawer-tip">
-              此页仅用于查看。修改配置请让 AI 通过 MCP 的 <code>save_nginx_config</code> 执行 —— 它会先备份再写入，并自动重载 Nginx。
+              此页仅用于查看。修改配置请让 AI 通过 MCP 的 <code>save_nginx_config</code> 执行 ——
+              它会先备份再写入，并自动重载 Nginx。
             </p>
           </el-tab-pane>
         </el-tabs>
@@ -294,7 +372,12 @@
     </el-drawer>
 
     <!-- ==================== 申请 SSL ==================== -->
-    <el-dialog v-model="sslVisible" title="申请 SSL 证书" width="560px" :close-on-click-modal="false">
+    <el-dialog
+      v-model="sslVisible"
+      title="申请 SSL 证书"
+      width="560px"
+      :close-on-click-modal="false"
+    >
       <p class="form-tip form-tip--standalone">
         为站点 <strong>{{ sslTarget?.name }}</strong> 配置 HTTPS。
       </p>
@@ -306,10 +389,20 @@
 
       <template v-if="sslForm.mode === 'manual'">
         <el-form-item label="证书内容（PEM，含证书链）">
-          <el-input v-model="sslForm.cert" type="textarea" :rows="5" placeholder="-----BEGIN CERTIFICATE-----" />
+          <el-input
+            v-model="sslForm.cert"
+            type="textarea"
+            :rows="5"
+            placeholder="-----BEGIN CERTIFICATE-----"
+          />
         </el-form-item>
         <el-form-item label="私钥内容（PEM）">
-          <el-input v-model="sslForm.key" type="textarea" :rows="4" placeholder="-----BEGIN PRIVATE KEY-----" />
+          <el-input
+            v-model="sslForm.key"
+            type="textarea"
+            :rows="4"
+            placeholder="-----BEGIN PRIVATE KEY-----"
+          />
         </el-form-item>
       </template>
 
@@ -333,7 +426,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
@@ -459,7 +552,14 @@ const detailVisible = ref(false);
 const detail = ref(null);
 const detailTab = ref('info');
 
-const logPanel = reactive({ loading: false, error: '', content: '', path: '', totalLines: 0, lines: 200 });
+const logPanel = reactive({
+  loading: false,
+  error: '',
+  content: '',
+  path: '',
+  totalLines: 0,
+  lines: 200,
+});
 const configPanel = reactive({ loading: false, error: '', content: '', confPath: '' });
 
 async function openDetail(row) {
@@ -529,7 +629,12 @@ async function confirmRemove(row) {
     await ElMessageBox.confirm(
       `确定要删除网站「${row.name}」吗？站点目录 ${row.path || ''} 也会一并删除，该操作不可恢复。`,
       '删除确认',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'el-button--danger' }
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
     );
   } catch {
     return;

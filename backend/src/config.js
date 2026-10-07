@@ -29,7 +29,10 @@ const num = (key, def) => {
 const list = (key, def = []) => {
   const v = str(key);
   if (!v) return def;
-  return v.split(',').map((s) => s.trim()).filter(Boolean);
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 };
 
 const rootDir = path.resolve(__dirname, '..');
@@ -117,8 +120,15 @@ const config = {
 function assertConfig() {
   const problems = [];
   const defaults = [
-    ['JWT_SECRET', config.jwtSecret.includes('please_change_me') || config.jwtSecret.includes('dev-secret')],
-    ['ENCRYPTION_KEY', config.encryptionKey.includes('please_change_me') || config.encryptionKey.includes('dev-encryption')],
+    [
+      'JWT_SECRET',
+      config.jwtSecret.includes('please_change_me') || config.jwtSecret.includes('dev-secret'),
+    ],
+    [
+      'ENCRYPTION_KEY',
+      config.encryptionKey.includes('please_change_me') ||
+        config.encryptionKey.includes('dev-encryption'),
+    ],
   ];
   defaults.forEach(([key, isDefault]) => {
     if (isDefault) problems.push(`${key} 仍是默认值`);

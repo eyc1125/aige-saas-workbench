@@ -24,16 +24,36 @@ const SCHEMA = {
     label: '跳过面板证书校验',
     def: () => (config.baota.allowInsecureTls ? 'true' : 'false'),
   },
-  cf_api_token: { secret: true, label: 'Cloudflare API Token', def: () => config.cloudflare.apiToken },
-  cf_account_email: { secret: false, label: 'Cloudflare 账号邮箱', def: () => config.cloudflare.accountEmail },
+  cf_api_token: {
+    secret: true,
+    label: 'Cloudflare API Token',
+    def: () => config.cloudflare.apiToken,
+  },
+  cf_account_email: {
+    secret: false,
+    label: 'Cloudflare 账号邮箱',
+    def: () => config.cloudflare.accountEmail,
+  },
   docker_host: { secret: false, label: 'Docker 连接地址', def: () => config.docker.host },
-  server_public_ip: { secret: false, label: '服务器公网 IP', def: () => config.deploy.serverPublicIp },
+  server_public_ip: {
+    secret: false,
+    label: '服务器公网 IP',
+    def: () => config.deploy.serverPublicIp,
+  },
   deploy_network: { secret: false, label: '应用容器网络', def: () => config.deploy.network },
-  deploy_data_dir: { secret: false, label: '应用数据目录（容器内）', def: () => config.deploy.dataDir },
+  deploy_data_dir: {
+    secret: false,
+    label: '应用数据目录（容器内）',
+    def: () => config.deploy.dataDir,
+  },
   // 关键：后端自身跑在容器里，交给 Docker Daemon 的挂载路径必须是「宿主机路径」，
   // 所以这里单独配置。留空则改用 Docker 命名卷（无需关心宿主机路径）。
   host_data_dir: { secret: false, label: '宿主机数据目录', def: () => config.deploy.hostDataDir },
-  registry_mirror: { secret: false, label: 'Docker 镜像加速', def: () => config.deploy.registryMirror },
+  registry_mirror: {
+    secret: false,
+    label: 'Docker 镜像加速',
+    def: () => config.deploy.registryMirror,
+  },
   // MCP 连接令牌：数据库里有值就优先用它（便于在界面上重新生成），否则用 .env 里的
   mcp_auth_token: { secret: true, label: 'MCP 连接令牌', def: () => config.mcpAuthToken },
   // ---------------- 告警外部通道 ----------------
@@ -99,7 +119,7 @@ function setMany(patch = {}) {
   const changed = [];
   const tx = db.transaction(() => {
     Object.entries(patch).forEach(([key, value]) => {
-      if (!SCHEMA[key]) return;                 // 未知项直接忽略，防止乱写
+      if (!SCHEMA[key]) return; // 未知项直接忽略，防止乱写
       const before = get(key);
       const plain = value === undefined || value === null ? '' : String(value);
       set(key, value);

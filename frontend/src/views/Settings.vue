@@ -19,7 +19,12 @@
 
       <div class="section__body">
         <el-form label-position="top" class="form-grid">
-          <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label" :class="{ 'span-2': field.wide }">
+          <el-form-item
+            v-for="field in group.fields"
+            :key="field.key"
+            :label="field.label"
+            :class="{ 'span-2': field.wide }"
+          >
             <el-input
               v-model="form[field.key]"
               :type="field.secret ? 'password' : 'text'"
@@ -45,8 +50,14 @@
           </el-button>
         </div>
 
-        <p v-if="testResults[group.key]" class="test-result" :class="testResults[group.key].ok ? 'is-ok' : 'is-fail'">
-          <el-icon><component :is="testResults[group.key].ok ? 'CircleCheckFilled' : 'CircleCloseFilled'" /></el-icon>
+        <p
+          v-if="testResults[group.key]"
+          class="test-result"
+          :class="testResults[group.key].ok ? 'is-ok' : 'is-fail'"
+        >
+          <el-icon
+            ><component :is="testResults[group.key].ok ? 'CircleCheckFilled' : 'CircleCloseFilled'"
+          /></el-icon>
           <span>{{ testResults[group.key].message }}</span>
         </p>
       </div>
@@ -67,7 +78,11 @@
       <div class="section__body">
         <el-form label-position="top" class="form-grid">
           <el-form-item label="服务器公网 IP">
-            <el-input v-model="form.server_public_ip" placeholder="留空则部署时自动探测并回写" clearable />
+            <el-input
+              v-model="form.server_public_ip"
+              placeholder="留空则部署时自动探测并回写"
+              clearable
+            />
             <p class="field-tip">部署应用时用于创建指向本服务器的 A 记录</p>
           </el-form-item>
 
@@ -82,16 +97,27 @@
           </el-form-item>
 
           <el-form-item label="宿主机数据目录（建议填写）">
-            <el-input v-model="form.host_data_dir" placeholder="例如 /root/aige-saas-workbench/data/apps" clearable />
+            <el-input
+              v-model="form.host_data_dir"
+              placeholder="例如 /root/aige-saas-workbench/data/apps"
+              clearable
+            />
             <p class="field-tip">
-              ⚠️ 后端跑在容器里，但交给 Docker 的挂载路径必须是「宿主机路径」。填了就用目录挂载（数据可直接备份查看）；
-              留空则改用 Docker 命名卷。
+              ⚠️ 后端跑在容器里，但交给 Docker
+              的挂载路径必须是「宿主机路径」。填了就用目录挂载（数据可直接备份查看）； 留空则改用
+              Docker 命名卷。
             </p>
           </el-form-item>
 
           <el-form-item label="Docker 镜像加速地址" class="span-2">
-            <el-input v-model="form.registry_mirror" placeholder="例如 https://docker.m.daocloud.io" clearable />
-            <p class="field-tip">国内服务器建议填写，可显著加快应用镜像拉取速度；留空则使用 Docker 默认配置</p>
+            <el-input
+              v-model="form.registry_mirror"
+              placeholder="例如 https://docker.m.daocloud.io"
+              clearable
+            />
+            <p class="field-tip">
+              国内服务器建议填写，可显著加快应用镜像拉取速度；留空则使用 Docker 默认配置
+            </p>
           </el-form-item>
         </el-form>
 
@@ -122,7 +148,8 @@
             </span>
           </h2>
           <p class="section__sub">
-            让 Trae / Cursor / Claude 等任意 AI 工具直接操作本工作台，共 {{ mcp?.tools?.length || 0 }} 个工具
+            让 Trae / Cursor / Claude 等任意 AI 工具直接操作本工作台，共
+            {{ mcp?.tools?.length || 0 }} 个工具
           </p>
         </div>
       </header>
@@ -145,7 +172,10 @@
           </div>
 
           <div class="mcp-actions">
-            <el-button type="primary" @click="copyText(mcpConfigText, 'MCP 配置已复制，粘贴到 AI 工具即可用')">
+            <el-button
+              type="primary"
+              @click="copyText(mcpConfigText, 'MCP 配置已复制，粘贴到 AI 工具即可用')"
+            >
               <el-icon><DocumentCopy /></el-icon>复制 MCP 配置
             </el-button>
             <el-button @click="copyText(mcp?.quickstart || '', '接入说明已复制')">
@@ -169,7 +199,10 @@
         <pre class="code-block">{{ mcpConfigText }}</pre>
 
         <el-collapse class="tools-collapse">
-          <el-collapse-item :title="`能力清单（${mcp?.tools?.length || 0} 个工具，按用途分组）`" name="groups">
+          <el-collapse-item
+            :title="`能力清单（${mcp?.tools?.length || 0} 个工具，按用途分组）`"
+            name="groups"
+          >
             <div v-for="group in mcp?.toolGroups || []" :key="group.group" class="tool-group">
               <h4 class="tool-group__title">{{ group.group }}</h4>
               <ul class="tools">
@@ -194,8 +227,8 @@
         </el-collapse>
 
         <p class="field-tip">
-          说明：远程连接请把上面的 JSON 填到 AI 工具的 MCP 配置里（已含真实令牌，复制即用）；
-          若 AI 工具就在服务器本机，也可用 stdio 方式：<code>{{ mcp?.stdioCommand }}</code>
+          说明：远程连接请把上面的 JSON 填到 AI 工具的 MCP 配置里（已含真实令牌，复制即用）； 若 AI
+          工具就在服务器本机，也可用 stdio 方式：<code>{{ mcp?.stdioCommand }}</code>
         </p>
       </div>
     </section>
@@ -213,7 +246,9 @@
               {{ isAlertOn ? '已配外部通道' : '仅站内' }}
             </span>
           </h2>
-          <p class="section__sub">巡检异常、部署失败、自愈失败都会生成告警；这里配置往站外推的通道</p>
+          <p class="section__sub">
+            巡检异常、部署失败、自愈失败都会生成告警；这里配置往站外推的通道
+          </p>
         </div>
       </header>
 
@@ -231,23 +266,32 @@
           <el-form-item label="通用 Webhook（可选）">
             <el-input
               v-model="form.alert_webhook_url"
-              :placeholder="settingsMeta.alert_webhook_url?.hasValue ? `已保存（${settingsMeta.alert_webhook_url.masked}），留空表示不修改` : 'https://你的地址/alert'"
+              :placeholder="
+                settingsMeta.alert_webhook_url?.hasValue
+                  ? `已保存（${settingsMeta.alert_webhook_url.masked}），留空表示不修改`
+                  : 'https://你的地址/alert'
+              "
               clearable
             />
             <p class="field-tip">
-              告警产生时向该地址 POST 一段 JSON（含 level / title / detail / 时间），方便接你自己的系统。
+              告警产生时向该地址 POST 一段 JSON（含 level / title / detail /
+              时间），方便接你自己的系统。
             </p>
           </el-form-item>
 
           <el-form-item label="飞书机器人 Webhook（可选，推荐）">
             <el-input
               v-model="form.alert_feishu_webhook"
-              :placeholder="settingsMeta.alert_feishu_webhook?.hasValue ? `已保存（${settingsMeta.alert_feishu_webhook.masked}），留空表示不修改` : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'"
+              :placeholder="
+                settingsMeta.alert_feishu_webhook?.hasValue
+                  ? `已保存（${settingsMeta.alert_feishu_webhook.masked}），留空表示不修改`
+                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'
+              "
               clearable
             />
             <p class="field-tip">
-              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。国内可达、零成本。
-              ⚠️ 若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
+              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。国内可达、零成本。 ⚠️
+              若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
             </p>
           </el-form-item>
         </el-form>
@@ -275,7 +319,10 @@
     <!-- ==================== 管理员账号 ==================== -->
     <section class="surface section">
       <header class="section__head">
-        <span class="section__glyph" style="color: var(--text-secondary); background: var(--bg-subtle)">
+        <span
+          class="section__glyph"
+          style="color: var(--text-secondary); background: var(--bg-subtle)"
+        >
           <el-icon><UserFilled /></el-icon>
         </span>
         <div class="section__titles">
@@ -285,7 +332,13 @@
       </header>
 
       <div class="section__body">
-        <el-form ref="adminFormRef" :model="adminForm" :rules="adminRules" label-position="top" class="form-grid">
+        <el-form
+          ref="adminFormRef"
+          :model="adminForm"
+          :rules="adminRules"
+          label-position="top"
+          class="form-grid"
+        >
           <el-form-item label="用户名" prop="username">
             <el-input v-model="adminForm.username" placeholder="登录用户名" clearable />
           </el-form-item>
@@ -295,13 +348,21 @@
           </el-form-item>
 
           <el-form-item label="新密码" prop="password" class="span-2">
-            <el-input v-model="adminForm.password" type="password" show-password placeholder="留空表示不修改" clearable />
+            <el-input
+              v-model="adminForm.password"
+              type="password"
+              show-password
+              placeholder="留空表示不修改"
+              clearable
+            />
             <p class="field-tip">至少 6 位；修改用户名或密码后需要重新登录</p>
           </el-form-item>
         </el-form>
 
         <div class="section__actions">
-          <el-button type="primary" :loading="savingAdmin" @click="saveAdmin">保存账号信息</el-button>
+          <el-button type="primary" :loading="savingAdmin" @click="saveAdmin"
+            >保存账号信息</el-button
+          >
         </div>
       </div>
     </section>
@@ -385,7 +446,12 @@
     </section>
 
     <!-- ==================== 新令牌弹窗 ==================== -->
-    <el-dialog v-model="tokenVisible" title="新的 MCP 令牌" width="520px" :close-on-click-modal="false">
+    <el-dialog
+      v-model="tokenVisible"
+      title="新的 MCP 令牌"
+      width="520px"
+      :close-on-click-modal="false"
+    >
       <el-alert
         type="warning"
         :closable="false"
@@ -459,13 +525,23 @@ const saving = ref('');
 const testing = ref('');
 const testResults = reactive({});
 
-const DEPLOY_KEYS = ['server_public_ip', 'deploy_network', 'deploy_data_dir', 'host_data_dir', 'registry_mirror'];
+const DEPLOY_KEYS = [
+  'server_public_ip',
+  'deploy_network',
+  'deploy_data_dir',
+  'host_data_dir',
+  'registry_mirror',
+];
 /** 告警外部通道（两个都是敏感项，留空表示不修改） */
 const ALERT_KEYS = ['alert_webhook_url', 'alert_feishu_webhook'];
 
 /** 是否已配置任一外部通道（只用于界面上的状态徽标） */
 const isAlertOn = computed(
-  () => !!(settingsMeta.value.alert_webhook_url?.hasValue || settingsMeta.value.alert_feishu_webhook?.hasValue)
+  () =>
+    !!(
+      settingsMeta.value.alert_webhook_url?.hasValue ||
+      settingsMeta.value.alert_feishu_webhook?.hasValue
+    )
 );
 
 // ---------------- 分组定义 ----------------
@@ -480,7 +556,12 @@ const connectionGroups = computed(() => [
     configured: !!settingsMeta.value.bt_api_key?.hasValue,
     keys: ['bt_panel_url', 'bt_api_key'],
     fields: [
-      { key: 'bt_panel_url', label: '面板地址', wide: false, tip: '本机部署一般填 http://127.0.0.1:8888' },
+      {
+        key: 'bt_panel_url',
+        label: '面板地址',
+        wide: false,
+        tip: '本机部署一般填 http://127.0.0.1:8888',
+      },
       {
         key: 'bt_api_key',
         label: 'API 密钥',
@@ -507,7 +588,12 @@ const connectionGroups = computed(() => [
         wide: true,
         tip: '使用 API Token（不是 Global API Key），权限需要 Zone:Read 与 DNS:Edit',
       },
-      { key: 'cf_account_email', label: '账号邮箱（选填）', wide: false, tip: '仅用于核对账号，不影响 API 调用' },
+      {
+        key: 'cf_account_email',
+        label: '账号邮箱（选填）',
+        wide: false,
+        tip: '仅用于核对账号，不影响 API 调用',
+      },
     ],
   },
   {
@@ -579,7 +665,9 @@ async function saveKeys(keys, groupKey) {
 
   try {
     const data = await settingApi.save(patch);
-    ElMessage.success(data.changed?.length ? `已保存 ${data.changed.length} 项配置` : '配置未发生变化');
+    ElMessage.success(
+      data.changed?.length ? `已保存 ${data.changed.length} 项配置` : '配置未发生变化'
+    );
     await loadSettings();
     if (keys.includes('docker_host')) await loadMcp();
   } catch {
@@ -661,7 +749,8 @@ const adminRules = {
   ],
   password: [
     {
-      validator: (_rule, value, callback) => (!value || value.length >= 6 ? callback() : callback(new Error('密码至少 6 位'))),
+      validator: (_rule, value, callback) =>
+        !value || value.length >= 6 ? callback() : callback(new Error('密码至少 6 位')),
       trigger: 'blur',
     },
   ],
@@ -677,7 +766,8 @@ async function saveAdmin() {
   savingAdmin.value = true;
   try {
     const payload = { nickname: adminForm.nickname };
-    if (adminForm.username && adminForm.username !== auth.user?.username) payload.username = adminForm.username;
+    if (adminForm.username && adminForm.username !== auth.user?.username)
+      payload.username = adminForm.username;
     if (adminForm.password) payload.password = adminForm.password;
 
     const data = await settingApi.updateAdmin(payload);
@@ -700,7 +790,10 @@ const runtimeRows = computed(() => [
   { label: 'API 端口', value: systemInfo.value.apiPort ?? '—' },
   { label: 'MCP 端口', value: systemInfo.value.mcpPort ?? '—' },
   { label: '已运行', value: formatUptime(systemInfo.value.uptimeSeconds) },
-  { label: '进程内存', value: systemInfo.value.memoryUsageMb != null ? `${systemInfo.value.memoryUsageMb} MB` : '—' },
+  {
+    label: '进程内存',
+    value: systemInfo.value.memoryUsageMb != null ? `${systemInfo.value.memoryUsageMb} MB` : '—',
+  },
   { label: '数据库文件', value: systemInfo.value.dbPath || '—' },
   { label: '宿主机数据目录', value: systemInfo.value.hostDataDir || '—' },
 ]);
@@ -1010,7 +1103,9 @@ onMounted(async () => {
   background: transparent;
   font: inherit;
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 
 .swatch:hover {
@@ -1072,7 +1167,9 @@ onMounted(async () => {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .mode-switch__btn:hover {

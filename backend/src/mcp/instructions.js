@@ -26,10 +26,21 @@ const TOOL_COUNT = TOOL_DEFINITIONS.length;
  * 新增工具时：① 在 tools.js 注册；② 在这里归组。两边对不上会在启动日志里报出来。
  */
 const TOOL_GROUPS = [
-  { group: '巡检与自愈', tools: ['get_server_status', 'list_ssl_certs', 'run_health_checks', 'apply_health_fix'] },
+  {
+    group: '巡检与自愈',
+    tools: ['get_server_status', 'list_ssl_certs', 'run_health_checks', 'apply_health_fix'],
+  },
   {
     group: '网站（宝塔）',
-    tools: ['list_websites', 'create_website', 'delete_website', 'apply_ssl', 'get_site_logs', 'get_nginx_config', 'save_nginx_config'],
+    tools: [
+      'list_websites',
+      'create_website',
+      'delete_website',
+      'apply_ssl',
+      'get_site_logs',
+      'get_nginx_config',
+      'save_nginx_config',
+    ],
   },
   { group: '文件与备份', tools: ['read_file', 'list_directory', 'list_backups'] },
   {
@@ -44,8 +55,20 @@ const TOOL_GROUPS = [
       'purge_cloudflare_cache',
     ],
   },
-  { group: 'Docker', tools: ['list_containers', 'restart_container', 'manage_container', 'get_container_logs', 'list_images'] },
-  { group: '应用部署（本系统独有）', tools: ['list_app_templates', 'deploy_app', 'get_deploy_logs'] },
+  {
+    group: 'Docker',
+    tools: [
+      'list_containers',
+      'restart_container',
+      'manage_container',
+      'get_container_logs',
+      'list_images',
+    ],
+  },
+  {
+    group: '应用部署（本系统独有）',
+    tools: ['list_app_templates', 'deploy_app', 'get_deploy_logs'],
+  },
   { group: '万能兜底', tools: ['call_bt_api'] },
 ];
 
@@ -55,7 +78,8 @@ function auditGroups() {
   const grouped = TOOL_GROUPS.flatMap((g) => g.tools);
   const ungrouped = registered.filter((n) => !grouped.includes(n));
   const missing = grouped.filter((n) => !registered.includes(n));
-  if (ungrouped.length) console.warn(`[mcp] ⚠️ 这些工具未归组（不会出现在能力清单里）：${ungrouped.join(', ')}`);
+  if (ungrouped.length)
+    console.warn(`[mcp] ⚠️ 这些工具未归组（不会出现在能力清单里）：${ungrouped.join(', ')}`);
   if (missing.length) console.warn(`[mcp] ⚠️ 分组里列了不存在的工具：${missing.join(', ')}`);
   return { ok: !ungrouped.length && !missing.length, ungrouped, missing };
 }
@@ -163,4 +187,11 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
    应该去读日志找根因，而不是继续重试。
 7. **危险操作先报名再动手**：涉及删除、覆盖配置、改线上配置时，先说明要做什么和影响范围。`;
 
-module.exports = { SERVER_INFO, SERVER_INSTRUCTIONS, TOOL_GROUPS, TOOL_COUNT, groupListText, auditGroups };
+module.exports = {
+  SERVER_INFO,
+  SERVER_INSTRUCTIONS,
+  TOOL_GROUPS,
+  TOOL_COUNT,
+  groupListText,
+  auditGroups,
+};

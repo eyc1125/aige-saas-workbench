@@ -75,9 +75,9 @@ function open(file) {
   // 先确保目录存在（容器首次启动时 data 目录可能为空）
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
-  let betterError = null;
+  let betterError;
   try {
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    // 懒加载：装不上时不让整个模块在 require 阶段就崩掉，交给下面的回退分支处理
     const Database = require('better-sqlite3');
     const db = new Database(file);
     db.pragma('journal_mode = WAL');
@@ -88,19 +88,22 @@ function open(file) {
   }
 
   try {
-    // eslint-disable-next-line global-require
+    // 同上：Node 22.5+ 才有 node:sqlite，老版本走到这里会抛，由外层报错
     const { DatabaseSync } = require('node:sqlite');
     const native = new DatabaseSync(file);
     native.exec('PRAGMA journal_mode = WAL');
     native.exec('PRAGMA foreign_keys = ON');
     return { db: new NodeSqliteAdapter(native), driver: 'node:sqlite（内置回退驱动）' };
   } catch (err) {
+    // 带上 cause：上面那条 better-sqlite3 的原始错误在 message 里只说了一句话，
+    // 排查时要看完整堆栈（是缺编译工具链、还是版本不兼容）
     throw new Error(
       'SQLite 初始化失败：better-sqlite3 与 Node 内置 node:sqlite 均不可用。\n' +
         `  better-sqlite3 错误：${betterError.message}\n` +
         `  node:sqlite 错误：${err.message}\n` +
         '  建议：Linux/macOS 上安装编译工具（apt install -y python3 make g++ / yum install -y python3 make gcc-c++）；' +
-        '也使用 Node 22.5+ 发挥内置驱动回退。'
+        '也使用 Node 22.5+ 发挥内置驱动回退。',
+      { cause: err }
     );
   }
 }

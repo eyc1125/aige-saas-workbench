@@ -26,16 +26,25 @@
         <div class="run__progress">
           <el-progress
             :percentage="activeTask.progress || 0"
-            :status="activeTask.status === 'failed' ? 'exception' : activeTask.status === 'success' ? 'success' : undefined"
+            :status="
+              activeTask.status === 'failed'
+                ? 'exception'
+                : activeTask.status === 'success'
+                  ? 'success'
+                  : undefined
+            "
             :stroke-width="8"
           />
           <p class="run__step-name">
             <template v-if="activeTask.status === 'running'">
-              第 {{ (activeTask.current_step || 0) + 1 }} / {{ (activeTask.steps || []).length }} 步：
+              第 {{ (activeTask.current_step || 0) + 1 }} /
+              {{ (activeTask.steps || []).length }} 步：
               {{ (activeTask.steps || [])[activeTask.current_step || 0] || '执行中' }}
             </template>
             <template v-else-if="activeTask.status === 'success'">全部步骤已完成</template>
-            <template v-else-if="activeTask.status === 'failed'">部署中断，失败原因见下方日志</template>
+            <template v-else-if="activeTask.status === 'failed'"
+              >部署中断，失败原因见下方日志</template
+            >
             <template v-else>等待开始…</template>
           </p>
         </div>
@@ -61,11 +70,19 @@
           <div class="run__result-main">
             <span class="run__result-label">访问地址</span>
             <span class="copyable">
-              <a :href="resultUrl" target="_blank" rel="noopener" class="run__result-url copyable__text">{{ resultUrl }}</a>
+              <a
+                :href="resultUrl"
+                target="_blank"
+                rel="noopener"
+                class="run__result-url copyable__text"
+                >{{ resultUrl }}</a
+              >
               <CopyBtn :text="resultUrl" title="复制访问地址" ok-message="访问地址已复制" />
             </span>
           </div>
-          <el-button type="primary" tag="a" :href="resultUrl" target="_blank" rel="noopener">打开应用</el-button>
+          <el-button type="primary" tag="a" :href="resultUrl" target="_blank" rel="noopener"
+            >打开应用</el-button
+          >
         </div>
 
         <!-- 警告清单（例如 SSL 需手动确认） -->
@@ -79,7 +96,10 @@
         <!-- 实时日志 -->
         <div class="run__log-head">
           <span>部署日志</span>
-          <span class="muted-xs">{{ logs.length }} 条 · {{ activeTask.status === 'running' ? '实时刷新中' : '已结束' }}</span>
+          <span class="muted-xs"
+            >{{ logs.length }} 条 ·
+            {{ activeTask.status === 'running' ? '实时刷新中' : '已结束' }}</span
+          >
         </div>
         <pre ref="runLogRef" class="run__log">{{ logText || '等待输出…' }}</pre>
       </section>
@@ -99,7 +119,11 @@
         </el-button>
       </header>
 
-      <StateBlock v-if="templatesState === 'loading'" state="loading" loading-text="正在读取应用模板…" />
+      <StateBlock
+        v-if="templatesState === 'loading'"
+        state="loading"
+        loading-text="正在读取应用模板…"
+      />
       <StateBlock
         v-else-if="templatesState === 'error'"
         state="error"
@@ -133,8 +157,12 @@
           </ul>
 
           <ul v-if="index === 0" class="tpl__facts">
-            <li><strong>{{ tpl.serviceCount }}</strong> 个容器</li>
-            <li><strong>{{ tpl.defaultPort }}</strong> 容器端口</li>
+            <li>
+              <strong>{{ tpl.serviceCount }}</strong> 个容器
+            </li>
+            <li>
+              <strong>{{ tpl.defaultPort }}</strong> 容器端口
+            </li>
             <li>自动配好域名与 HTTPS</li>
           </ul>
 
@@ -160,11 +188,18 @@
         </el-button>
       </header>
 
-      <StateBlock v-if="!tasks.length" state="empty" title="还没有部署记录" description="从上方选一个应用开始首次部署。" />
+      <StateBlock
+        v-if="!tasks.length"
+        state="empty"
+        title="还没有部署记录"
+        description="从上方选一个应用开始首次部署。"
+      />
 
       <ul v-else class="tasks">
         <li v-for="task in tasks" :key="task.id" class="tasks__item" @click="openTask(task.id)">
-          <span class="pill" :class="`pill--${toneOfStatus(task.status)}`">{{ textOfStatus(task.status) }}</span>
+          <span class="pill" :class="`pill--${toneOfStatus(task.status)}`">{{
+            textOfStatus(task.status)
+          }}</span>
           <span class="tasks__main">
             <strong>{{ task.app_title || task.app_name }}</strong>
             <em class="mono">{{ task.domain }}</em>
@@ -177,19 +212,32 @@
     </section>
 
     <!-- ==================== 部署确认弹窗 ==================== -->
-    <el-dialog v-model="deployVisible" :title="`部署 ${deployTarget?.name || ''}`" width="540px" :close-on-click-modal="false">
+    <el-dialog
+      v-model="deployVisible"
+      :title="`部署 ${deployTarget?.name || ''}`"
+      width="540px"
+      :close-on-click-modal="false"
+    >
       <div v-if="deployTarget" class="confirm">
         <div class="confirm__app">
-          <span class="tpl__mark" :style="{ background: deployTarget.color }">{{ deployTarget.iconText }}</span>
+          <span class="tpl__mark" :style="{ background: deployTarget.color }">{{
+            deployTarget.iconText
+          }}</span>
           <div>
             <strong>{{ deployTarget.title }}</strong>
-            <p class="muted-xs">{{ deployTarget.serviceCount }} 个容器 · 建议内存 {{ deployTarget.recommendMemory }}</p>
+            <p class="muted-xs">
+              {{ deployTarget.serviceCount }} 个容器 · 建议内存 {{ deployTarget.recommendMemory }}
+            </p>
           </div>
         </div>
 
         <el-form ref="deployFormRef" :model="deployForm" :rules="deployRules" label-position="top">
           <el-form-item label="绑定域名" prop="domain">
-            <el-input v-model="deployForm.domain" placeholder="例如 kuma.miaocaieyc.com.cn" clearable />
+            <el-input
+              v-model="deployForm.domain"
+              placeholder="例如 kuma.miaocaieyc.com.cn"
+              clearable
+            />
             <p class="form-tip">该域名需已托管在 Cloudflare，且 Token 具备 DNS 编辑权限</p>
           </el-form-item>
         </el-form>
@@ -258,16 +306,25 @@ let pollTimer = null;
 const runLogRef = ref(null);
 
 const STATUS_TEXT = { pending: '排队中', running: '部署中', success: '已完成', failed: '已失败' };
-const STATUS_TONE = { pending: 'pending', running: 'running', success: 'success', failed: 'failed' };
+const STATUS_TONE = {
+  pending: 'pending',
+  running: 'running',
+  success: 'success',
+  failed: 'failed',
+};
 
 const textOfStatus = (s) => STATUS_TEXT[s] || s;
 const toneOfStatus = (s) => STATUS_TONE[s] || 'pending';
 const statusText = computed(() => textOfStatus(activeTask.value?.status));
 const statusTone = computed(() => toneOfStatus(activeTask.value?.status));
-const resultUrl = computed(() => activeTask.value?.result?.url || `https://${activeTask.value?.domain || ''}`);
+const resultUrl = computed(
+  () => activeTask.value?.result?.url || `https://${activeTask.value?.domain || ''}`
+);
 
 const logText = computed(() =>
-  logs.value.map((l) => `${l.created_at?.slice(11) || ''} ${levelMark(l.level)} ${l.message}`).join('\n')
+  logs.value
+    .map((l) => `${l.created_at?.slice(11) || ''} ${levelMark(l.level)} ${l.message}`)
+    .join('\n')
 );
 
 function levelMark(level) {
@@ -369,7 +426,11 @@ const deployRules = {
     { required: true, message: '请输入要绑定的域名', trigger: 'blur' },
     {
       validator: (_rule, value, callback) =>
-        DOMAIN_RE.test(String(value || '').trim().toLowerCase())
+        DOMAIN_RE.test(
+          String(value || '')
+            .trim()
+            .toLowerCase()
+        )
           ? callback()
           : callback(new Error('域名格式不正确，例如 kuma.example.com')),
       trigger: 'blur',
@@ -669,7 +730,9 @@ onBeforeUnmount(stopPolling);
   border-radius: var(--r-lg);
   background: var(--bg-surface);
   box-shadow: var(--shadow-sm);
-  transition: transform var(--dur-card) var(--ease), box-shadow var(--dur-card) var(--ease);
+  transition:
+    transform var(--dur-card) var(--ease),
+    box-shadow var(--dur-card) var(--ease);
 }
 
 .tpl:hover {
@@ -786,7 +849,9 @@ onBeforeUnmount(stopPolling);
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
   border-radius: var(--r-sm);
-  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 
 .tpl__doc:hover {
@@ -939,7 +1004,9 @@ onBeforeUnmount(stopPolling);
 /* 面板浮现动效 */
 .rise-enter-active,
 .rise-leave-active {
-  transition: opacity var(--dur-layer) var(--ease), transform var(--dur-layer) var(--ease);
+  transition:
+    opacity var(--dur-layer) var(--ease),
+    transform var(--dur-layer) var(--ease);
 }
 
 .rise-enter-from,

@@ -15,7 +15,9 @@
 
         <div v-if="zones.length" class="zones__search">
           <el-input v-model="zoneKeyword" placeholder="筛选域名" clearable size="small">
-            <template #prefix><el-icon><Search /></el-icon></template>
+            <template #prefix
+              ><el-icon><Search /></el-icon
+            ></template>
           </el-input>
         </div>
 
@@ -73,7 +75,14 @@
           </div>
 
           <div class="records__actions">
-            <el-select v-model="filterType" placeholder="全部类型" clearable size="default" class="records__filter" @change="loadRecords">
+            <el-select
+              v-model="filterType"
+              placeholder="全部类型"
+              clearable
+              size="default"
+              class="records__filter"
+              @change="loadRecords"
+            >
               <el-option v-for="t in TYPES" :key="t" :label="t" :value="t" />
             </el-select>
             <el-button :disabled="!activeZone" :loading="recordsLoading" @click="loadRecords">
@@ -211,7 +220,13 @@
     </section>
 
     <!-- ==================== 添加解析 ==================== -->
-    <el-dialog v-model="addVisible" title="添加解析记录" width="520px" :close-on-click-modal="false" @closed="resetAdd">
+    <el-dialog
+      v-model="addVisible"
+      title="添加解析记录"
+      width="520px"
+      :close-on-click-modal="false"
+      @closed="resetAdd"
+    >
       <el-form ref="addFormRef" :model="addForm" :rules="addRules" label-position="top">
         <el-form-item label="记录类型" prop="type">
           <el-select v-model="addForm.type" class="w-full">
@@ -231,7 +246,11 @@
         </el-form-item>
 
         <el-form-item v-if="['A', 'AAAA', 'CNAME'].includes(addForm.type)" label="Cloudflare 代理">
-          <el-switch v-model="addForm.proxied" active-text="开启（橙色云，隐藏源站 IP）" inactive-text="关闭（灰色云，直连源站）" />
+          <el-switch
+            v-model="addForm.proxied"
+            active-text="开启（橙色云，隐藏源站 IP）"
+            inactive-text="关闭（灰色云，直连源站）"
+          />
         </el-form-item>
 
         <el-form-item v-if="addForm.type === 'MX'" label="优先级">
@@ -348,7 +367,12 @@ async function confirmRemove(row) {
     await ElMessageBox.confirm(
       `确定删除解析「${row.name} → ${row.content}」吗？删除后域名将立即无法解析，且不可恢复。`,
       '删除确认',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'el-button--danger' }
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
     );
   } catch {
     return;
@@ -380,7 +404,8 @@ const contentPlaceholder = computed(() => {
 });
 
 const nameTip = computed(() => {
-  if (addForm.name === '@' || addForm.name === '') return '填 @ 表示主域名本身（' + (activeZone.value?.name || '') + '）';
+  if (addForm.name === '@' || addForm.name === '')
+    return '填 @ 表示主域名本身（' + (activeZone.value?.name || '') + '）';
   return '子域名只填前缀即可，系统会补全为完整域名';
 });
 

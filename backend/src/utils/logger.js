@@ -39,11 +39,12 @@ function writeLog(entry) {
       module: entry.module ?? 'system',
       action: entry.action ?? 'unknown',
       target: entry.target ?? null,
-      detail: entry.detail === undefined || entry.detail === null
-        ? null
-        : typeof entry.detail === 'string'
-          ? entry.detail
-          : JSON.stringify(entry.detail),
+      detail:
+        entry.detail === undefined || entry.detail === null
+          ? null
+          : typeof entry.detail === 'string'
+            ? entry.detail
+            : JSON.stringify(entry.detail),
       source: entry.source ?? 'web',
       status: entry.status ?? 'success',
       message: entry.message ?? null,

@@ -16,7 +16,6 @@
 const http = require('http');
 const net = require('net');
 const settings = require('./settings');
-const { request: httpFetch } = require('../utils/http');
 const { AppError, upstream, badRequest } = require('../utils/errors');
 
 /** Docker 日志流是 8 字节头 + 负载的多路复用格式，这里做解复用 */
@@ -71,17 +70,20 @@ class DockerClient {
   _request(path, opts = {}) {
     const { method = 'GET', body, headers = {}, timeout = 60000, raw = false } = opts;
     const fullPath = `${this.apiPrefix}${path}`;
-    const payload = body === undefined || body === null
-      ? null
-      : typeof body === 'string'
-        ? body
-        : JSON.stringify(body);
+    const payload =
+      body === undefined || body === null
+        ? null
+        : typeof body === 'string'
+          ? body
+          : JSON.stringify(body);
 
     const requestOptions = {
       path: fullPath,
       method,
       headers: {
-        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+        ...(payload
+          ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+          : {}),
         ...headers,
       },
     };
@@ -118,7 +120,9 @@ class DockerClient {
             /* 非 JSON 错误体，原样用 */
           }
           return reject(
-            upstream(`Docker 接口调用失败（HTTP ${res.statusCode}）：${message}`, { path: fullPath })
+            upstream(`Docker 接口调用失败（HTTP ${res.statusCode}）：${message}`, {
+              path: fullPath,
+            })
           );
         });
       });
@@ -223,14 +227,18 @@ class DockerClient {
   async stopContainer(id, timeoutSec = 10) {
     await this._ready();
     if (!id) throw badRequest('容器 ID 不能为空');
-    return this._request(`/containers/${encodeURIComponent(id)}/stop?t=${timeoutSec}`, { method: 'POST' });
+    return this._request(`/containers/${encodeURIComponent(id)}/stop?t=${timeoutSec}`, {
+      method: 'POST',
+    });
   }
 
   /** 重启容器（默认等待 10 秒优雅退出） */
   async restartContainer(id, timeoutSec = 10) {
     await this._ready();
     if (!id) throw badRequest('容器 ID 不能为空');
-    return this._request(`/containers/${encodeURIComponent(id)}/restart?t=${timeoutSec}`, { method: 'POST' });
+    return this._request(`/containers/${encodeURIComponent(id)}/restart?t=${timeoutSec}`, {
+      method: 'POST',
+    });
   }
 
   /**
@@ -265,11 +273,7 @@ class DockerClient {
     const raw = buffer.toString('utf8');
     // 判断是否为多路复用流：前 8 字节的 byte1~3 必为 0，且 streamType 在 0~2
     const looksMux =
-      buffer.length > 8 &&
-      buffer[1] === 0 &&
-      buffer[2] === 0 &&
-      buffer[3] === 0 &&
-      buffer[0] <= 2;
+      buffer.length > 8 && buffer[1] === 0 && buffer[2] === 0 && buffer[3] === 0 && buffer[0] <= 2;
 
     const text = looksMux ? demuxLogStream(buffer) : raw;
     // 去除 Docker 日志里常见的 ANSI 颜色控制符，前端直接展示
@@ -306,7 +310,9 @@ class DockerClient {
 
     const [name, tag = 'latest'] = image.split(':');
     try {
-      const local = await this._request(`/images/${encodeURIComponent(image)}/json`, { timeout: 10000 });
+      const local = await this._request(`/images/${encodeURIComponent(image)}/json`, {
+        timeout: 10000,
+      });
       if (local?.Id) {
         onProgress?.(`镜像 ${image} 已存在于本地，跳过拉取`);
         return { image, skipped: true };
@@ -348,10 +354,10 @@ class DockerClient {
   async pruneImages({ danglingOnly = true } = {}) {
     await this._ready();
     const filters = danglingOnly ? '{"dangling":["true"]}' : '{}';
-    const raw = await this._request(
-      `/images/prune?filters=${encodeURIComponent(filters)}`,
-      { method: 'POST', timeout: 120000 }
-    );
+    const raw = await this._request(`/images/prune?filters=${encodeURIComponent(filters)}`, {
+      method: 'POST',
+      timeout: 120000,
+    });
 
     const deleted = raw?.ImagesDeleted || [];
     const reclaimed = Number(raw?.SpaceReclaimed) || 0;
@@ -462,7 +468,9 @@ class DockerClient {
       if (state?.Running) return true;
       if (state?.Status === 'exited' && state.ExitCode !== 0) {
         const logs = await this.getContainerLogs(id, { tail: 30 }).catch(() => '');
-        throw upstream(`容器启动后立即退出（exit code ${state.ExitCode}）。最近日志：\n${logs.slice(-600)}`);
+        throw upstream(
+          `容器启动后立即退出（exit code ${state.ExitCode}）。最近日志：\n${logs.slice(-600)}`
+        );
       }
       await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -503,7 +511,11 @@ class DockerClient {
       if (free) return port;
     }
     /* eslint-enable no-await-in-loop */
-    throw new AppError(`端口区间 ${start}-${end} 已无可用端口，请清理闲置容器或调整端口范围`, 500, 'NO_FREE_PORT');
+    throw new AppError(
+      `端口区间 ${start}-${end} 已无可用端口，请清理闲置容器或调整端口范围`,
+      500,
+      'NO_FREE_PORT'
+    );
   }
 
   /** 连通性自检 */

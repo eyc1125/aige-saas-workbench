@@ -134,7 +134,8 @@ function memoized(key, fn) {
 }
 
 /** 本次巡检共享的证书台账 */
-const listSslCertsShared = () => memoized('sslCerts', () => baotaService.createClient().listSslCerts());
+const listSslCertsShared = () =>
+  memoized('sslCerts', () => baotaService.createClient().listSslCerts());
 
 // ============================================================
 // 检查项注册表
@@ -151,21 +152,30 @@ const CHECKS = [
     async inspect() {
       const data = await listSslCertsShared();
       // 只看真的临期的（ok 的不进列表，否则 13 个站点全列出来没人看）
-      const risky = data.certs.filter((c) => c.hasCert && (c.status === 'expired' || c.status === 'expiring'));
+      const risky = data.certs.filter(
+        (c) => c.hasCert && (c.status === 'expired' || c.status === 'expiring')
+      );
       const { own, foreign } = splitByOwnership(risky);
 
       const ownExpired = own.filter((c) => c.status === 'expired');
       // 已过期 + 7 天内到期的，才算「必须马上动手」
       const ownUrgent = own.filter((c) => c.status === 'expired' || c.daysLeft <= 7);
 
-      const severity = ownExpired.length ? 'critical' : own.length ? 'warning' : foreign.length ? 'info' : 'ok';
+      const severity = ownExpired.length
+        ? 'critical'
+        : own.length
+          ? 'warning'
+          : foreign.length
+            ? 'info'
+            : 'ok';
       const summary = own.length
         ? `${own.length} 个本项目证书 15 天内到期${foreign.length ? `；另有 ${foreign.length} 个其他项目站点临期（仅报告）` : ''}`
         : foreign.length
           ? `本项目证书全部正常；另有 ${foreign.length} 个其他项目站点证书临期，仅报告`
           : `全部 ${data.withCert} 个证书状态正常`;
 
-      const tagOf = (c) => (c.status === 'expired' ? `已过期 ${Math.abs(c.daysLeft)} 天` : `剩余 ${c.daysLeft} 天`);
+      const tagOf = (c) =>
+        c.status === 'expired' ? `已过期 ${Math.abs(c.daysLeft)} 天` : `剩余 ${c.daysLeft} 天`;
 
       return {
         severity,
@@ -176,7 +186,11 @@ const CHECKS = [
             tag: tagOf(c),
             level: c.status === 'expired' || c.daysLeft <= 7 ? 'critical' : 'warning',
           })),
-          ...foreign.map((c) => ({ name: c.siteName, tag: `${tagOf(c)} · ${FOREIGN_TAG}`, level: 'info' })),
+          ...foreign.map((c) => ({
+            name: c.siteName,
+            tag: `${tagOf(c)} · ${FOREIGN_TAG}`,
+            level: 'info',
+          })),
         ],
         fix: ownUrgent.length
           ? {
@@ -203,7 +217,10 @@ const CHECKS = [
         }
       }
       const okCount = results.filter((r) => r.ok).length;
-      return { message: `续签完成：成功 ${okCount} 个，失败 ${results.length - okCount} 个`, results };
+      return {
+        message: `续签完成：成功 ${okCount} 个，失败 ${results.length - okCount} 个`,
+        results,
+      };
     },
   },
 
@@ -229,7 +246,11 @@ const CHECKS = [
             : '所有站点都已启用 HTTPS',
         items: [
           ...own.map((c) => ({ name: c.siteName, tag: '未部署证书', level: 'info' })),
-          ...foreign.map((c) => ({ name: c.siteName, tag: `未部署证书 · ${FOREIGN_TAG}`, level: 'info' })),
+          ...foreign.map((c) => ({
+            name: c.siteName,
+            tag: `未部署证书 · ${FOREIGN_TAG}`,
+            level: 'info',
+          })),
         ],
         fix: own.length
           ? {
@@ -256,7 +277,10 @@ const CHECKS = [
         }
       }
       const okCount = results.filter((r) => r.ok).length;
-      return { message: `申请完成：成功 ${okCount} 个，失败 ${results.length - okCount} 个`, results };
+      return {
+        message: `申请完成：成功 ${okCount} 个，失败 ${results.length - okCount} 个`,
+        results,
+      };
     },
   },
 
@@ -275,7 +299,8 @@ const CHECKS = [
       const items = [];
       for (const z of zones) {
         // 只看与本站点相关的 zone；无关 zone（别的项目/别的域名）连读都不读
-        if (!OWN_ZONE_SUFFIXES.some((suffix) => z.name === suffix || z.name.endsWith(`.${suffix}`))) continue;
+        if (!OWN_ZONE_SUFFIXES.some((suffix) => z.name === suffix || z.name.endsWith(`.${suffix}`)))
+          continue;
 
         // eslint-disable-next-line no-await-in-loop
         const mode = await cf.getSslMode(z.id).catch(() => null);
@@ -309,7 +334,9 @@ const CHECKS = [
           : items.length
             ? 'warning'
             : 'ok',
-        summary: items.length ? `${items.length} 个区域的 SSL 模式与源站不一致` : 'Cloudflare SSL 模式与源站一致',
+        summary: items.length
+          ? `${items.length} 个区域的 SSL 模式与源站不一致`
+          : 'Cloudflare SSL 模式与源站一致',
         items,
         // ⚠️ 刻意不提供一键修复：zone 级设置会影响该域名下**所有**站点（含其他项目），
         //    属于必须由人判断的改动。这里只报告，并在文案里指出该去哪儿改。
@@ -380,7 +407,10 @@ const CHECKS = [
         }
       }
       const okCount = results.filter((r) => r.ok).length;
-      return { message: `容器启动：成功 ${okCount} 个，失败 ${results.length - okCount} 个`, results };
+      return {
+        message: `容器启动：成功 ${okCount} 个，失败 ${results.length - okCount} 个`,
+        results,
+      };
     },
   },
 
@@ -421,7 +451,9 @@ const CHECKS = [
       };
     },
     async apply(payload) {
-      const r = await dockerService.createClient().pruneImages({ danglingOnly: payload.danglingOnly !== false });
+      const r = await dockerService
+        .createClient()
+        .pruneImages({ danglingOnly: payload.danglingOnly !== false });
       return {
         message:
           r.deletedCount > 0
@@ -458,10 +490,19 @@ const CHECKS = [
 
       // MCP 令牌是否已配置
       const token = settings.get('mcp_auth_token');
-      if (!token) items.push({ name: 'MCP 令牌', tag: '尚未生成，MCP 服务当前允许匿名连接', level: 'critical' });
+      if (!token)
+        items.push({
+          name: 'MCP 令牌',
+          tag: '尚未生成，MCP 服务当前允许匿名连接',
+          level: 'critical',
+        });
 
       return {
-        severity: items.some((i) => i.level === 'critical') ? 'critical' : items.length ? 'warning' : 'ok',
+        severity: items.some((i) => i.level === 'critical')
+          ? 'critical'
+          : items.length
+            ? 'warning'
+            : 'ok',
         summary: items.length ? `${items.length} 项口令/令牌需要处理` : '口令与令牌配置正常',
         items,
         // 不改密码：改了用户立刻登不上，必须由人自己在「系统设置」里做
@@ -581,7 +622,8 @@ async function runChecks({ only } = {}) {
  */
 async function applyFix(checkId, actor = {}) {
   const check = CHECKS.find((c) => c.id === checkId);
-  if (!check) throw badRequest(`未知的检查项：${checkId}（可用：${CHECKS.map((c) => c.id).join(', ')}）`);
+  if (!check)
+    throw badRequest(`未知的检查项：${checkId}（可用：${CHECKS.map((c) => c.id).join(', ')}）`);
   if (typeof check.apply !== 'function') throw badRequest(`「${check.title}」没有可执行的修复动作`);
 
   assertFixBudget(check.id, check.title);
@@ -607,11 +649,21 @@ async function applyFix(checkId, actor = {}) {
     username: actor.username,
     module: 'health',
     action: `fix_${check.id}`,
-    target: (inspected.items || []).slice(0, 5).map((i) => i.name).join(', ') || check.title,
+    target:
+      (inspected.items || [])
+        .slice(0, 5)
+        .map((i) => i.name)
+        .join(', ') || check.title,
     source: actor.source || 'system',
     status: failure ? 'failed' : 'success',
     message: failure ? `自愈失败：${failure.message}` : result?.message || '自愈完成',
-    detail: { checkId: check.id, action: inspected.fix.label, risk: inspected.fix.risk, elapsedMs, result: result || undefined },
+    detail: {
+      checkId: check.id,
+      action: inspected.fix.label,
+      risk: inspected.fix.risk,
+      elapsedMs,
+      result: result || undefined,
+    },
     ip: actor.ip,
   });
 
@@ -654,7 +706,8 @@ const MIN_INTERVAL_MIN = 10;
 function getAutoHeal() {
   const enabled = settings.get(AUTO_KEY) === 'true';
   const raw = Number(settings.get(AUTO_INTERVAL_KEY));
-  const intervalMin = Number.isFinite(raw) && raw >= MIN_INTERVAL_MIN ? Math.floor(raw) : DEFAULT_INTERVAL_MIN;
+  const intervalMin =
+    Number.isFinite(raw) && raw >= MIN_INTERVAL_MIN ? Math.floor(raw) : DEFAULT_INTERVAL_MIN;
   return { enabled, intervalMin, minIntervalMin: MIN_INTERVAL_MIN };
 }
 
@@ -663,7 +716,8 @@ function setAutoHeal({ enabled, intervalMin }) {
   if (enabled !== undefined) settings.set(AUTO_KEY, enabled ? 'true' : 'false');
   if (intervalMin !== undefined) {
     const n = Number(intervalMin);
-    if (!Number.isFinite(n) || n < MIN_INTERVAL_MIN) throw badRequest(`巡检间隔不能小于 ${MIN_INTERVAL_MIN} 分钟`);
+    if (!Number.isFinite(n) || n < MIN_INTERVAL_MIN)
+      throw badRequest(`巡检间隔不能小于 ${MIN_INTERVAL_MIN} 分钟`);
     settings.set(AUTO_INTERVAL_KEY, String(Math.floor(n)));
   }
   return getAutoHeal();
@@ -689,7 +743,11 @@ async function runAutoHeal() {
       continue;
     }
     if (c.budget.remaining <= 0) {
-      skipped.push({ id: c.id, title: c.title, reason: `已达熔断上限（${c.budget.limit} 次 / ${c.budget.windowMinutes} 分钟）` });
+      skipped.push({
+        id: c.id,
+        title: c.title,
+        reason: `已达熔断上限（${c.budget.limit} 次 / ${c.budget.windowMinutes} 分钟）`,
+      });
       continue;
     }
     try {
@@ -723,9 +781,12 @@ function syncAutoHealTimer() {
   if (!enabled) return { running: false, ...getAutoHeal() };
 
   // 启动后先延迟一轮，避免和容器刚起来的自检动作挤在一起
-  timer = setInterval(() => {
-    runAutoHeal().catch((err) => console.error('[health] 自动自愈异常：', err.message));
-  }, intervalMin * 60 * 1000);
+  timer = setInterval(
+    () => {
+      runAutoHeal().catch((err) => console.error('[health] 自动自愈异常：', err.message));
+    },
+    intervalMin * 60 * 1000
+  );
   if (timer.unref) timer.unref();
 
   return { running: true, ...getAutoHeal() };
@@ -743,7 +804,13 @@ function getStatus() {
   return {
     autoHeal: { ...cfg, running: !!timer },
     lastAutoRun,
-    checkCatalog: CHECKS.map((c) => ({ id: c.id, title: c.title, group: c.group, scope: c.scope, why: c.why })),
+    checkCatalog: CHECKS.map((c) => ({
+      id: c.id,
+      title: c.title,
+      group: c.group,
+      scope: c.scope,
+      why: c.why,
+    })),
   };
 }
 

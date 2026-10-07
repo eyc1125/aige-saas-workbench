@@ -90,7 +90,7 @@ async function fetchServerStatus() {
     system: bt?.system?.system || '-',
     version: bt?.system?.version || '-',
     cpuNum: m.cpuNum,
-    cpuUsage: m.cpuUsage,          // 可能为 null：服务刚启动不到一个采样周期
+    cpuUsage: m.cpuUsage, // 可能为 null：服务刚启动不到一个采样周期
     cpuUsageAt: m.cpuUsageAt,
     load: m.load,
     uptimeSeconds: m.uptimeSeconds,
@@ -144,7 +144,10 @@ async function fetchCounts() {
   // 容器与镜像（Docker）
   try {
     const docker = dockerService.createClient();
-    const [containers, images] = await Promise.all([docker.listContainers(true), docker.listImages()]);
+    const [containers, images] = await Promise.all([
+      docker.listContainers(true),
+      docker.listImages(),
+    ]);
     counts.containers = {
       available: true,
       total: containers.length,
@@ -158,12 +161,16 @@ async function fetchCounts() {
   }
 
   // 本系统部署的应用（读本地库，不受外部服务影响）
-  const appStat = db.prepare(`
+  const appStat = db
+    .prepare(
+      `
     SELECT COUNT(*) AS total,
            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
            SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running
     FROM deploy_tasks
-  `).get();
+  `
+    )
+    .get();
   counts.apps = {
     total: appStat.total || 0,
     success: appStat.success || 0,

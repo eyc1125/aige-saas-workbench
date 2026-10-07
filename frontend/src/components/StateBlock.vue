@@ -7,7 +7,12 @@
     <!-- 加载中：骨架屏（不用转圈，避免整块空白） -->
     <template v-if="state === 'loading'">
       <div class="state__skeleton">
-        <span v-for="i in 4" :key="i" class="state__skeleton-row" :style="{ width: `${92 - i * 9}%` }" />
+        <span
+          v-for="i in 4"
+          :key="i"
+          class="state__skeleton-row"
+          :style="{ width: `${92 - i * 9}%` }"
+        />
       </div>
       <p class="state__title">{{ loadingText }}</p>
     </template>
@@ -108,7 +113,12 @@ defineEmits(['action']);
 .state__skeleton-row {
   height: 12px;
   border-radius: var(--r-full);
-  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-hover) 37%, var(--bg-subtle) 63%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    var(--bg-hover) 37%,
+    var(--bg-subtle) 63%
+  );
   background-size: 400% 100%;
   animation: skeleton-scan 1.5s var(--ease) infinite;
 }

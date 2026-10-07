@@ -39,13 +39,16 @@ body {
   overflow-x: clip;
   background: var(--bg-page);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: var(--fs-base);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color var(--dur-card) var(--ease), color var(--dur-card) var(--ease);
+  transition:
+    background-color var(--dur-card) var(--ease),
+    color var(--dur-card) var(--ease);
 }
 
 h1,
@@ -177,8 +180,11 @@ a {
 
 /* 按钮：hover 上移 2px + 阴影加深；active 下压 1px + scale(.98) */
 .el-button {
-  transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease),
-    background-color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+  transition:
+    transform var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease),
+    background-color var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease);
 }
 
 .el-button:not(.is-disabled):not(.is-text):not(.is-link):hover {
@@ -225,7 +231,9 @@ html.dark .el-button--primary:not(.is-disabled) {
 .el-input__wrapper.is-focus,
 .el-textarea__inner:focus,
 .el-select__wrapper.is-focused {
-  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px var(--border-focus);
+  box-shadow:
+    0 0 0 1px var(--brand) inset,
+    0 0 0 3px var(--border-focus);
 }
 
 /* 弹窗：淡入 + 上移 10px */
@@ -454,7 +462,9 @@ html.dark .el-button--primary:not(.is-disabled) {
   line-height: 1;
   cursor: pointer;
   vertical-align: middle;
-  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .copy-btn:hover {
@@ -519,7 +529,9 @@ html.dark .el-button--primary:not(.is-disabled) {
   border-radius: var(--r-lg);
   background: var(--bg-surface);
   box-shadow: var(--shadow-sm);
-  transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-card) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-card) var(--ease);
 }
 
 .card:active {

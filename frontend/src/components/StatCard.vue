@@ -19,7 +19,14 @@
       <span v-if="unit" class="stat__unit">{{ unit }}</span>
     </div>
 
-    <div v-if="showBar" class="stat__bar" role="progressbar" :aria-valuenow="barValue" aria-valuemin="0" aria-valuemax="100">
+    <div
+      v-if="showBar"
+      class="stat__bar"
+      role="progressbar"
+      :aria-valuenow="barValue"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
       <span class="stat__bar-fill" :style="{ width: `${barValue}%` }" />
     </div>
 
@@ -187,7 +194,9 @@ const barValue = computed(() => {
      按规范它会强制把 preserve-3d 降级成 flat，子元素的 translateZ 会静默失效。 */
   transform: perspective(760px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))
     translateY(var(--lift, 0px));
-  transition: transform var(--dur-card) var(--ease), box-shadow var(--dur-card) var(--ease);
+  transition:
+    transform var(--dur-card) var(--ease),
+    box-shadow var(--dur-card) var(--ease);
   will-change: transform;
 }
 

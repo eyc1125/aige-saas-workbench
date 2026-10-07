@@ -3,7 +3,9 @@
     <!-- ==================== 未配置引导 ==================== -->
     <section v-if="!loading && server && !server.available" class="guide surface">
       <div class="guide__body">
-        <span class="guide__glyph" aria-hidden="true"><el-icon><Link /></el-icon></span>
+        <span class="guide__glyph" aria-hidden="true"
+          ><el-icon><Link /></el-icon
+        ></span>
         <div>
           <h2 class="guide__title">仪表盘需要先完成对接配置</h2>
           <p class="guide__desc">{{ server.reason }}</p>
@@ -19,7 +21,9 @@
       :class="healthHint.tone === 'danger' ? 'hint--danger' : 'hint--warn'"
     >
       <span class="hint__icon" aria-hidden="true">
-        <el-icon><component :is="healthHint.tone === 'danger' ? 'CircleCloseFilled' : 'Warning'" /></el-icon>
+        <el-icon
+          ><component :is="healthHint.tone === 'danger' ? 'CircleCloseFilled' : 'Warning'"
+        /></el-icon>
       </span>
       <div class="hint__text">
         <strong>{{ healthHint.title }}</strong>
@@ -78,7 +82,8 @@
           <div>
             <h2 class="card__title">资源趋势</h2>
             <p class="card__sub">
-              后端每 {{ metricsStats?.intervalMinutes || 2 }} 分钟采样一次，保留 {{ metricsStats?.keepDays || 30 }} 天{{
+              后端每 {{ metricsStats?.intervalMinutes || 2 }} 分钟采样一次，保留
+              {{ metricsStats?.keepDays || 30 }} 天{{
                 metricsStats?.firstAt ? ` · 数据始于 ${metricsStats.firstAt}` : ' · 刚开始采集'
               }}
               <template v-if="updatedAt"> · {{ updatedAt }}</template>
@@ -92,7 +97,10 @@
               class="range-switch__btn"
               :class="{ 'is-active': metricsRange === opt.value }"
               :aria-pressed="metricsRange === opt.value"
-              @click="metricsRange = opt.value; onRangeChange()"
+              @click="
+                metricsRange = opt.value;
+                onRangeChange();
+              "
             >
               {{ opt.label }}
             </button>
@@ -184,10 +192,18 @@
           </div>
           <el-button link type="primary" @click="$router.push('/settings')">查看全部</el-button>
         </header>
-        <StateBlock v-if="!recentLogs.length" state="empty" title="还没有操作记录" description="做过一次操作后，这里会显示最近 12 条记录" />
+        <StateBlock
+          v-if="!recentLogs.length"
+          state="empty"
+          title="还没有操作记录"
+          description="做过一次操作后，这里会显示最近 12 条记录"
+        />
         <ul v-else class="logs">
           <li v-for="log in recentLogs" :key="log.id" class="logs__item">
-            <span class="logs__badge" :class="`logs__badge--${log.status === 'success' ? 'ok' : 'fail'}`">
+            <span
+              class="logs__badge"
+              :class="`logs__badge--${log.status === 'success' ? 'ok' : 'fail'}`"
+            >
               {{ moduleText(log.module) }}
             </span>
             <span class="logs__main">
@@ -214,11 +230,7 @@
         <el-button link type="primary" @click="$router.push('/certificates')">证书与安全</el-button>
       </header>
 
-      <StateBlock
-        v-if="certLoading"
-        state="loading"
-        loading-text="正在巡检站点证书…"
-      />
+      <StateBlock v-if="certLoading" state="loading" loading-text="正在巡检站点证书…" />
       <StateBlock
         v-else-if="!certList.length"
         state="empty"
@@ -233,7 +245,9 @@
               <CopyBtn :text="item.siteName" title="复制域名" ok-message="域名已复制" />
             </span>
             <span class="pill" :class="`pill--${item.certTone}`">{{ item.certLabel }}</span>
-            <strong class="certs__days tnum" :class="`certs__days--${item.certTone}`">{{ item.daysText }}</strong>
+            <strong class="certs__days tnum" :class="`certs__days--${item.certTone}`">{{
+              item.daysText
+            }}</strong>
             <time class="certs__until">{{ item.validToText || '—' }}</time>
           </li>
         </ul>
@@ -241,8 +255,14 @@
           <span class="tnum">
             共 {{ certSummary.total }} 个站点 ·
             <strong>{{ certSummary.withCert }}</strong> 个已部署证书 ·
-            <strong :class="{ 'is-warn': certSummary.expiring > 0 }">{{ certSummary.expiring }}</strong> 个即将到期 ·
-            <strong :class="{ 'is-danger': certSummary.expired > 0 }">{{ certSummary.expired }}</strong> 个已过期
+            <strong :class="{ 'is-warn': certSummary.expiring > 0 }">{{
+              certSummary.expiring
+            }}</strong>
+            个即将到期 ·
+            <strong :class="{ 'is-danger': certSummary.expired > 0 }">{{
+              certSummary.expired
+            }}</strong>
+            个已过期
           </span>
         </div>
       </template>
@@ -273,7 +293,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as echarts from 'echarts/core';
 import { LineChart, PieChart } from 'echarts/charts';
-import { GridComponent, TooltipComponent, LegendComponent, GraphicComponent } from 'echarts/components';
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  GraphicComponent,
+} from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import StatCard from '@/components/StatCard.vue';
 import StateBlock from '@/components/StateBlock.vue';
@@ -282,7 +307,15 @@ import { dashboardApi, websiteApi, inspectApi } from '@/api';
 import { useThemeStore } from '@/stores/theme';
 
 // 按需注册：只打包用到的图表与组件，避免整包 ECharts 进首屏
-echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, GraphicComponent, CanvasRenderer]);
+echarts.use([
+  LineChart,
+  PieChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  GraphicComponent,
+  CanvasRenderer,
+]);
 
 const theme = useThemeStore();
 
@@ -317,7 +350,8 @@ const certList = computed(() => {
       validToText: c.validToText,
       certTone: c.status,
       certLabel: c.status === 'expired' ? '已过期' : c.status === 'expiring' ? '即将到期' : '正常',
-      daysText: c.status === 'expired' ? `过期 ${Math.abs(c.daysLeft)} 天` : `剩余 ${c.daysLeft} 天`,
+      daysText:
+        c.status === 'expired' ? `过期 ${Math.abs(c.daysLeft)} 天` : `剩余 ${c.daysLeft} 天`,
     }));
 });
 
@@ -328,7 +362,9 @@ const healthHint = computed(() => {
   if (!s || (!s.critical && !s.warning)) return null;
 
   // 取最严重的那一项作为说明文案（checks 已按严重度排好序）
-  const top = (health.value.checks || []).find((c) => c.severity === 'critical' || c.severity === 'warning');
+  const top = (health.value.checks || []).find(
+    (c) => c.severity === 'critical' || c.severity === 'warning'
+  );
   const parts = [];
   if (s.critical) parts.push(`${s.critical} 项严重`);
   if (s.warning) parts.push(`${s.warning} 项警告`);
@@ -394,7 +430,8 @@ const metric = computed(() => {
   const s = server.value || {};
   // cpuUsage 可能为 null：后端刚启动、还没攒够两次采样算差值。
   // 这时显示「—」而不是显示 0 —— 0% 是个会让人误判的假数字。
-  const num = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : Number(v));
+  const num = (v) =>
+    v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : Number(v);
   return {
     cpu: s.available ? num(s.cpuUsage) : '—',
     mem: s.available ? num(s.memUsage) : '—',
@@ -432,7 +469,7 @@ const overviewRows = computed(() => {
   return [
     {
       label: '宝塔网站',
-      hint: w.available ? `${w.running} 运行中 · ${w.stopped} 已停止` : (w.reason || '未配置'),
+      hint: w.available ? `${w.running} 运行中 · ${w.stopped} 已停止` : w.reason || '未配置',
       value: w.available ? w.total : '—',
       unavailable: !w.available,
       icon: 'Monitor',
@@ -441,7 +478,7 @@ const overviewRows = computed(() => {
     },
     {
       label: '域名区域',
-      hint: d.available ? 'Cloudflare 托管中' : (d.reason || '未配置'),
+      hint: d.available ? 'Cloudflare 托管中' : d.reason || '未配置',
       value: d.available ? d.total : '—',
       unavailable: !d.available,
       icon: 'Connection',
@@ -450,7 +487,7 @@ const overviewRows = computed(() => {
     },
     {
       label: 'Docker 容器',
-      hint: c.available ? `运行 ${c.running} · 停止 ${c.stopped}` : (c.reason || '未配置'),
+      hint: c.available ? `运行 ${c.running} · 停止 ${c.stopped}` : c.reason || '未配置',
       value: c.available ? c.total : '—',
       unavailable: !c.available,
       icon: 'Box',
@@ -564,7 +601,11 @@ function buildLineOption() {
       data: samples.value.times,
       axisLine: { lineStyle: { color: gridColor } },
       axisTick: { show: false },
-      axisLabel: { color: textColor, fontSize: 11, interval: Math.ceil(samples.value.times.length / 6) },
+      axisLabel: {
+        color: textColor,
+        fontSize: 11,
+        interval: Math.ceil(samples.value.times.length / 6),
+      },
     },
     yAxis: {
       type: 'value',
@@ -861,7 +902,12 @@ watch(
 .kpi__skeleton {
   height: 124px;
   border-radius: var(--r-lg);
-  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-hover) 37%, var(--bg-subtle) 63%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    var(--bg-hover) 37%,
+    var(--bg-subtle) 63%
+  );
   background-size: 400% 100%;
   animation: kpi-scan 1.5s var(--ease) infinite;
   box-shadow: none;
@@ -945,7 +991,9 @@ watch(
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 180ms var(--ease), color 180ms var(--ease);
+  transition:
+    background-color 180ms var(--ease),
+    color 180ms var(--ease);
 }
 
 .range-switch__btn:hover {

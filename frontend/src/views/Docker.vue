@@ -17,10 +17,14 @@
           @keyup.enter="loadContainers"
           @clear="loadContainers"
         >
-          <template #prefix><el-icon><Search /></el-icon></template>
+          <template #prefix
+            ><el-icon><Search /></el-icon
+          ></template>
         </el-input>
 
-        <el-checkbox v-model="filter.managed" @change="loadContainers">只看本系统部署的</el-checkbox>
+        <el-checkbox v-model="filter.managed" @change="loadContainers"
+          >只看本系统部署的</el-checkbox
+        >
       </div>
 
       <div class="toolbar__right">
@@ -38,23 +42,27 @@
       <el-tabs v-model="tab" class="tabs" @tab-change="onTabChange">
         <el-tab-pane name="containers">
           <template #label>
-            <span class="tab-label"><el-icon><Box /></el-icon>容器<span class="tab-badge">{{ summary.total }}</span></span>
+            <span class="tab-label"
+              ><el-icon><Box /></el-icon>容器<span class="tab-badge">{{
+                summary.total
+              }}</span></span
+            >
           </template>
         </el-tab-pane>
         <el-tab-pane name="images">
           <template #label>
-            <span class="tab-label"><el-icon><Files /></el-icon>镜像<span class="tab-badge">{{ images.length }}</span></span>
+            <span class="tab-label"
+              ><el-icon><Files /></el-icon>镜像<span class="tab-badge">{{
+                images.length
+              }}</span></span
+            >
           </template>
         </el-tab-pane>
       </el-tabs>
 
       <!-- ---------- 容器 ---------- -->
       <template v-if="tab === 'containers'">
-        <StateBlock
-          v-if="state === 'loading'"
-          state="loading"
-          loading-text="正在读取容器列表…"
-        />
+        <StateBlock v-if="state === 'loading'" state="loading" loading-text="正在读取容器列表…" />
         <StateBlock
           v-else-if="state === 'error'"
           state="error"
@@ -180,7 +188,9 @@
 
             <el-table-column label="端口映射" min-width="160">
               <template #default="{ row }">
-                <span v-if="row.portSummary.length" class="mono">{{ row.portSummary.join(' , ') }}</span>
+                <span v-if="row.portSummary.length" class="mono">{{
+                  row.portSummary.join(' , ')
+                }}</span>
                 <span v-else class="muted-xs">—</span>
               </template>
             </el-table-column>
@@ -198,13 +208,31 @@
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openLogs(row)">日志</el-button>
-                <el-button v-if="row.running" link type="primary" :loading="actingId === row.id" @click="doAction(row, 'restart')">
+                <el-button
+                  v-if="row.running"
+                  link
+                  type="primary"
+                  :loading="actingId === row.id"
+                  @click="doAction(row, 'restart')"
+                >
                   重启
                 </el-button>
-                <el-button v-if="row.running" link type="warning" :loading="actingId === row.id" @click="doAction(row, 'stop')">
+                <el-button
+                  v-if="row.running"
+                  link
+                  type="warning"
+                  :loading="actingId === row.id"
+                  @click="doAction(row, 'stop')"
+                >
                   停止
                 </el-button>
-                <el-button v-else link type="success" :loading="actingId === row.id" @click="doAction(row, 'start')">
+                <el-button
+                  v-else
+                  link
+                  type="success"
+                  :loading="actingId === row.id"
+                  @click="doAction(row, 'start')"
+                >
                   启动
                 </el-button>
                 <el-button link type="danger" @click="confirmRemove(row)">删除</el-button>
@@ -216,7 +244,11 @@
 
       <!-- ---------- 镜像 ---------- -->
       <template v-else>
-        <StateBlock v-if="imagesState === 'loading'" state="loading" loading-text="正在读取镜像列表…" />
+        <StateBlock
+          v-if="imagesState === 'loading'"
+          state="loading"
+          loading-text="正在读取镜像列表…"
+        />
         <StateBlock
           v-else-if="imagesState === 'error'"
           state="error"
@@ -262,7 +294,9 @@
             <el-table-column label="镜像标签" min-width="240">
               <template #default="{ row }">
                 <div class="cell-main">
-                  <span class="cell-title mono">{{ row.tags.length ? row.tags.join(' , ') : '未打标签' }}</span>
+                  <span class="cell-title mono">{{
+                    row.tags.length ? row.tags.join(' , ') : '未打标签'
+                  }}</span>
                   <span class="muted-xs mono">{{ row.shortId }}</span>
                 </div>
               </template>
@@ -288,7 +322,13 @@
     </section>
 
     <!-- ==================== 日志抽屉 ==================== -->
-    <el-drawer v-model="logVisible" :size="drawerSize" direction="rtl" :destroy-on-close="true" @closed="closeLogs">
+    <el-drawer
+      v-model="logVisible"
+      :size="drawerSize"
+      direction="rtl"
+      :destroy-on-close="true"
+      @closed="closeLogs"
+    >
       <template #header>
         <div class="log-head">
           <strong>{{ logTarget?.name }}</strong>
@@ -396,7 +436,9 @@ async function doAction(row, action) {
     if (action === 'start') await dockerApi.start(row.id);
     else if (action === 'stop') await dockerApi.stop(row.id);
     else await dockerApi.restart(row.id);
-    ElMessage.success(`已${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'}：${row.name}`);
+    ElMessage.success(
+      `已${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'}：${row.name}`
+    );
     loadContainers();
   } catch {
     /* 拦截器已提示 */
@@ -410,7 +452,12 @@ async function confirmRemove(row) {
     await ElMessageBox.confirm(
       `确定删除容器「${row.name}」吗？运行中的容器会被强制停止，容器内未落盘的数据会丢失。`,
       '删除容器',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'el-button--danger' }
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
     );
   } catch {
     return;

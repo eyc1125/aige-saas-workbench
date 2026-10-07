@@ -35,13 +35,21 @@ const routes = [
         path: 'certificates',
         name: 'certificates',
         component: () => import('@/views/Certificates.vue'),
-        meta: { title: '证书与安全', subtitle: 'SSL 证书到期倒计时、续签与站点日志', icon: 'Medal' },
+        meta: {
+          title: '证书与安全',
+          subtitle: 'SSL 证书到期倒计时、续签与站点日志',
+          icon: 'Medal',
+        },
       },
       {
         path: 'inspect',
         name: 'inspect',
         component: () => import('@/views/Inspect.vue'),
-        meta: { title: '健康巡检', subtitle: '自动体检与低风险自愈（含熔断保护）', icon: 'FirstAidKit' },
+        meta: {
+          title: '健康巡检',
+          subtitle: '自动体检与低风险自愈（含熔断保护）',
+          icon: 'FirstAidKit',
+        },
       },
       {
         path: 'domains',

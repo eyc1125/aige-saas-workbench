@@ -27,7 +27,9 @@ const router = express.Router();
 
 /** 校验域名格式（允许通配符 * 前缀，方便泛解析站点） */
 function assertDomain(domain) {
-  const clean = String(domain || '').trim().toLowerCase();
+  const clean = String(domain || '')
+    .trim()
+    .toLowerCase();
   if (!clean) throw badRequest('域名不能为空');
   const ok = /^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(clean);
   if (!ok) throw badRequest(`域名格式不正确：${domain}`);
@@ -47,7 +49,9 @@ router.get(
 
     // 宝塔接口的搜索是服务端做的；这里再兜一层本地过滤，保证搜索体验
     const filtered = search
-      ? list.filter((s) => s.name.includes(search) || s.domain.includes(search) || s.ps.includes(search))
+      ? list.filter(
+          (s) => s.name.includes(search) || s.domain.includes(search) || s.ps.includes(search)
+        )
       : list;
 
     return paginated(res, filtered, search ? filtered.length : total, page, limit);
@@ -70,8 +74,8 @@ router.get(
     // 按紧急程度排序：已过期 → 即将到期 → 正常 → 无证书
     const weight = { expired: 0, expiring: 1, ok: 2 };
     data.certs.sort((a, b) => {
-      const wa = a.hasCert ? weight[a.status] ?? 2 : 3;
-      const wb = b.hasCert ? weight[b.status] ?? 2 : 3;
+      const wa = a.hasCert ? (weight[a.status] ?? 2) : 3;
+      const wb = b.hasCert ? (weight[b.status] ?? 2) : 3;
       if (wa !== wb) return wa - wb;
       return (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999);
     });
@@ -88,7 +92,9 @@ router.get(
 router.post(
   '/ssl-certs/renew',
   asyncHandler(async (req, res) => {
-    const sites = Array.isArray(req.body?.sites) ? req.body.sites.map((s) => String(s).trim()).filter(Boolean) : [];
+    const sites = Array.isArray(req.body?.sites)
+      ? req.body.sites.map((s) => String(s).trim()).filter(Boolean)
+      : [];
     if (!sites.length) throw badRequest('请提供要续签的站点列表');
     if (sites.length > 10) throw badRequest('一次最多续签 10 个站点，请分批执行');
 
@@ -246,7 +252,12 @@ router.post(
         domains: Array.isArray(domains) ? domains : site.domains,
       });
     } else {
-      const domainList = Array.isArray(domains) && domains.length ? domains : (site.domains.length ? site.domains : [siteName]);
+      const domainList =
+        Array.isArray(domains) && domains.length
+          ? domains
+          : site.domains.length
+            ? site.domains
+            : [siteName];
       result = await baota.applyLetsEncrypt({ siteName, domains: domainList });
     }
 

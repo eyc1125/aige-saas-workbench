@@ -45,10 +45,12 @@ async function bootstrap() {
   // ---------------- 3. MCP 工具分组自检 ----------------
   // 注册了却没归组、或归组了却不存在——都会让「能力清单」与实际不符，启动时就点出来
   try {
-    // eslint-disable-next-line global-require
+    // 懒加载：这一步只是自检，失败不该影响服务启动
     const { auditGroups, TOOL_COUNT } = require('./mcp/instructions');
     const audit = auditGroups();
-    console.log(`[mcp] 已注册 ${TOOL_COUNT} 个工具${audit.ok ? '，分组一致' : '（分组有问题，见上方警告）'}`);
+    console.log(
+      `[mcp] 已注册 ${TOOL_COUNT} 个工具${audit.ok ? '，分组一致' : '（分组有问题，见上方警告）'}`
+    );
   } catch (err) {
     console.error(`[mcp] 工具分组自检失败：${err.message}`);
   }
@@ -71,9 +73,8 @@ async function bootstrap() {
   // CPU 使用率必须靠「两次采样的差值」算，所以需要一个常驻采样器（5 秒）；
   // 趋势曲线每 2 分钟写一行进 SQLite（见 services/metricsStore.js 的体积估算）。
   try {
-    // eslint-disable-next-line global-require
+    // 懒加载：确保前面的服务都起来了再引入，避免循环依赖把启动顺序搞乱
     const metrics = require('./services/metrics');
-    // eslint-disable-next-line global-require
     const metricsStore = require('./services/metricsStore');
 
     metrics.startSampler(5000);
@@ -85,7 +86,9 @@ async function bootstrap() {
     if (removed) console.log(`[metrics] 启动清理：移除 ${removed} 条过期样本`);
     setInterval(() => metricsStore.prune(), 24 * 60 * 60 * 1000).unref();
 
-    console.log(`[metrics] 采样已启动：CPU 每 5 秒，趋势每 ${metricsStore.SAMPLE_INTERVAL_MS / 60000} 分钟，保留 ${metricsStore.KEEP_DAYS} 天`);
+    console.log(
+      `[metrics] 采样已启动：CPU 每 5 秒，趋势每 ${metricsStore.SAMPLE_INTERVAL_MS / 60000} 分钟，保留 ${metricsStore.KEEP_DAYS} 天`
+    );
   } catch (err) {
     console.error(`[metrics] 采样启动失败：${err.message}`);
   }
@@ -94,7 +97,7 @@ async function bootstrap() {
   // 已解决的告警只保留最近 200 条：表本身很小，但不清理会随部署次数无限增长。
   // 启动时清一次，之后每天一次。
   try {
-    // eslint-disable-next-line global-require
+    // 懒加载：告警模块在 db 初始化后才可用
     const notify = require('./services/notify');
     const removed = notify.prune();
     if (removed) console.log(`[alert] 启动清理：移除 ${removed} 条历史告警`);

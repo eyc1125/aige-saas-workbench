@@ -59,7 +59,8 @@ class CloudflareClient {
 
     // Cloudflare 统一格式：{ success, errors: [{code,message}], result, result_info }
     if (res && res.success === false) {
-      const detail = (res.errors || []).map((e) => `${e.code}: ${e.message}`).join('；') || '未知错误';
+      const detail =
+        (res.errors || []).map((e) => `${e.code}: ${e.message}`).join('；') || '未知错误';
       throw upstream(`Cloudflare 接口返回失败：${detail}`, { endpoint, errors: res.errors });
     }
     if (!res || res.success !== true) {
@@ -79,7 +80,13 @@ class CloudflareClient {
     /* eslint-disable no-await-in-loop */
     for (;;) {
       const res = await this.call('/zones', {
-        query: { page, per_page: pageSize, name: name || undefined, order: 'name', status: 'active' },
+        query: {
+          page,
+          per_page: pageSize,
+          name: name || undefined,
+          order: 'name',
+          status: 'active',
+        },
       });
       const batch = res.result || [];
       all.push(...batch);
@@ -108,7 +115,9 @@ class CloudflareClient {
    * @param {string} domain 完整域名或主域名
    */
   async findZoneByDomain(domain) {
-    const clean = String(domain || '').trim().toLowerCase();
+    const clean = String(domain || '')
+      .trim()
+      .toLowerCase();
     if (!clean) throw badRequest('域名不能为空');
 
     // 直接按完整域名查一次，命中即返回（最快路径）
@@ -121,6 +130,7 @@ class CloudflareClient {
     const parts = clean.split('.');
     for (let i = 1; i < parts.length - 1; i += 1) {
       const candidate = parts.slice(i).join('.');
+      // eslint-disable-next-line no-await-in-loop -- 逐级向上找 zone，命中即 return，越往后次数越少
       const res = await this.call('/zones', { query: { name: candidate, per_page: 1 } });
       if (res.result?.length) return this._mapZone(res.result[0]);
     }

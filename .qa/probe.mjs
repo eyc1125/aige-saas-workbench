@@ -55,7 +55,15 @@ class CDP {
   mkdirSync(SHOT, { recursive: true });
   const child = spawn(
     EDGE,
-    ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`, '--no-first-run', '--disable-gpu', '--hide-scrollbars', 'about:blank'],
+    [
+      '--headless=new',
+      `--remote-debugging-port=${PORT}`,
+      `--user-data-dir=${PROFILE}`,
+      '--no-first-run',
+      '--disable-gpu',
+      '--hide-scrollbars',
+      'about:blank',
+    ],
     { stdio: 'ignore' }
   );
 
@@ -84,12 +92,21 @@ class CDP {
   await cdp.send('Log.enable');
 
   const ev = async (expr, awaitPromise = false) => {
-    const r = await cdp.send('Runtime.evaluate', { expression: expr, awaitPromise, returnByValue: true });
+    const r = await cdp.send('Runtime.evaluate', {
+      expression: expr,
+      awaitPromise,
+      returnByValue: true,
+    });
     if (r.exceptionDetails) return `EXC: ${r.exceptionDetails.text}`;
     return r.result?.value;
   };
 
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 375,
+    height: 812,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
 
   console.log('--- 1. 导航到站点根 ---');
   await cdp.send('Page.navigate', { url: `${ORIGIN}/` });
@@ -114,10 +131,25 @@ class CDP {
   console.log(dump);
 
   console.log('\n--- 2. 页面控制台错误 ---');
-  for (const e of cdp.events.filter((x) => x.method === 'Runtime.exceptionThrown' || x.method === 'Log.entryAdded' || x.method === 'Runtime.consoleAPICalled')) {
-    if (e.method === 'Runtime.exceptionThrown') console.log('  JS异常:', e.params.exceptionDetails?.text, e.params.exceptionDetails?.exception?.description?.slice(0, 300));
-    else if (e.method === 'Log.entryAdded') console.log(`  [${e.params.entry.level}]`, e.params.entry.text?.slice(0, 240));
-    else if (e.params.type === 'error' || e.params.type === 'warning') console.log(`  console.${e.params.type}:`, JSON.stringify(e.params.args?.map((a) => a.value ?? a.description)?.join(' ')).slice(0, 240));
+  for (const e of cdp.events.filter(
+    (x) =>
+      x.method === 'Runtime.exceptionThrown' ||
+      x.method === 'Log.entryAdded' ||
+      x.method === 'Runtime.consoleAPICalled'
+  )) {
+    if (e.method === 'Runtime.exceptionThrown')
+      console.log(
+        '  JS异常:',
+        e.params.exceptionDetails?.text,
+        e.params.exceptionDetails?.exception?.description?.slice(0, 300)
+      );
+    else if (e.method === 'Log.entryAdded')
+      console.log(`  [${e.params.entry.level}]`, e.params.entry.text?.slice(0, 240));
+    else if (e.params.type === 'error' || e.params.type === 'warning')
+      console.log(
+        `  console.${e.params.type}:`,
+        JSON.stringify(e.params.args?.map((a) => a.value ?? a.description)?.join(' ')).slice(0, 240)
+      );
   }
 
   console.log('\n--- 3. 截图（375 首次进入） ---');

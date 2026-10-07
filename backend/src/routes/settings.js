@@ -26,7 +26,12 @@ const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
 const { TOOL_DEFINITIONS } = require('../mcp/tools');
 // 工具分组与总数统一由 mcp/instructions.js 提供（单一来源，避免两处各写一份数字）
-const { SERVER_INSTRUCTIONS, TOOL_GROUPS, TOOL_COUNT, groupListText } = require('../mcp/instructions');
+const {
+  SERVER_INSTRUCTIONS,
+  TOOL_GROUPS,
+  TOOL_COUNT,
+  groupListText,
+} = require('../mcp/instructions');
 
 const router = express.Router();
 
@@ -74,7 +79,11 @@ router.put(
       ip: clientIp(req),
     });
 
-    return success(res, { changed }, changed.length ? `已保存 ${changed.length} 项配置` : '配置未发生变化');
+    return success(
+      res,
+      { changed },
+      changed.length ? `已保存 ${changed.length} 项配置` : '配置未发生变化'
+    );
   })
 );
 
@@ -97,7 +106,11 @@ router.post(
         body.bt_allow_insecure_tls !== undefined
           ? String(body.bt_allow_insecure_tls).toLowerCase() === 'true'
           : String(settings.get('bt_allow_insecure_tls')).toLowerCase() === 'true';
-      result = await new baotaService.BaotaClient({ baseUrl, apiKey, allowInsecureTls }).testConnection();
+      result = await new baotaService.BaotaClient({
+        baseUrl,
+        apiKey,
+        allowInsecureTls,
+      }).testConnection();
     } else if (target === 'cloudflare') {
       const apiToken = body.cf_api_token || settings.get('cf_api_token');
       result = await new cloudflareService.CloudflareClient({ apiToken }).testConnection();
@@ -132,7 +145,9 @@ router.post(
  */
 function resolvePublicUrl(configured, req, port) {
   if (configured) return String(configured).replace(/\/+$/, '');
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+    .split(',')[0]
+    .trim();
   const host = String(req.headers.host || '127.0.0.1').split(':')[0];
   const isDefaultPort = (proto === 'https' && port === 443) || (proto === 'http' && port === 80);
   return `${proto}://${host}${isDefaultPort ? '' : `:${port}`}`;
@@ -260,7 +275,9 @@ router.put(
     const params = [];
 
     if (username && String(username).trim() !== me.username) {
-      const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(String(username).trim());
+      const exists = db
+        .prepare('SELECT id FROM users WHERE username = ?')
+        .get(String(username).trim());
       if (exists) throw badRequest(`用户名已被占用：${username}`);
       updates.push('username = ?');
       params.push(String(username).trim());
@@ -277,7 +294,9 @@ router.put(
     if (!updates.length) throw badRequest('没有需要修改的内容');
 
     params.push(me.id);
-    db.prepare(`UPDATE users SET ${updates.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`).run(...params);
+    db.prepare(
+      `UPDATE users SET ${updates.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`
+    ).run(...params);
 
     writeLog({
       userId: req.user.id,

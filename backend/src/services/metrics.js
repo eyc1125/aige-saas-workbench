@@ -45,7 +45,7 @@ function readCpuCounters() {
   const line = fs.readFileSync(PROC_STAT, 'utf8').split('\n')[0];
   // 格式：cpu user nice system idle iowait irq softirq steal guest guest_nice
   const v = line.trim().split(/\s+/).slice(1).map(Number);
-  const idle = (v[3] || 0) + (v[4] || 0);           // idle + iowait 都算空闲
+  const idle = (v[3] || 0) + (v[4] || 0); // idle + iowait 都算空闲
   const total = v.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
   return { idle, total, at: Date.now() };
 }

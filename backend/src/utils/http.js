@@ -20,7 +20,7 @@ const { upstream } = require('./errors');
 let insecureDispatcher = null;
 function getInsecureDispatcher() {
   if (!insecureDispatcher) {
-    // eslint-disable-next-line global-require
+    // 懒加载：只有连自签证书的内网面板时才需要它，普通请求不必加载 undici
     const { Agent } = require('undici');
     insecureDispatcher = new Agent({ connect: { rejectUnauthorized: false } });
   }
@@ -76,10 +76,11 @@ async function request(url, options = {}) {
     const text = await res.text();
 
     if (!res.ok) {
-      throw upstream(
-        `${serviceName}返回错误（HTTP ${res.status}）`,
-        { url, status: res.status, response: text.slice(0, 800) }
-      );
+      throw upstream(`${serviceName}返回错误（HTTP ${res.status}）`, {
+        url,
+        status: res.status,
+        response: text.slice(0, 800),
+      });
     }
 
     if (raw) return text;

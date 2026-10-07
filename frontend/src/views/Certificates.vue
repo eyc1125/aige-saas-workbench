@@ -1,8 +1,14 @@
 <template>
   <div class="page">
     <!-- ==================== 巡检结论 ==================== -->
-    <section v-if="!loading && state !== 'error'" class="verdict" :class="`verdict--${verdict.tone}`">
-      <span class="verdict__icon" aria-hidden="true"><el-icon><component :is="verdict.icon" /></el-icon></span>
+    <section
+      v-if="!loading && state !== 'error'"
+      class="verdict"
+      :class="`verdict--${verdict.tone}`"
+    >
+      <span class="verdict__icon" aria-hidden="true"
+        ><el-icon><component :is="verdict.icon" /></el-icon
+      ></span>
       <div class="verdict__text">
         <strong>{{ verdict.title }}</strong>
         <p>{{ verdict.desc }}</p>
@@ -18,28 +24,55 @@
         <div v-for="i in 4" :key="i" class="kpi__skeleton surface" />
       </template>
       <template v-else>
-        <StatCard label="站点总数" :value="summary.total" unit="个" icon="Monitor" tone="neutral" hint="宝塔面板内的全部站点" />
-        <StatCard label="已部署证书" :value="summary.withCert" unit="个" icon="Medal" tone="brand" :hint="`${summary.total - summary.withCert} 个站点未部署`" />
-        <StatCard label="即将到期" :value="summary.expiring" unit="个" icon="Timer" :tone="summary.expiring ? 'warning' : 'neutral'" hint="剩余 15 天以内（与宝塔口径一致）" />
-        <StatCard label="已过期" :value="summary.expired" unit="个" icon="Warning" :tone="summary.expired ? 'danger' : 'neutral'" hint="HTTPS 已失效，需立刻续签" />
+        <StatCard
+          label="站点总数"
+          :value="summary.total"
+          unit="个"
+          icon="Monitor"
+          tone="neutral"
+          hint="宝塔面板内的全部站点"
+        />
+        <StatCard
+          label="已部署证书"
+          :value="summary.withCert"
+          unit="个"
+          icon="Medal"
+          tone="brand"
+          :hint="`${summary.total - summary.withCert} 个站点未部署`"
+        />
+        <StatCard
+          label="即将到期"
+          :value="summary.expiring"
+          unit="个"
+          icon="Timer"
+          :tone="summary.expiring ? 'warning' : 'neutral'"
+          hint="剩余 15 天以内（与宝塔口径一致）"
+        />
+        <StatCard
+          label="已过期"
+          :value="summary.expired"
+          unit="个"
+          icon="Warning"
+          :tone="summary.expired ? 'danger' : 'neutral'"
+          hint="HTTPS 已失效，需立刻续签"
+        />
       </template>
     </section>
 
     <!-- ==================== 工具条 ==================== -->
     <section class="surface toolbar">
       <div class="toolbar__left">
-        <el-input
-          v-model="keyword"
-          class="toolbar__search"
-          placeholder="搜索站点或域名"
-          clearable
-        >
-          <template #prefix><el-icon><Search /></el-icon></template>
+        <el-input v-model="keyword" class="toolbar__search" placeholder="搜索站点或域名" clearable>
+          <template #prefix
+            ><el-icon><Search /></el-icon
+          ></template>
         </el-input>
         <el-checkbox v-model="onlyAttention">只看需要处理的</el-checkbox>
       </div>
       <div class="toolbar__right">
-        <span class="toolbar__count tnum">共 <strong>{{ filtered.length }}</strong> 条</span>
+        <span class="toolbar__count tnum"
+          >共 <strong>{{ filtered.length }}</strong> 条</span
+        >
         <el-button :loading="loading" @click="load">
           <el-icon><Refresh /></el-icon>刷新
         </el-button>
@@ -92,17 +125,31 @@
                   另有 {{ row.domains.length - 1 }} 个绑定域名
                 </span>
               </div>
-              <span class="pill" :class="`pill--${row.hasCert ? row.status : 'none'}`">{{ statusText(row) }}</span>
+              <span class="pill" :class="`pill--${row.hasCert ? row.status : 'none'}`">{{
+                statusText(row)
+              }}</span>
             </div>
 
             <div class="count">
-              <strong class="count__num tnum" :class="`count__num--${row.hasCert ? row.status : 'none'}`">
+              <strong
+                class="count__num tnum"
+                :class="`count__num--${row.hasCert ? row.status : 'none'}`"
+              >
                 {{ remainText(row) }}
               </strong>
               <span class="count__unit">{{ remainUnit(row) }}</span>
             </div>
-            <div v-if="row.hasCert" class="count__bar" role="img" :aria-label="`证书有效期已使用 ${lifespan(row)}%`">
-              <span class="count__bar-fill" :class="`count__bar-fill--${row.status}`" :style="{ width: `${lifespan(row)}%` }" />
+            <div
+              v-if="row.hasCert"
+              class="count__bar"
+              role="img"
+              :aria-label="`证书有效期已使用 ${lifespan(row)}%`"
+            >
+              <span
+                class="count__bar-fill"
+                :class="`count__bar-fill--${row.status}`"
+                :style="{ width: `${lifespan(row)}%` }"
+              />
             </div>
 
             <dl class="card__meta">
@@ -118,7 +165,12 @@
 
             <div class="card__actions">
               <el-button @click="openDetail(row)">详情</el-button>
-              <el-button type="primary" :loading="renewingSite === row.siteName" @click="renewOne(row)">续签</el-button>
+              <el-button
+                type="primary"
+                :loading="renewingSite === row.siteName"
+                @click="renewOne(row)"
+                >续签</el-button
+              >
             </div>
           </li>
         </ul>
@@ -142,20 +194,29 @@
 
             <el-table-column label="状态" width="112">
               <template #default="{ row }">
-                <span class="pill" :class="`pill--${row.hasCert ? row.status : 'none'}`">{{ statusText(row) }}</span>
+                <span class="pill" :class="`pill--${row.hasCert ? row.status : 'none'}`">{{
+                  statusText(row)
+                }}</span>
               </template>
             </el-table-column>
 
             <el-table-column label="剩余有效期" min-width="190">
               <template #default="{ row }">
                 <div class="count">
-                  <strong class="count__num tnum" :class="`count__num--${row.hasCert ? row.status : 'none'}`">
+                  <strong
+                    class="count__num tnum"
+                    :class="`count__num--${row.hasCert ? row.status : 'none'}`"
+                  >
                     {{ remainText(row) }}
                   </strong>
                   <span class="count__unit">{{ remainUnit(row) }}</span>
                 </div>
                 <div v-if="row.hasCert" class="count__bar">
-                  <span class="count__bar-fill" :class="`count__bar-fill--${row.status}`" :style="{ width: `${lifespan(row)}%` }" />
+                  <span
+                    class="count__bar-fill"
+                    :class="`count__bar-fill--${row.status}`"
+                    :style="{ width: `${lifespan(row)}%` }"
+                  />
                 </div>
               </template>
             </el-table-column>
@@ -171,7 +232,13 @@
             <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-                <el-button link type="primary" :loading="renewingSite === row.siteName" @click="renewOne(row)">续签</el-button>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="renewingSite === row.siteName"
+                  @click="renewOne(row)"
+                  >续签</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -189,16 +256,26 @@
           </el-descriptions-item>
           <el-descriptions-item label="状态">{{ statusText(detail) }}</el-descriptions-item>
           <el-descriptions-item label="签发机构">{{ detail.issuer || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="生效时间">{{ formatDate(detail.validFrom) }}</el-descriptions-item>
-          <el-descriptions-item label="到期时间">{{ detail.validToText || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="剩余天数">{{ remainText(detail) }} {{ remainUnit(detail) }}</el-descriptions-item>
+          <el-descriptions-item label="生效时间">{{
+            formatDate(detail.validFrom)
+          }}</el-descriptions-item>
+          <el-descriptions-item label="到期时间">{{
+            detail.validToText || '—'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="剩余天数"
+            >{{ remainText(detail) }} {{ remainUnit(detail) }}</el-descriptions-item
+          >
           <el-descriptions-item label="证书路径">
             <span class="mono">{{ detail.certPath || '—' }}</span>
           </el-descriptions-item>
         </el-descriptions>
 
         <div class="drawer-actions">
-          <el-button type="primary" :loading="renewingSite === detail.siteName" @click="renewOne(detail)">
+          <el-button
+            type="primary"
+            :loading="renewingSite === detail.siteName"
+            @click="renewOne(detail)"
+          >
             <el-icon><RefreshRight /></el-icon>重新签发
           </el-button>
           <el-button @click="$router.push('/websites')">
@@ -241,7 +318,8 @@ const filtered = computed(() => {
     if (onlyAttention.value && !attention(row)) return false;
     if (!kw) return true;
     return (
-      row.siteName.toLowerCase().includes(kw) || row.domains.some((d) => String(d).toLowerCase().includes(kw))
+      row.siteName.toLowerCase().includes(kw) ||
+      row.domains.some((d) => String(d).toLowerCase().includes(kw))
     );
   });
 });
@@ -345,7 +423,9 @@ async function runRenew(sites) {
   const data = await websiteApi.renewSsl(sites);
   const failed = (data.results || []).filter((r) => !r.ok);
   if (failed.length) {
-    ElMessage.warning(`续签完成：成功 ${data.okCount} 个，失败 ${failed.length} 个（${failed.map((f) => f.siteName).join('、')}）`);
+    ElMessage.warning(
+      `续签完成：成功 ${data.okCount} 个，失败 ${failed.length} 个（${failed.map((f) => f.siteName).join('、')}）`
+    );
   } else {
     ElMessage.success(`续签完成：${data.okCount} 个证书已重新签发`);
   }
@@ -479,7 +559,12 @@ onMounted(load);
 .kpi__skeleton {
   height: 124px;
   border-radius: var(--r-lg);
-  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-hover) 37%, var(--bg-subtle) 63%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    var(--bg-hover) 37%,
+    var(--bg-subtle) 63%
+  );
   background-size: 400% 100%;
   animation: kpi-scan 1.5s var(--ease) infinite;
   box-shadow: none;

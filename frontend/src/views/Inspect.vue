@@ -3,7 +3,9 @@
     <!-- ==================== 巡检结论 ==================== -->
     <!-- 加载 / 失败中不显示结论：此时 summary 全是 0，会误报成「尚未巡检」 -->
     <section v-if="state === 'ready'" class="verdict" :class="`verdict--${verdict.tone}`">
-      <span class="verdict__icon" aria-hidden="true"><el-icon><component :is="verdict.icon" /></el-icon></span>
+      <span class="verdict__icon" aria-hidden="true"
+        ><el-icon><component :is="verdict.icon" /></el-icon
+      ></span>
       <div class="verdict__text">
         <strong>{{ verdict.title }}</strong>
         <p>{{ verdict.desc }}</p>
@@ -17,7 +19,9 @@
 
     <!-- 加载中：先给一条明确的等待提示，而不是留白（巡检要读证书、查云端、列容器） -->
     <section v-else-if="state === 'loading'" class="verdict verdict--neutral">
-      <span class="verdict__icon" aria-hidden="true"><el-icon><FirstAidKit /></el-icon></span>
+      <span class="verdict__icon" aria-hidden="true"
+        ><el-icon><FirstAidKit /></el-icon
+      ></span>
       <div class="verdict__text">
         <strong>正在巡检…</strong>
         <p>要读全站证书、查 Cloudflare、列容器，通常几秒钟，请稍候。</p>
@@ -28,7 +32,9 @@
     <section class="surface auto">
       <header class="auto__head">
         <div class="auto__title">
-          <span class="auto__icon" aria-hidden="true"><el-icon><FirstAidKit /></el-icon></span>
+          <span class="auto__icon" aria-hidden="true"
+            ><el-icon><FirstAidKit /></el-icon
+          ></span>
           <div>
             <h2>自动自愈</h2>
             <p>开启后会按固定间隔自动跑巡检，只执行「标记为可自动」的低风险修复</p>
@@ -45,7 +51,12 @@
       <div class="auto__body">
         <div class="auto__row">
           <span class="auto__label">巡检间隔</span>
-          <el-select v-model="autoHeal.intervalMin" class="auto__select" :disabled="autoSaving" @change="saveAuto">
+          <el-select
+            v-model="autoHeal.intervalMin"
+            class="auto__select"
+            :disabled="autoSaving"
+            @change="saveAuto"
+          >
             <el-option :value="10" label="每 10 分钟" />
             <el-option :value="30" label="每 30 分钟" />
             <el-option :value="60" label="每 1 小时" />
@@ -62,7 +73,8 @@
             <strong>会</strong>自动执行：证书续签、启动本项目停掉的容器、清理无用镜像
           </span>
           <span class="auto__rule">
-            <strong>不会</strong>自动执行：改 Cloudflare zone 级 SSL 模式、改密码、补站点证书（风险较高，需你确认）
+            <strong>不会</strong>自动执行：改 Cloudflare zone 级 SSL
+            模式、改密码、补站点证书（风险较高，需你确认）
           </span>
           <span class="auto__rule auto__rule--warn">
             熔断：同一修复 30 分钟内最多 3 次 —— 反复失败说明问题没解决，应该去看日志而不是继续重试
@@ -70,9 +82,13 @@
         </div>
 
         <div v-if="lastAutoRun" class="auto__last">
-          <span class="auto__last-title">最近一次自动执行 · {{ lastAutoRun.at }}（耗时 {{ lastAutoRun.elapsedMs }} ms）</span>
+          <span class="auto__last-title"
+            >最近一次自动执行 · {{ lastAutoRun.at }}（耗时 {{ lastAutoRun.elapsedMs }} ms）</span
+          >
           <ul class="auto__items">
-            <li v-if="!lastAutoRun.applied.length && !lastAutoRun.skipped.length">没有可处理的项目</li>
+            <li v-if="!lastAutoRun.applied.length && !lastAutoRun.skipped.length">
+              没有可处理的项目
+            </li>
             <li v-for="a in lastAutoRun.applied" :key="`a-${a.id}`">
               <span class="dot dot--ok" /> {{ a.title }} —— {{ a.message }}
             </li>
@@ -86,7 +102,11 @@
 
     <!-- ==================== 检查项 ==================== -->
     <section class="surface">
-      <StateBlock v-if="state === 'loading'" state="loading" loading-text="正在巡检（读证书、查云端、列容器，约需几秒）…" />
+      <StateBlock
+        v-if="state === 'loading'"
+        state="loading"
+        loading-text="正在巡检（读证书、查云端、列容器，约需几秒）…"
+      />
       <StateBlock
         v-else-if="state === 'error'"
         state="error"
@@ -95,13 +115,19 @@
         action-text="重试"
         @action="load"
       />
-      <StateBlock v-else-if="state === 'empty'" state="empty" title="没有巡检项" description="这不应该发生，请检查后端服务。" />
+      <StateBlock
+        v-else-if="state === 'empty'"
+        state="empty"
+        title="没有巡检项"
+        description="这不应该发生，请检查后端服务。"
+      />
 
       <template v-else>
         <header class="list__head">
           <h2 class="list__title">巡检项</h2>
           <span class="list__meta tnum">
-            {{ summary.total }} 项 · 严重 {{ summary.critical }} · 警告 {{ summary.warning }} · 提示 {{ summary.info }} · 正常 {{ summary.ok }}
+            {{ summary.total }} 项 · 严重 {{ summary.critical }} · 警告 {{ summary.warning }} · 提示
+            {{ summary.info }} · 正常 {{ summary.ok }}
           </span>
         </header>
 
@@ -113,7 +139,9 @@
                 <strong class="check__title">
                   {{ c.title }}
                   <span class="tag">{{ c.group }}</span>
-                  <span class="tag tag--scope">{{ c.scope === 'project' ? '本项目' : '服务器' }}</span>
+                  <span class="tag tag--scope">{{
+                    c.scope === 'project' ? '本项目' : '服务器'
+                  }}</span>
                 </strong>
                 <p class="check__summary">{{ c.summary }}</p>
               </div>
@@ -134,7 +162,8 @@
             <p v-if="c.fix" class="check__fix-note">
               {{ c.fix.description }}
               <span class="check__budget tnum">
-                · {{ c.fix.auto ? '可自动执行' : '需人工确认' }} · 熔断预算 {{ c.budget.remaining }}/{{ c.budget.limit }}
+                · {{ c.fix.auto ? '可自动执行' : '需人工确认' }} · 熔断预算
+                {{ c.budget.remaining }}/{{ c.budget.limit }}
               </span>
             </p>
             <p v-else-if="c.why" class="check__fix-note check__fix-note--why">{{ c.why }}</p>
@@ -258,7 +287,11 @@ async function applyFix(check) {
     await ElMessageBox.confirm(
       `${fx.description}（影响范围：${fx.risk === 'low' ? '低，可逆' : '中等，涉及线上配置'}）`,
       `执行修复：${check.title}`,
-      { confirmButtonText: '确认执行', cancelButtonText: '取消', type: fx.risk === 'low' ? 'info' : 'warning' }
+      {
+        confirmButtonText: '确认执行',
+        cancelButtonText: '取消',
+        type: fx.risk === 'low' ? 'info' : 'warning',
+      }
     );
   } catch {
     return;
@@ -280,11 +313,16 @@ async function applyFix(check) {
 async function saveAuto() {
   autoSaving.value = true;
   try {
-    const r = await inspectApi.setAuto({ enabled: autoHeal.enabled, intervalMin: autoHeal.intervalMin });
+    const r = await inspectApi.setAuto({
+      enabled: autoHeal.enabled,
+      intervalMin: autoHeal.intervalMin,
+    });
     autoHeal.enabled = !!r.enabled;
     autoHeal.intervalMin = r.intervalMin;
     autoHeal.running = !!r.running;
-    ElMessage.success(autoHeal.enabled ? `已开启：每 ${r.intervalMin} 分钟自动巡检一次` : '已关闭自动自愈');
+    ElMessage.success(
+      autoHeal.enabled ? `已开启：每 ${r.intervalMin} 分钟自动巡检一次` : '已关闭自动自愈'
+    );
   } catch {
     autoHeal.enabled = !autoHeal.enabled; // 保存失败就回滚开关，避免显示与实际不符
   } finally {

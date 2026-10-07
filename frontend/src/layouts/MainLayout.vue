@@ -33,7 +33,13 @@
     </aside>
 
     <!-- ==================== 侧边导航（移动端抽屉） ==================== -->
-    <el-drawer v-model="drawerOpen" direction="ltr" size="248px" :with-header="false" class="side-drawer">
+    <el-drawer
+      v-model="drawerOpen"
+      direction="ltr"
+      size="248px"
+      :with-header="false"
+      class="side-drawer"
+    >
       <div class="side__brand side__brand--drawer">
         <BrandMark :size="34" />
         <span class="side__brand-text">
@@ -60,7 +66,13 @@
     <div class="main">
       <header class="topbar">
         <div class="topbar__left">
-          <button v-if="isMobile" class="topbar__icon-btn" type="button" aria-label="打开导航" @click="drawerOpen = true">
+          <button
+            v-if="isMobile"
+            class="topbar__icon-btn"
+            type="button"
+            aria-label="打开导航"
+            @click="drawerOpen = true"
+          >
             <el-icon><Menu /></el-icon>
           </button>
           <div class="topbar__titles">
@@ -71,7 +83,12 @@
 
         <div class="topbar__right">
           <!-- 配置未完成时给出常驻轻提示，点一下直达设置页 -->
-          <button v-if="missingConfig.length" class="chip chip--warn" type="button" @click="router.push('/settings')">
+          <button
+            v-if="missingConfig.length"
+            class="chip chip--warn"
+            type="button"
+            @click="router.push('/settings')"
+          >
             <el-icon><WarningFilled /></el-icon>
             <span class="chip__text">{{ missingConfig.length }} 项对接待配置</span>
           </button>
@@ -79,7 +96,10 @@
           <!-- 告警铃铛：有未读时亮红点并显示数量 -->
           <button
             class="topbar__icon-btn bell"
-            :class="{ 'bell--alert': alertSummary.unread > 0, 'bell--critical': alertSummary.level === 'critical' }"
+            :class="{
+              'bell--alert': alertSummary.unread > 0,
+              'bell--critical': alertSummary.level === 'critical',
+            }"
             type="button"
             :aria-label="alertSummary.unread ? `${alertSummary.unread} 条未读告警` : '告警中心'"
             @click="openAlerts"
@@ -90,7 +110,12 @@
             </span>
           </button>
 
-          <button class="topbar__icon-btn" type="button" :aria-label="theme.isDark ? '切换到浅色' : '切换到深色'" @click="theme.toggle()">
+          <button
+            class="topbar__icon-btn"
+            type="button"
+            :aria-label="theme.isDark ? '切换到浅色' : '切换到深色'"
+            @click="theme.toggle()"
+          >
             <el-icon><component :is="theme.isDark ? 'Sunny' : 'Moon'" /></el-icon>
           </button>
 
@@ -128,10 +153,14 @@
         <header class="alerts__head">
           <span class="alerts__stat tnum">
             未解决 <strong>{{ alertSummary.total }}</strong> 条
-            <template v-if="alertSummary.critical">· 紧急 <strong>{{ alertSummary.critical }}</strong></template>
+            <template v-if="alertSummary.critical"
+              >· 紧急 <strong>{{ alertSummary.critical }}</strong></template
+            >
             <template v-if="alertSummary.warning">· 警告 {{ alertSummary.warning }}</template>
           </span>
-          <el-button v-if="alertSummary.unread" link type="primary" @click="markAllRead">全部已读</el-button>
+          <el-button v-if="alertSummary.unread" link type="primary" @click="markAllRead"
+            >全部已读</el-button
+          >
         </header>
 
         <p class="alerts__channels">
@@ -146,11 +175,20 @@
           description="巡检异常、部署失败、自愈失败都会出现在这里；问题消失后会自动关闭。"
         />
         <ul v-else class="alert-list">
-          <li v-for="a in alertItems" :key="a.id" class="alert-item" :class="`alert-item--${a.level}`">
+          <li
+            v-for="a in alertItems"
+            :key="a.id"
+            class="alert-item"
+            :class="`alert-item--${a.level}`"
+          >
             <div class="alert-item__top">
               <span class="alert-item__dot" aria-hidden="true" />
               <strong class="alert-item__title">{{ a.title }}</strong>
-              <span v-if="a.occurrences > 1" class="alert-item__times tnum" :title="`累计出现 ${a.occurrences} 次`">
+              <span
+                v-if="a.occurrences > 1"
+                class="alert-item__times tnum"
+                :title="`累计出现 ${a.occurrences} 次`"
+              >
                 ×{{ a.occurrences }}
               </span>
             </div>
@@ -436,7 +474,9 @@ onBeforeUnmount(() => {
   font-size: var(--fs-base);
   font-weight: 500;
   white-space: nowrap;
-  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .nav__item:hover {
@@ -480,7 +520,9 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary);
   font-size: var(--fs-sm);
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .side__collapse:hover {
@@ -564,7 +606,9 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   font-size: 16px;
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
 }
 
