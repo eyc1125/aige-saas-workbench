@@ -841,12 +841,15 @@ ${proxyBlock}
   /**
    * 列出目录内容
    * 宝塔 /files?action=GetDir 返回的是分号分隔的字符串数组，这里解析成结构化对象。
+   * @param {string} dirPath
+   * @param {number} [limit] 最多取多少条。默认 200 —— nginx 配置目录里
+   *        配置 + 备份加起来可能几百个文件，需要全量的调用方（配置快照）要显式传大值。
    */
-  async listDir(dirPath) {
+  async listDir(dirPath, limit = 200) {
     if (!dirPath) throw badRequest('目录不能为空');
     const res = await this.call(
       '/files?action=GetDir',
-      { path: dirPath, p: 1, show_row: 200 },
+      { path: dirPath, p: 1, show_row: Math.min(Math.max(Number(limit) || 200, 1), 5000) },
       'POST',
       30000
     );
@@ -865,7 +868,16 @@ ${proxyBlock}
         };
       });
 
-    const entries = [...parse(res?.DIR, true), ...parse(res?.FILE, false)];
+    /**
+     * ⚠️ 字段名是 `FILES`（复数），不是 `FILE`。
+     * 这里踩过一次：原来写的是 `res?.FILE`，于是**文件列表永远是空的**，
+     * 只有子目录能列出来。因为此前的调用方（listBackups）只关心
+     * /www/backup 下的子目录，所以这个 bug 一直没暴露；
+     * 做「配置快照」时才发现 nginx 配置目录里一个 .conf 都列不出来。
+     * 两个名字都兼容一下，免得换个面板版本又白跑一轮。
+     */
+    const files = res?.FILES ?? res?.FILE;
+    const entries = [...parse(res?.DIR, true), ...parse(files, false)];
     return { path: dirPath, count: entries.length, entries };
   }
 

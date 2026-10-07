@@ -7,9 +7,12 @@
  * GET    /api/websites/:name               单个网站详情
  * GET    /api/websites/:name/logs          站点访问 / 错误日志（尾部 N 行）
  * GET    /api/websites/:name/nginx-config  站点 Nginx 配置
- * POST   /api/websites                     一键新建静态网站
+ * GET    /api/websites/:name/snapshots      站点配置快照列表（变更历史）
+ * GET    /api/websites/:name/snapshots/diff 两份配置的行级差异
+ * POST   /api/websites                      一键新建静态网站
  * DELETE /api/websites/:name               删除网站（二次确认在前端做）
  * POST   /api/websites/:name/ssl           为网站申请 / 部署 SSL 证书
+ * POST   /api/websites/:name/snapshots/restore  一键回滚到某份配置备份
  *
  * 安全：所有写操作前先查重（站点是否已存在），删除只删站点与目录，不动数据库与 FTP。
  * 路由顺序：静态段（ssl-certs）必须排在 /:name 之前，否则会被当成站点名匹配。
@@ -22,6 +25,7 @@ const { success, paginated } = require('../utils/response');
 const { badRequest, notFound } = require('../utils/errors');
 const { writeLog, clientIp } = require('../utils/logger');
 const baotaService = require('../services/baota');
+const siteSnapshots = require('../services/siteSnapshots');
 
 const router = express.Router();
 
@@ -277,6 +281,71 @@ router.post(
       res,
       { mode, ...result },
       mode === 'manual' ? '证书已部署' : '证书申请已提交，签发通常需要 10-60 秒'
+    );
+  })
+);
+
+/**
+ * ---------------- 配置快照（变更历史 + 一键回滚） ----------------
+ * 背景：saveNginxConfig 每次写配置前都会备份成 <域名>.conf.bak.<时间戳>，
+ *      但以前没有任何入口能回滚 —— 等于买了保险却没留理赔电话。
+ *
+ * 三个接口的分工：
+ *   GET  /:name/snapshots          列出该站点的全部备份 + 当前线上配置
+ *   GET  /:name/snapshots/diff     两份配置的行级差异（默认「当前线上 ↔ 某份备份」）
+ *   POST /:name/snapshots/restore  把某份备份写回线上（写前先把当前也备份一次）
+ */
+router.get(
+  '/:name/snapshots',
+  asyncHandler(async (req, res) => {
+    const siteName = decodeURIComponent(req.params.name);
+    const data = await siteSnapshots.listSnapshots(siteName);
+    return success(res, data);
+  })
+);
+
+router.get(
+  '/:name/snapshots/diff',
+  asyncHandler(async (req, res) => {
+    const siteName = decodeURIComponent(req.params.name);
+    const { a = siteSnapshots.CURRENT, b } = req.query || {};
+    if (!b) throw badRequest('缺少参数 b（要对比的备份文件名）');
+    const data = await siteSnapshots.compare(siteName, String(a), String(b));
+    return success(res, data);
+  })
+);
+
+router.post(
+  '/:name/snapshots/restore',
+  asyncHandler(async (req, res) => {
+    const siteName = decodeURIComponent(req.params.name);
+    const { file, confirm } = req.body || {};
+
+    // 服务端也要求一次显式确认：这个接口会覆盖线上配置，
+    // 不能因为前端漏了二次确认就被一次误点/一次裸 API 调用触发
+    if (confirm !== true) throw badRequest('该操作会覆盖线上 Nginx 配置，请确认后再执行');
+
+    const result = await siteSnapshots.restore(siteName, String(file || ''));
+
+    writeLog({
+      userId: req.user.id,
+      username: req.user.username,
+      module: 'website',
+      action: 'restore_nginx_config',
+      target: siteName,
+      source: 'web',
+      status: 'success',
+      message: `已回滚到备份 ${result.restoredFrom}；Nginx 重载${result.reloadOk ? '成功' : '未确认'}；探活 ${result.probe.text}`,
+      detail: result,
+      ip: clientIp(req),
+    });
+
+    return success(
+      res,
+      result,
+      result.probe.ok
+        ? `已回滚到备份，站点探活正常（${result.probe.text}）`
+        : `已回滚到备份，但探活未通过（${result.probe.text}）—— 请到宝塔面板确认`
     );
   })
 );

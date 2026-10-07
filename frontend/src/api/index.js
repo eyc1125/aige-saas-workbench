@@ -35,6 +35,23 @@ export const websiteApi = {
   /** 站点 Nginx 配置（只读） */
   nginxConfig: (name) =>
     request.get(`/websites/${encodeURIComponent(name)}/nginx-config`, { silent: true }),
+
+  // ---------------- 配置快照（变更历史 + 一键回滚） ----------------
+  /** 该站点的配置备份列表 + 当前线上配置 */
+  snapshots: (name) =>
+    request.get(`/websites/${encodeURIComponent(name)}/snapshots`, { silent: true }),
+  /** 两份配置的行级差异；a 省略时表示「当前线上」 */
+  snapshotDiff: (name, params) =>
+    request.get(`/websites/${encodeURIComponent(name)}/snapshots/diff`, { params, silent: true }),
+  /**
+   * 回滚到某份备份。
+   * confirm 必须显式传 true —— 服务端也会校验，避免误点直接覆盖线上配置。
+   */
+  restoreSnapshot: (name, file) =>
+    request.post(`/websites/${encodeURIComponent(name)}/snapshots/restore`, {
+      file,
+      confirm: true,
+    }),
   /** SSL 证书台账：含剩余天数与状态（expired | expiring | ok） */
   sslCerts: () => request.get('/websites/ssl-certs', { silent: true }),
   /** 批量续签即将到期的证书 */

@@ -363,6 +363,109 @@
               它会先备份再写入，并自动重载 Nginx。
             </p>
           </el-tab-pane>
+
+          <!-- ---------- 配置历史（变更历史 + 一键回滚） ---------- -->
+          <el-tab-pane label="配置历史" name="snapshots" lazy>
+            <div class="logbar">
+              <span class="logbar__meta mono">{{ snapshotPanel.dir || '—' }}</span>
+              <el-button size="small" :loading="snapshotPanel.loading" @click="loadSnapshots">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </div>
+
+            <StateBlock
+              v-if="snapshotPanel.loading"
+              state="loading"
+              loading-text="正在读取配置备份…"
+            />
+            <StateBlock
+              v-else-if="snapshotPanel.error"
+              state="error"
+              title="配置备份读取失败"
+              :description="snapshotPanel.error"
+              action-text="重试"
+              @action="loadSnapshots"
+            />
+            <template v-else>
+              <StateBlock
+                v-if="!snapshotPanel.snapshots.length"
+                state="empty"
+                title="还没有可回滚的历史版本"
+                description="本系统每次修改该站点的 Nginx 配置前都会自动备份一份原配置。有过一次改动之后，这里就会出现可回滚的历史版本。"
+              />
+
+              <template v-else>
+                <ul class="snapshots">
+                  <li v-if="snapshotPanel.current" class="snapshots__item snapshots__item--live">
+                    <div class="snapshots__main">
+                      <strong class="snapshots__time">
+                        <span class="snapshots__badge">当前线上</span>
+                        {{ snapshotPanel.current.createdAt || '—' }}
+                      </strong>
+                      <span class="snapshots__meta">{{ snapshotPanel.current.sizeText }}</span>
+                    </div>
+                  </li>
+
+                  <li
+                    v-for="item in snapshotPanel.snapshots"
+                    :key="item.file"
+                    class="snapshots__item"
+                    :class="{ 'snapshots__item--active': snapshotPanel.diffTarget === item.file }"
+                  >
+                    <div class="snapshots__main">
+                      <strong class="snapshots__time">{{ item.createdAt || '时间未知' }}</strong>
+                      <span class="snapshots__meta">{{ item.sizeText }} · {{ item.file }}</span>
+                    </div>
+                    <div class="snapshots__actions">
+                      <el-button
+                        size="small"
+                        :loading="snapshotPanel.diffLoading === item.file"
+                        @click="viewSnapshotsDiff(item.file)"
+                      >
+                        查看差异
+                      </el-button>
+                      <el-button
+                        size="small"
+                        type="warning"
+                        :loading="snapshotPanel.restoring === item.file"
+                        @click="doRestoreSnapshot(item)"
+                      >
+                        回滚到这里
+                      </el-button>
+                    </div>
+                  </li>
+                </ul>
+
+                <p class="drawer-tip">{{ snapshotPanel.hint }}</p>
+
+                <!-- 差异面板：只显示有改动的地方 + 前后各 4 行上下文 -->
+                <div v-if="snapshotPanel.diffLines.length" class="diffpanel">
+                  <header class="diffpanel__head">
+                    <span class="diffpanel__title"> 当前线上 <em>↔</em> 该备份 </span>
+                    <span class="diffpanel__stat">
+                      <em class="is-add">+{{ snapshotPanel.diffAdded }}</em>
+                      <em class="is-del">−{{ snapshotPanel.diffRemoved }}</em>
+                    </span>
+                  </header>
+                  <div class="diffpanel__body">
+                    <div
+                      v-for="(line, idx) in snapshotPanel.diffLines"
+                      :key="idx"
+                      class="dl"
+                      :class="`dl--${line.t}`"
+                    >
+                      <span class="dl__no">{{ line.aNo ?? line.bNo ?? '' }}</span>
+                      <span class="dl__sign" aria-hidden="true">{{ diffSign(line.t) }}</span>
+                      <span class="dl__text">{{ line.text || ' ' }}</span>
+                    </div>
+                  </div>
+                  <p class="drawer-tip">
+                    绿色=回滚后会新增的行，红色=回滚后会消失的行。左右滚动可看长行。
+                  </p>
+                </div>
+              </template>
+            </template>
+          </el-tab-pane>
         </el-tabs>
       </template>
 
@@ -562,6 +665,26 @@ const logPanel = reactive({
 });
 const configPanel = reactive({ loading: false, error: '', content: '', confPath: '' });
 
+/**
+ * 配置历史（变更历史 + 一键回滚）
+ * 数据来自后端 services/siteSnapshots.js：列出该站点自己的 .conf.bak.* 备份，
+ * 并支持任意两份配置做行级差异、把某份备份写回线上。
+ */
+const snapshotPanel = reactive({
+  loading: false,
+  error: '',
+  dir: '',
+  hint: '',
+  snapshots: [],
+  current: null,
+  diffTarget: '',
+  diffLines: [],
+  diffAdded: 0,
+  diffRemoved: 0,
+  diffLoading: '',
+  restoring: '',
+});
+
 async function openDetail(row) {
   detail.value = row;
   detailTab.value = 'info';
@@ -617,11 +740,89 @@ async function loadConfig() {
   }
 }
 
-// 切到日志 / 配置页时才去拉数据（懒加载，避免每次点详情都多打三次接口）
+// 切到日志 / 配置 / 配置历史页时才去拉数据（懒加载，避免每次点详情都多打几次接口）
 watch(detailTab, (tab) => {
   if (tab === 'access' || tab === 'error') loadLogs();
   else if (tab === 'config') loadConfig();
+  else if (tab === 'snapshots') loadSnapshots();
 });
+
+// ---------------- 配置历史（变更历史 + 一键回滚） ----------------
+
+async function loadSnapshots() {
+  if (!detail.value) return;
+  snapshotPanel.loading = true;
+  snapshotPanel.error = '';
+  try {
+    const data = await websiteApi.snapshots(detail.value.name);
+    snapshotPanel.dir = data.dir || '';
+    snapshotPanel.hint = data.hint || '';
+    snapshotPanel.snapshots = data.snapshots || [];
+    snapshotPanel.current = data.current || null;
+    // 列表刷新后旧的差异可能已经失效（比如刚回滚完），清掉避免误导
+    snapshotPanel.diffLines = [];
+    snapshotPanel.diffTarget = '';
+  } catch (err) {
+    snapshotPanel.error = err.message || '读取失败';
+    snapshotPanel.snapshots = [];
+    snapshotPanel.current = null;
+  } finally {
+    snapshotPanel.loading = false;
+  }
+}
+
+/** 看某份备份与「当前线上」的差异 */
+async function viewSnapshotsDiff(file) {
+  if (!detail.value) return;
+  snapshotPanel.diffLoading = file;
+  try {
+    const data = await websiteApi.snapshotDiff(detail.value.name, { b: file });
+    snapshotPanel.diffTarget = file;
+    snapshotPanel.diffLines = data.lines || [];
+    snapshotPanel.diffAdded = data.added || 0;
+    snapshotPanel.diffRemoved = data.removed || 0;
+  } catch (err) {
+    ElMessage.error(err.message || '差异读取失败');
+  } finally {
+    snapshotPanel.diffLoading = '';
+  }
+}
+
+/** 回滚：二次确认 → 后端覆盖配置并探活 */
+async function doRestoreSnapshot(item) {
+  if (!detail.value) return;
+  const siteName = detail.value.name;
+  try {
+    await ElMessageBox.confirm(
+      `确定把「${siteName}」的 Nginx 配置回滚到「${item.createdAt}」的那一版吗？\n\n` +
+        '回滚前系统会先把当前配置也备份一份，所以这一步本身也能再回滚回来。',
+      '回滚配置确认',
+      { confirmButtonText: '确认回滚', cancelButtonText: '取消', type: 'warning' }
+    );
+  } catch {
+    return; // 用户取消
+  }
+
+  snapshotPanel.restoring = item.file;
+  try {
+    const data = await websiteApi.restoreSnapshot(siteName, item.file);
+    if (data.probe?.ok) {
+      ElMessage.success(`已回滚到该备份，站点探活正常（${data.probe.text}）`);
+    } else {
+      ElMessage.warning(`已回滚到该备份，但探活未通过：${data.probe?.text || '未知原因'}`);
+    }
+    // 配置已变，清掉「Nginx 配置」页的缓存，下次切过去重新读
+    configPanel.content = '';
+    await loadSnapshots();
+  } catch (err) {
+    ElMessage.error(err.message || '回滚失败');
+  } finally {
+    snapshotPanel.restoring = '';
+  }
+}
+
+/** 差异行左侧的符号：新增 + / 删除 − / 未变空格 */
+const diffSign = (type) => (type === 'add' ? '+' : type === 'del' ? '−' : ' ');
 
 // ---------------- 删除 ----------------
 async function confirmRemove(row) {
@@ -822,6 +1023,180 @@ onMounted(() => reload(1));
   overflow-y: auto;
 }
 
+/* ---------------- 配置历史（变更历史 + 一键回滚） ---------------- */
+.snapshots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snapshots__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+/* 当前线上：不可回滚，只作对照，所以弱化成"一行说明"而不是一个可操作项 */
+.snapshots__item--live {
+  background: transparent;
+  border-style: dashed;
+}
+
+.snapshots__item--active {
+  border-color: var(--brand-soft-border);
+  background: var(--brand-soft);
+}
+
+.snapshots__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.snapshots__time {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.snapshots__badge {
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.snapshots__meta {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.snapshots__actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
+/* 差异面板 */
+.diffpanel {
+  margin-top: var(--sp-4);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.diffpanel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.diffpanel__title em {
+  font-style: normal;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+}
+
+.diffpanel__stat {
+  display: flex;
+  gap: var(--sp-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.diffpanel__stat .is-add {
+  font-style: normal;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.diffpanel__stat .is-del {
+  font-style: normal;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.diffpanel__body {
+  max-height: 46vh;
+  overflow: auto;
+  padding: var(--sp-2) 0;
+  background: var(--bg-surface);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.dl {
+  display: flex;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+}
+
+.dl--add {
+  background: color-mix(in srgb, var(--success) 13%, transparent);
+}
+
+.dl--del {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.dl--skip {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.dl__no {
+  flex: 0 0 42px;
+  text-align: right;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.dl__sign {
+  flex: 0 0 10px;
+  font-weight: 700;
+}
+
+.dl--add .dl__sign {
+  color: var(--success);
+}
+
+.dl--del .dl__sign {
+  color: var(--danger);
+}
+
+/* 配置行要保留原始缩进（nginx 的层级全靠缩进读），所以用 pre 而不是换行折叠；
+   长行走横向滚动，不折行 —— 折行后缩进会对不上，反而更难读 */
+.dl__text {
+  white-space: pre;
+}
+
 .drawer-tip {
   margin-top: var(--sp-3);
   font-size: var(--fs-xs);
@@ -862,6 +1237,30 @@ onMounted(() => reload(1));
 }
 
 @media (max-width: 768px) {
+  /* 配置历史：手机上「时间」与「两个按钮」横排会挤成两行难看的方块，
+     改成整行堆叠、按钮各占一半 */
+  .snapshots__item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .snapshots__actions {
+    width: 100%;
+  }
+
+  .snapshots__actions > .el-button {
+    flex: 1 1 0;
+    margin-left: 0;
+  }
+
+  .diffpanel__body {
+    font-size: 11px;
+  }
+
+  .dl__no {
+    flex-basis: 30px;
+  }
+
   .toolbar__search {
     width: 100%;
   }
