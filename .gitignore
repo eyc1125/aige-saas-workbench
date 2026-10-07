@@ -6,6 +6,12 @@ node_modules/
 dist/
 build/
 
+# unplugin（auto-import / vue-components）在构建时生成的类型声明。
+# 它们给 IDE 补全用，但**每次构建都会被重新生成**（内容随组件用量变化），
+# 入库只会制造无意义的 diff 与冲突。
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+
 # 运行时数据（SQLite 数据库、日志、上传缓存）
 data/
 *.db
