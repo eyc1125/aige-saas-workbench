@@ -1,0 +1,27 @@
+{
+  "name": "aige-saas-workbench-tooling",
+  "private": true,
+  "version": "1.0.0",
+  "description": "艾哥SaaS工作台 · 仓库级工程工具（ESLint / Prettier）。业务依赖在 backend 与 frontend 各自的 package.json 里，这里只放质量工具。",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run lint"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-n": "^18.4.1",
+    "eslint-plugin-vue": "^10.11.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9"
+  }
+}

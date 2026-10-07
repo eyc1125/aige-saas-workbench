@@ -1,0 +1,27 @@
+# ============================================================
+# EditorConfig —— 编辑器层面的最小共识
+# ------------------------------------------------------------------
+# 只约束「编辑器不该自作主张改什么」，不做格式化（那是 Prettier 的活）。
+# 作用：避免不同编辑器/系统把行尾改成 CRLF、把缩进改成 Tab，
+# 导致 diff 里出现整文件变更。
+# ============================================================
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.md]
+# Markdown 里行尾两个空格是「硬换行」，不能删
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab

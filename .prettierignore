@@ -1,0 +1,39 @@
+# ============================================================
+# Prettier 忽略清单
+# ------------------------------------------------------------------
+# 只格式化「我们自己写的、需要人读的」文件。
+# ============================================================
+
+# 依赖与构建产物
+node_modules/
+dist/
+backend/public/
+
+# 生成物：由 tools/gen-brand-icons.ps1 产出，改了也没用（会被下次生成覆盖）
+frontend/public/*.png
+frontend/public/*.jpg
+
+# 锁文件（npm 自己维护格式，Prettier 碰它会制造无意义的 diff）
+package-lock.json
+
+# 本地部署脚本与验收产物（含现场信息，不入库）
+.deploy/
+.qa/shots/
+
+# 运行时数据
+data/
+*.db
+*.db-*
+*.log
+
+# 文档里的 ASCII 示意图对不齐就会难看，Markdown 只做保守换行
+# （proseWrap: preserve 已保证不重排段落，这里不再整体排除）
+
+# Markdown 整体排除：文档里有大量手绘 ASCII 结构图（布局示意、目录树），
+# Prettier 会把表格补空格对齐、重排列表缩进，既改不出更好的可读性，
+# 又会把 ASCII 图弄歪，还会让每次改文档都产生整段 diff。
+*.md
+
+# 其它
+.github/ISSUE_TEMPLATE/
+LICENSE
