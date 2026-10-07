@@ -2,10 +2,18 @@
  * 仪表盘路由
  * ------------------------------------------------------------------
  * GET /api/dashboard/overview  一次拉齐：服务器状态 + 统计卡片 + 最近操作日志
- * GET /api/dashboard/server    只拉服务器状态（前端定时轮询画 CPU/内存曲线）
+ * GET /api/dashboard/server    只拉服务器状态（KPI 卡定时轮询）
+ * GET /api/dashboard/metrics   历史趋势（1h / 6h / 24h / 7d / 30d）
  *
- * 设计说明：CPU / 内存的时间曲线由前端轮询本接口并自行累积（不落库、不占存储），
- *          因此这里返回的是「当前瞬时值」。
+ * ⚠️ 指标来源（改这块之前先看 services/metrics.js 顶部的说明）：
+ *   CPU / 负载 / 运行时长 / 内存 / 磁盘一律**自己读 /proc 与 fs.statfs**，
+ *   因为宝塔 /system 的 cpuRealUsed、load、setup_time 实测是错的
+ *   （load 被当成对象取 → 界面长期显示「系统负载 0」）。
+ *   宝塔只用来补充系统版本与分区明细。
+ *
+ * 趋势曲线**落库**（services/metricsStore.js）：以前曲线数据只是前端内存里累积的，
+ * 一刷新页面就空了。
+ *
  * 容错：宝塔或 Docker 未配置/不可用时，对应区块返回 unavailable + 原因，
  *      让仪表盘仍然可用（而不是整页报错），并给出「去配置」的指引。
  */
@@ -19,6 +27,8 @@ const settings = require('../services/settings');
 const baotaService = require('../services/baota');
 const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
+const metrics = require('../services/metrics');
+const metricsStore = require('../services/metricsStore');
 
 const router = express.Router();
 
@@ -28,24 +38,74 @@ const recentLogsStmt = db.prepare(`
 `);
 
 /**
- * 抓取服务器状态（宝塔）
- * 失败不抛错，返回 { available: false, reason }
+ * 抓取服务器状态
+ * 权威指标来自 /proc（见文件头说明），宝塔只补系统版本与分区明细。
+ * 宝塔挂了也不影响：CPU/内存/磁盘照常显示，只把宝塔标成不可用。
  */
 async function fetchServerStatus() {
+  const m = metrics.snapshot();
+
+  let bt = null;
+  let btError = '';
   try {
     const baota = baotaService.createClient();
     const [system, disk] = await Promise.all([baota.getSystemTotal(), baota.getDiskInfo()]);
-    return {
-      available: true,
-      ...system,
-      disk,
-      // 内存总量按 MB 换算成 GB 方便前端展示
-      memTotalGb: Number((system.memTotalMb / 1024).toFixed(2)),
-      memUsedGb: Number((system.memUsedMb / 1024).toFixed(2)),
-    };
+    bt = { system, disk };
   } catch (err) {
-    return { available: false, reason: err.message };
+    btError = err.message;
   }
+
+  // 磁盘优先用宝塔的（它会给出分区列表，信息更全）；拿不到就用 Node 直读的
+  let disk = bt?.disk;
+  if (!disk || !disk.available) {
+    disk = m.disk?.available
+      ? {
+          available: true,
+          source: 'statfs',
+          disks: [
+            {
+              path: m.disk.path,
+              filesystem: '-',
+              type: '-',
+              total: `${m.disk.totalGb} GB`,
+              used: `${m.disk.usedGb} GB`,
+              free: `${m.disk.freeGb} GB`,
+              usage: m.disk.usage,
+            },
+          ],
+          root: {
+            path: m.disk.path,
+            total: `${m.disk.totalGb} GB`,
+            used: `${m.disk.usedGb} GB`,
+            free: `${m.disk.freeGb} GB`,
+            usage: m.disk.usage,
+          },
+        }
+      : { available: false, reason: m.disk?.reason || '磁盘信息不可用' };
+  }
+
+  return {
+    // 即使宝塔不可用，/proc 依然给得出数据，所以这里恒为 true
+    available: true,
+    system: bt?.system?.system || '-',
+    version: bt?.system?.version || '-',
+    cpuNum: m.cpuNum,
+    cpuUsage: m.cpuUsage,          // 可能为 null：服务刚启动不到一个采样周期
+    cpuUsageAt: m.cpuUsageAt,
+    load: m.load,
+    uptimeSeconds: m.uptimeSeconds,
+    uptimeText: m.uptimeText,
+    uptime: m.uptimeSeconds,
+    disk,
+    memTotalMb: m.memTotalMb,
+    memUsedMb: m.memUsedMb,
+    memFreeMb: m.memFreeMb,
+    memUsage: m.memUsage,
+    memTotalGb: m.memTotalGb,
+    memUsedGb: m.memUsedGb,
+    baota: btError ? { available: false, reason: btError } : { available: true },
+    sampledAt: m.sampledAt,
+  };
 }
 
 /** 统计卡片：网站数 / 域名数 / 容器数 */
@@ -170,6 +230,16 @@ router.get(
       timestamp: Date.now(),
       time: new Date().toLocaleTimeString('zh-CN'),
     });
+  })
+);
+
+/** 历史趋势（曲线用，数据来自落库样本） */
+router.get(
+  '/metrics',
+  asyncHandler(async (req, res) => {
+    const range = String(req.query.range || '1h');
+    const series = metricsStore.getSeries(range);
+    return success(res, { ...series, stats: metricsStore.stats() });
   })
 );
 

@@ -97,3 +97,27 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS idx_alerts_open   ON alerts (status, level, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_fp     ON alerts (fingerprint, status);
 
+-- ---------------- 资源趋势采样 ----------------
+-- 为什么要落库：以前 CPU/内存曲线由前端轮询时**自行在内存里累积**，
+-- 结果就是「一刷新页面曲线就空了」—— 主人看到的空曲线就是这个原因。
+-- 改成后端每 2 分钟写一行，前端一打开就是满的。
+--
+-- 体积估算：每行约 90 字节，2 分钟一条 = 720 条/天
+--          → 30 天约 2.2 万行 ≈ 2MB。对 40G 的盘可忽略。
+CREATE TABLE IF NOT EXISTS metrics_samples (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts           INTEGER NOT NULL,          -- epoch 秒（按范围查询用这个）
+  at           TEXT    NOT NULL,          -- 'YYYY-MM-DD HH:MM:SS' 本地时间（展示用）
+  cpu          REAL,                      -- CPU 使用率 %
+  load1        REAL,
+  load5        REAL,
+  load15       REAL,
+  mem_used_mb  INTEGER,
+  mem_total_mb INTEGER,
+  mem_percent  REAL,
+  disk_used_gb REAL,
+  disk_total_gb REAL,
+  disk_percent REAL
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_samples (ts DESC);
+

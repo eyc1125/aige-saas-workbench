@@ -67,7 +67,30 @@ async function bootstrap() {
     console.error(`[health] 自动自愈定时器启动失败：${err.message}`);
   }
 
-  // ---------------- 5. 告警表清理 ----------------
+  // ---------------- 5. 指标采样与趋势落库 ----------------
+  // CPU 使用率必须靠「两次采样的差值」算，所以需要一个常驻采样器（5 秒）；
+  // 趋势曲线每 2 分钟写一行进 SQLite（见 services/metricsStore.js 的体积估算）。
+  try {
+    // eslint-disable-next-line global-require
+    const metrics = require('./services/metrics');
+    // eslint-disable-next-line global-require
+    const metricsStore = require('./services/metricsStore');
+
+    metrics.startSampler(5000);
+    // 首次落库延后 1.2 秒：CPU 使用率要靠两次采样算差值，
+    // 采样器启动后约 0.6 秒才有第一个有效值，立刻写会存进一条 cpu = null 的空样本。
+    setTimeout(() => metricsStore.startRecorder(), 1200).unref?.();
+
+    const removed = metricsStore.prune();
+    if (removed) console.log(`[metrics] 启动清理：移除 ${removed} 条过期样本`);
+    setInterval(() => metricsStore.prune(), 24 * 60 * 60 * 1000).unref();
+
+    console.log(`[metrics] 采样已启动：CPU 每 5 秒，趋势每 ${metricsStore.SAMPLE_INTERVAL_MS / 60000} 分钟，保留 ${metricsStore.KEEP_DAYS} 天`);
+  } catch (err) {
+    console.error(`[metrics] 采样启动失败：${err.message}`);
+  }
+
+  // ---------------- 6. 告警表清理 ----------------
   // 已解决的告警只保留最近 200 条：表本身很小，但不清理会随部署次数无限增长。
   // 启动时清一次，之后每天一次。
   try {
@@ -80,7 +103,7 @@ async function bootstrap() {
     console.error(`[alert] 告警清理失败：${err.message}`);
   }
 
-  // ---------------- 6. 优雅退出 ----------------
+  // ---------------- 7. 优雅退出 ----------------
   const shutdown = (signal) => {
     console.log(`\n[app] 收到 ${signal}，正在关闭服务 …`);
     const done = () => {
