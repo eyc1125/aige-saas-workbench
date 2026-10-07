@@ -1,0 +1,43 @@
+# 依赖
+node_modules/
+.Pnpm-*
+
+# 构建产物
+dist/
+build/
+
+# 运行时数据（SQLite 数据库、日志、上传缓存）
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 后端托管前端构建产物的目录（部署时拷贝 dist 进来）
+backend/public/
+
+# 本地部署辅助脚本（含服务器地址等现场信息，不入库）
+.deploy/
+
+# 多端验收台的截图产物（几十张 PNG，体积大且可随时重跑生成）
+.qa/shots/
+
+# finesse 的跨次雷同记录（本地工具状态）
+.finesse/
+
+# 环境变量（真实密钥绝不入库）
+.env
+.env.local
+.env.*.local
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+
+# 编辑器 / 系统
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

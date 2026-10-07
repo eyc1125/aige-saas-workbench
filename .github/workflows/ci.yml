@@ -1,0 +1,142 @@
+# ============================================================
+# CI · 提交即检查
+# ------------------------------------------------------------------
+# 为什么要有这个：本轮就是靠这类机械检查逮到「两个对象展开合并时同名字段互相覆盖」
+# 那种肉眼看不出来的 bug。人写代码会漏，机器不会。
+#
+# 三个 job 互相独立，哪个挂了一眼能看出是哪一层的问题：
+#   1. backend-syntax —— 纯语法检查，不装依赖，几秒钟出结果
+#   2. mcp-tools      —— 装后端依赖，验证「工具总数与分组一致」（防文档漂移）
+#   3. frontend-build —— 真跑一次 vite build，前端类型/引用错误在这里暴露
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------- 1. 后端语法（快，不用装依赖） ----------------
+  backend-syntax:
+    name: 后端语法检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: node --check 全部后端源码
+        run: |
+          set -e
+          count=0
+          for f in $(find backend/src -name '*.js' | sort); do
+            node --check "$f"
+            count=$((count + 1))
+          done
+          echo "✅ 已检查 $count 个文件，语法全部通过"
+
+      - name: 必需的配置文件是否齐全
+        run: |
+          set -e
+          for f in \
+            backend/src/mcp/instructions.js \
+            backend/src/mcp/tools.js \
+            backend/src/services/health.js \
+            backend/Dockerfile \
+            frontend/Dockerfile \
+            docker-compose.yml \
+            .env.example ; do
+            [ -f "$f" ] || { echo "❌ 缺少必需文件：$f"; exit 1; }
+          done
+          echo "✅ 必需文件齐全"
+
+      - name: 确保没有把真实密钥提交进来
+        run: |
+          set -e
+          if [ -f .env ]; then
+            echo "❌ 仓库里出现了 .env（真实密钥），必须移除"
+            exit 1
+          fi
+          # 粗筛：常见的密钥字面量不该出现在源码里
+          if grep -rn --include='*.js' --include='*.vue' --include='*.json' \
+               -E '(sk-[A-Za-z0-9]{20,}|cfut_[A-Za-z0-9]{20,})' backend/src frontend/src 2>/dev/null; then
+            echo "❌ 源码里疑似写入了明文密钥"
+            exit 1
+          fi
+          echo "✅ 未发现明文密钥"
+
+  # ---------------- 2. MCP 工具清单一致性 ----------------
+  mcp-tools:
+    name: MCP 工具分组自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: npm install --omit=dev --no-audit --no-fund --registry=https://registry.npmmirror.com
+
+      - name: 工具总数与分组必须一致
+        working-directory: backend
+        run: |
+          node -e "
+            const { TOOL_DEFINITIONS } = require('./src/mcp/tools');
+            const { TOOL_COUNT, TOOL_GROUPS, auditGroups, SERVER_INSTRUCTIONS } = require('./src/mcp/instructions');
+            const a = auditGroups();
+            console.log('注册工具数 =', TOOL_DEFINITIONS.length);
+            console.log('推导工具数 =', TOOL_COUNT);
+            console.log('分组数     =', TOOL_GROUPS.length);
+            if (!a.ok) {
+              console.error('❌ 分组与注册不一致');
+              process.exit(1);
+            }
+            if (TOOL_COUNT !== TOOL_DEFINITIONS.length) {
+              console.error('❌ 工具总数推导有误');
+              process.exit(1);
+            }
+            // 说明书里的数字必须与实际一致（历史上手写过「28 个工具」忘了改）
+            if (!SERVER_INSTRUCTIONS.includes(\`能力地图（\${TOOL_COUNT} 个工具\`)) {
+              console.error('❌ 说明文字里的工具数与实际不符');
+              process.exit(1);
+            }
+            console.log('✅ 工具清单、分组、说明文字三者一致');
+          "
+
+  # ---------------- 3. 前端构建 ----------------
+  frontend-build:
+    name: 前端构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装前端依赖
+        working-directory: frontend
+        run: npm install --no-audit --no-fund --registry=https://registry.npmmirror.com
+
+      - name: vite build
+        working-directory: frontend
+        run: npm run build
+
+      - name: 产物体积报告
+        working-directory: frontend
+        run: |
+          echo "=== 产物体积（gzip）==="
+          find dist/assets -name '*.js' -o -name '*.css' | sort | while read f; do
+            printf '%8s  %s\n' "$(gzip -c "$f" | wc -c | awk '{printf "%.1fKB", $1/1024}')" "$(basename "$f")"
+          done
+          TOTAL=$(find dist/assets -name '*.js' | xargs gzip -c | wc -c)
+          echo "---"
+          echo "JS 合计（gzip）：$(echo "$TOTAL" | awk '{printf "%.1fKB", $1/1024}')"

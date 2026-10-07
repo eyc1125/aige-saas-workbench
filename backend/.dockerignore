@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+data
+# 跨平台 lockfile 不入镜像（原因见 Dockerfile 注释）
+package-lock.json
+.env
+.env.*
+logs
+.git
+.gitignore
+*.md
+.vscode
+.idea

@@ -1,0 +1,13 @@
+node_modules
+dist
+npm-debug.log
+# 跨平台 lockfile 不入镜像：在 Windows/macOS 生成的 lock 缺 Linux 版 optional 依赖，
+# 会导致容器内 vite build 报 @rollup/rollup-linux-x64-musl 缺失（npm/cli#4828）
+package-lock.json
+.env
+.env.*
+.git
+.gitignore
+.vscode
+.idea
+*.md

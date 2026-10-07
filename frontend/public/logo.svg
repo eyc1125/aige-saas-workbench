@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72" width="320" height="72" role="img" aria-label="艾哥 SaaS 工作台">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a9c4d"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(4, 8)">
+    <rect width="56" height="56" rx="16" fill="url(#lg)"/>
+    <rect x="1" y="1" width="54" height="54" rx="15.2" fill="none"
+          stroke="rgba(255,255,255,0.26)" stroke-width="1.6"/>
+    <path d="M28 15.5 L17 40 M28 15.5 L39 40 M22 31 H34"
+          fill="none" stroke="#f3fbf5" stroke-width="3.8"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="76" y="34" font-family="'PingFang SC','Microsoft YaHei',-apple-system,'Segoe UI',sans-serif"
+        font-size="22" font-weight="600" fill="#13251a" letter-spacing="-0.4">艾哥 SaaS 工作台</text>
+  <text x="77" y="54" font-family="'PingFang SC','Microsoft YaHei',-apple-system,'Segoe UI',sans-serif"
+        font-size="12.5" fill="#4c6a58" letter-spacing="0.6">服务器统一管控 · MCP 原生 · 自愈巡检</text>
+</svg>

@@ -1,0 +1,106 @@
+/**
+ * 接口封装
+ * ------------------------------------------------------------------
+ * 所有后端接口在这里集中定义，页面里只调用语义化函数，不写裸 URL。
+ * 与后端 routes 一一对应，改接口时只动这一处。
+ */
+import request, { getToken } from './request';
+
+// ==================== 登录鉴权 ====================
+export const authApi = {
+  login: (data) => request.post('/auth/login', data, { silent: true }),
+  profile: () => request.get('/auth/profile', { silent: true }),
+  changePassword: (data) => request.put('/auth/password', data),
+  logout: () => request.post('/auth/logout', {}, { silent: true }),
+};
+
+// ==================== 仪表盘 ====================
+export const dashboardApi = {
+  overview: () => request.get('/dashboard/overview', { silent: true }),
+  server: () => request.get('/dashboard/server', { silent: true }),
+};
+
+// ==================== 网站管理 ====================
+export const websiteApi = {
+  list: (params) => request.get('/websites', { params, silent: true }),
+  detail: (name) => request.get(`/websites/${encodeURIComponent(name)}`),
+  create: (data) => request.post('/websites', data),
+  remove: (name) => request.delete(`/websites/${encodeURIComponent(name)}`),
+  applySsl: (name, data) => request.post(`/websites/${encodeURIComponent(name)}/ssl`, data),
+  /** 站点访问 / 错误日志（type: access | error） */
+  logs: (name, params) => request.get(`/websites/${encodeURIComponent(name)}/logs`, { params, silent: true }),
+  /** 站点 Nginx 配置（只读） */
+  nginxConfig: (name) => request.get(`/websites/${encodeURIComponent(name)}/nginx-config`, { silent: true }),
+  /** SSL 证书台账：含剩余天数与状态（expired | expiring | ok） */
+  sslCerts: () => request.get('/websites/ssl-certs', { silent: true }),
+  /** 批量续签即将到期的证书 */
+  renewSsl: (sites) => request.post('/websites/ssl-certs/renew', { sites }),
+};
+
+// ==================== 健康巡检与自愈 ====================
+export const inspectApi = {
+  /** 跑一遍巡检，返回各项结论 + 自动自愈状态 */
+  run: () => request.get('/inspect', { silent: true }),
+  /** 执行指定检查项的修复（受后端熔断约束） */
+  fix: (checkId) => request.post('/inspect/fix', { checkId }),
+  /** 开关自动自愈 / 调巡检间隔 */
+  setAuto: (data) => request.put('/inspect/auto', data),
+  /** 立刻跑一轮自动自愈 */
+  runAuto: () => request.post('/inspect/auto/run'),
+};
+
+// ==================== 域名管理 ====================
+export const domainApi = {
+  zones: () => request.get('/domains/zones', { silent: true }),
+  records: (zoneId, params) => request.get(`/domains/zones/${zoneId}/records`, { params, silent: true }),
+  addRecord: (zoneId, data) => request.post(`/domains/zones/${zoneId}/records`, data),
+  updateRecord: (zoneId, recordId, data) => request.put(`/domains/zones/${zoneId}/records/${recordId}`, data),
+  removeRecord: (zoneId, recordId) => request.delete(`/domains/zones/${zoneId}/records/${recordId}`),
+  quickAdd: (data) => request.post('/domains/quick-add', data),
+};
+
+// ==================== Docker ====================
+export const dockerApi = {
+  containers: (params) => request.get('/docker/containers', { params, silent: true }),
+  start: (id) => request.post(`/docker/containers/${id}/start`),
+  stop: (id) => request.post(`/docker/containers/${id}/stop`),
+  restart: (id) => request.post(`/docker/containers/${id}/restart`),
+  remove: (id, params) => request.delete(`/docker/containers/${id}`, { params }),
+  logs: (id, params) => request.get(`/docker/containers/${id}/logs`, { params, silent: true }),
+  images: () => request.get('/docker/images', { silent: true }),
+  networks: () => request.get('/docker/networks', { silent: true }),
+  /**
+   * 容器日志实时推送地址（SSE，直接给 EventSource 用）
+   * 说明：EventSource 无法自定义请求头，所以令牌只能走 query。
+   *      该地址只在本机/内网使用，如需对外暴露请让 Nginx 过滤 access_log 中的 token 参数。
+   */
+  logStreamUrl: (id, tail = 100) =>
+    `/api/docker/containers/${id}/logs/stream?tail=${tail}&token=${encodeURIComponent(getToken())}`,
+};
+
+// ==================== 应用商店 ====================
+export const appApi = {
+  templates: () => request.get('/apps/templates', { silent: true }),
+  compose: (key) => request.get(`/apps/templates/${key}/compose`),
+  deploy: (data) => request.post('/apps/deploy', data),
+  tasks: (params) => request.get('/apps/tasks', { params, silent: true }),
+  task: (taskId) => request.get(`/apps/tasks/${taskId}`, { silent: true }),
+  taskLogs: (taskId, params) => request.get(`/apps/tasks/${taskId}/logs`, { params, silent: true }),
+  clearTaskLogs: (taskId) => request.delete(`/apps/tasks/${taskId}/logs`),
+};
+
+// ==================== 系统设置 ====================
+export const settingApi = {
+  get: () => request.get('/settings'),
+  save: (data) => request.put('/settings', data),
+  test: (target, data) => request.post(`/settings/test/${target}`, data || {}, { silent: true }),
+  mcp: () => request.get('/settings/mcp'),
+  regenerateMcpToken: () => request.post('/settings/mcp/token'),
+  updateAdmin: (data) => request.put('/settings/admin', data),
+  system: () => request.get('/settings/system', { silent: true }),
+};
+
+// ==================== 操作日志 ====================
+export const logApi = {
+  list: (params) => request.get('/logs', { params, silent: true }),
+};

@@ -1,0 +1,269 @@
+# MCP 工作流与能力清单 · 艾哥 SaaS 工作台
+
+> 目标：**任何 AI 开发工具（Trae / Cursor / Claude Desktop / Windsurf / VS Code …）接上这一个 MCP，
+> 就能接管这台服务器的全部日常运维**——不需要再额外挂「宝塔面板 MCP」或「Cloudflare MCP」。
+>
+> 本文是「人看的说明书」；AI 侧的等价说明在 `backend/src/mcp/instructions.js`，
+> 客户端连接时会自动读到，界面上也能一键复制。
+
+---
+
+## 一、30 秒接入（复制即用）
+
+打开 **系统设置 → MCP 连接 → 复制 MCP 配置**，把得到的那段 JSON 贴进 AI 工具的 MCP 配置里：
+
+```json
+{
+  "mcpServers": {
+    "aige-workbench": {
+      "url": "https://aige-saas-mcp.miaocaieyc.com.cn/sse",
+      "headers": {
+        "Authorization": "Bearer <你的 MCP 令牌>"
+      }
+    }
+  }
+}
+```
+
+- 令牌不用手填：界面上的「复制 MCP 配置」已经带上真实令牌，粘贴即可用。
+- 保存后**重启 AI 工具**，即可看到名为 `aige-workbench` 的 MCP 服务器。
+- 健康检查：`GET https://aige-saas-mcp.miaocaieyc.com.cn/health`（返回工具数与当前会话数）。
+- 传输协议：SSE。令牌支持三种传法，任选其一：`Authorization: Bearer <token>` / `x-mcp-token: <token>` / `?token=<token>`。
+
+---
+
+## 二、能力清单（30 个工具 · 按用途分组）
+
+### ① 巡检与自愈
+
+| 工具 | 参数 | 做什么 |
+| --- | --- | --- |
+| `get_server_status` | — | CPU / 内存 / 磁盘 / 负载 + 网站、域名、容器数量，一句话体检 |
+| `list_ssl_certs` | — | 全站证书台账：签发者、生效/到期时间、**剩余天数**、状态（ok / expiring / expired） |
+| `run_health_checks` | — | **跑一遍自愈巡检**（6 项），每项返回结论 + 是否可一键修复 + 该项的熔断预算 |
+| `apply_health_fix` | `checkId` | **执行某项修复**（如 `ssl_expiring` / `container_down` / `disk_watermark`），受熔断约束 |
+
+### ② 网站（宝塔）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_websites` | `search` `page` `limit` | 站点列表（域名、目录、状态、PHP 版本、备注） |
+| `create_website` | `domain` `path?` `ps?` | 新建静态站点，**自动查重**，不覆盖已存在的站 |
+| `delete_website` | `domain` | 删除站点（含网站目录）⚠️ 不可恢复 |
+| `apply_ssl` | `domain` `mode?` `domains?` | 申请 / 部署证书（默认 Let's Encrypt 自动签发） |
+| `get_site_logs` | `site` `type(access\|error)` `lines?` | 读站点访问日志 / 错误日志（尾部 N 行） |
+| `get_nginx_config` | `site` | 读站点 Nginx 配置全文 |
+| `save_nginx_config` | `site` `content` | 覆盖写配置 ⚠️ 写前自动备份 + 写完 `nginx -t` 试载 |
+
+### ③ 文件与备份
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `read_file` | `path` `lines?` | 读服务器文件；给 `lines` 即按 tail 只取末尾（看日志用） |
+| `list_directory` | `path` | 列目录（名称 / 大小 / 时间 / 权限 / 属主） |
+| `list_backups` | — | 宝塔备份台账（`/www/backup` 下按用途分子目录） |
+
+### ④ 域名与 DNS（Cloudflare）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_domains` | — | 已托管的域名区域（zone）列表 |
+| `list_dns_records` | `zone_id?` `domain?` `type?` `search?` | 某区域的解析记录 |
+| `add_dns_record` | `type` `name` `content` `proxied?` | 添加解析；**同名同类型自动复用**，不重复创建 |
+| `update_dns_record` | `record_id?` / `name` `content?` `proxied?` | 改记录值或切代理开关（比删了重建安全） |
+| `delete_dns_record` | `zone_id` `record_id` | 删除解析 ⚠️ 不可恢复 |
+| `get_zone_info` | `zone_id?` `domain?` | 区域详情：状态、套餐、DNS 服务器、**SSL 模式** |
+| `purge_cloudflare_cache` | `zone_id?` `domain?` `urls?` | 清边缘缓存（不传 `urls` 即全量清） |
+
+### ⑤ Docker
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_containers` | `all?` `state?` `search?` `managed?` | 容器列表，并标记哪些由本工作台部署 |
+| `restart_container` | `container_id` | 重启容器（最常用的单动作） |
+| `manage_container` | `container` `action(start\|stop\|restart\|remove)` | 完整的启停删 |
+| `get_container_logs` | `container` `lines?` | 容器日志（排查启动失败必用） |
+| `list_images` | — | 镜像列表（标签 / 大小 / 被引用数） |
+
+### ⑥ 应用部署（本系统独有，宝塔/Cloudflare MCP 都没有）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_app_templates` | — | 可一键部署的模板（WordPress / NocoDB / Dify / n8n / Uptime Kuma …） |
+| `deploy_app` | `app_name` `domain` `wait?` | 一键部署，自动串起「DNS 解析 → 拉镜像 → 起容器 → 申请证书 → 反向代理」 |
+| `get_deploy_logs` | `task_id` `since_id?` | 部署进度与增量日志 |
+
+### ⑦ 万能兜底
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `call_bt_api` | `endpoint` `params?` `method?` | 直接调宝塔任意 API（计划任务、防火墙、FTP、数据库、文件压缩等未封装能力） |
+
+端点参考：<https://www.bt.cn/api-doc/>
+
+---
+
+## 三、常见工作流（AI 照这个顺序调就行）
+
+### 0. 先体检，有问题顺手修掉（推荐每次运维前先做）
+
+```
+run_health_checks                    ← 6 项体检：证书到期 / HTTPS 覆盖 / CF SSL 模式 / 容器状态 / 磁盘水位 / 口令自查
+apply_health_fix  checkId=ssl_expiring    ← 证书临期批量续签（已过期 + 7 天内到期）
+apply_health_fix  checkId=container_down  ← 启动本项目停掉的容器（其他项目容器不会被碰）
+apply_health_fix  checkId=disk_watermark  ← 清理 dangling 镜像释放空间
+```
+
+- 只有 `fix` 非空的项才可修；`cf_ssl_mode`、`weak_credentials` 故意不提供自动修复 ——
+  它们的影响面超出本项目（zone 级 SSL 模式会影响该域名下其他项目的站点），必须由人判断。
+- 每项都带 `budget`（熔断预算）：同一动作 30 分钟内最多 3 次。被熔断就说明没真修好，
+  应该去查根因而不是继续重试。
+
+### 1. 新增一个二级域名并让它能访问
+
+```
+list_dns_records      ← 先查重（同名记录已存在就别建）
+add_dns_record        ← type=A, name=完整域名, content=服务器IP, proxied=true
+create_website        ← 建站点（自动查重）
+apply_ssl             ← 签发证书（需域名已解析到本机且 80 端口可达）
+```
+
+### 2. 部署一个新应用
+
+```
+list_app_templates    ← 拿到 app_name
+deploy_app            ← app_name + domain；默认等部署结束并返回访问地址
+get_deploy_logs       ← 想看中途进度时用（传 task_id）
+```
+
+### 3. 某个网站打不开了
+
+```
+get_site_logs         ← type=error 先看错误日志
+get_nginx_config      ← 看配置有没有被改坏（和上次对比）
+list_containers       ← 如果是容器应用
+get_container_logs    ← 看容器为什么起不来
+restart_container     ← 确认是偶发崩溃后重启
+```
+
+### 4. 证书巡检 / 续签
+
+```
+list_ssl_certs        ← 一次看全：daysLeft + status
+apply_ssl             ← 对 expiring / expired 的站点逐个续签
+```
+
+### 5. 改了内容但访客还是旧版
+
+```
+purge_cloudflare_cache ← 传 domain 全量清；只想清单个页面就传 urls
+```
+
+### 6. 磁盘快满了
+
+```
+get_server_status     ← 确认磁盘使用率
+list_images           ← 找出占空间的镜像
+list_containers       ← 找出占空间的容器
+list_backups          ← 看老备份能不能清
+call_bt_api           ← 走宝塔的清理接口做进一步处理
+```
+
+---
+
+## 四、它相对「宝塔 MCP + Cloudflare MCP」覆盖了什么
+
+| 能力 | 宝塔官方 MCP | Cloudflare 官方 MCP | 本工作台 MCP |
+| --- | --- | --- | --- |
+| 站点列表 / 增删 | ✅ | ✖ | ✅ |
+| 站点日志（访问 + 错误） | ✅ | ✖ | ✅ |
+| Nginx 配置读写 | ✅ | ✖ | ✅ |
+| 文件读取 / 目录列举 | ✅ | ✖ | ✅ |
+| 备份台账 | ✅ | ✖ | ✅ |
+| 证书台账（剩余天数） | 部分 | ✖ | ✅ |
+| 万能 API 兜底 | ✅ | ✖ | ✅ |
+| DNS 增 / 改 / 删 | ✖ | 仅增 | ✅ |
+| 区域详情 / SSL 模式 | ✖ | ✅ | ✅ |
+| 清边缘缓存 | ✖ | ✅ | ✅ |
+| 容器启停 / 日志 | ✖ | ✖ | ✅ |
+| **一键部署应用（含自动配 HTTPS）** | ✖ | ✖ | ✅ |
+| **自愈巡检 + 一键修复（带熔断）** | ✖ | ✖ | ✅ |
+
+结论：**只需要接这一个 MCP**。
+
+---
+
+## 五、约定与边界（AI 必须遵守）
+
+1. **参数宽松，不用先查 ID**：`add_dns_record` 只给完整域名即可自动定位区域；
+   `manage_container` / `restart_container` 支持容器名或 ID 前几位；`update_dns_record` 可只给记录名。
+2. **删除类不可恢复**：`delete_website`（连站点目录一起删）、`delete_dns_record`、
+   `manage_container(action=remove)` —— 执行前必须先向用户确认。
+3. **改配置有自动保护**：`save_nginx_config` 写前备份原文件（返回 `backupPath`），写完 `nginx -t` 试载。
+   强烈建议先 `get_nginx_config` 读一遍再改。
+4. **`deploy_app` 默认等部署完成**才返回，单次调用可能耗时几分钟，属正常。
+5. **不碰无关项目**：服务器上还跑着其他项目（koyca / tito-* / ogkur 等），
+   除非用户明确要求，否则只操作与该需求相关的域名与站点。
+6. **危险操作先报名再动手**：涉及删除、覆盖配置、改线上配置时，先说明「要做什么 + 影响范围」。
+7. **每一次调用都有留痕**：Web 点击与 MCP 调用统一写入操作日志，
+   可在「仪表盘 → 最近操作」或「操作日志」里查。
+8. **自愈的边界**（重要）：`run_health_checks` 会把「其他项目的容器已停止」列成 `info` 级，
+   那是**只报告**，不要对它执行修复。自动修复的作用域白名单只包含本项目自己的站点与容器。
+
+---
+
+## 六、巡检与自愈的设计说明
+
+### 6.1 六个检查项
+
+| checkId | 检查什么 | 严重度依据 | 可否自动修 | 修法 |
+| --- | --- | --- | --- | --- |
+| `ssl_expiring` | 证书到期风险 | 已过期 / ≤7 天 = critical | ✅ 可自动 | 重新签发 Let's Encrypt（单批 ≤10 个，串行） |
+| `ssl_missing` | 站点未启用 HTTPS | info | ✖ 需确认 | 申请证书（可能因域名未解析失败） |
+| `cf_ssl_mode` | CF SSL 模式与源站是否一致 | 回源明文 / 会 526 = critical | ✖ 仅报告 | 不提供 —— zone 级改动会影响其他项目 |
+| `container_down` | 本项目容器是否在跑 | 停着 = critical | ✅ 可自动 | 启动容器（只动本项目 + 应用商店部署的） |
+| `disk_watermark` | 磁盘水位 | ≥85% warning / ≥92% critical | ✅ 可自动 | 清理 dangling 镜像（不承载容器，零风险） |
+| `weak_credentials` | 口令与令牌自查 | 默认口令 / 无 MCP 令牌 = critical | ✖ 仅报告 | 不提供 —— 改密码人立刻登不上，必须由人做 |
+
+### 6.2 五条安全护栏（「自愈别变自毁」）
+
+1. **作用域白名单**：只对本项目自己的站点与容器自动修复；其他项目的资源只报告。
+2. **探测与执行分离**：`inspect()` 只读、绝无副作用；`apply()` 才动手。
+3. **熔断**：同一修复 30 分钟内最多 3 次 —— 反复起不来的容器反复重启只会把机器拖垮。
+4. **全量留痕**：每次修复（无论成败）都写 `operation_logs`，含目标、动作、风险级别、耗时。
+5. **固定注册表**：修复动作只来自代码里注册的 6 项，AI 也只能调 `apply_health_fix(checkId)`，
+   不能构造任意指令。
+
+### 6.3 自动自愈（可开关）
+
+- 在「健康巡检」页打开开关即可，配置存在 `settings` 表（`auto_heal_enabled` / `auto_heal_interval_min`），重启后保持。
+- 间隔最小 10 分钟，默认 60 分钟。
+- **只执行 `fix.auto === true` 的项**（证书续签、启动本项目容器、清理无用镜像），
+  其余（改 CF SSL 模式、改密码、补站点证书）始终留给人工确认。
+- 每次自动执行的结论会保留在页面「最近一次自动执行」里，同时写入操作日志。
+
+### 6.4 巡检接口（供界面与 AI 用）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/inspect` | 跑一遍巡检，返回各项结论 + 自动自愈状态 |
+| POST | `/api/inspect/fix` | `{ checkId }` 执行某项修复 |
+| PUT | `/api/inspect/auto` | `{ enabled, intervalMin }` 开关自动自愈 |
+| POST | `/api/inspect/auto/run` | 立刻跑一轮自动自愈 |
+
+---
+
+## 七、返回结构约定
+
+所有工具统一返回 `{ success, data, message }`：
+
+```json
+{
+  "success": true,
+  "message": "已获取 3 个网站",
+  "data": { "list": [], "total": 3 }
+}
+```
+
+AI 侧同时能拿到一段人类可读的文本（`✅ <message>` + 结构化 JSON），
+失败时 `success=false` 且 `isError=true`，`message` 里带可执行的修复提示。

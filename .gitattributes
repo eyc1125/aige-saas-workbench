@@ -1,0 +1,30 @@
+# ============================================================
+# 换行符统一（重要）
+# ------------------------------------------------------------------
+# 本项目在 Windows 上开发，部署目标是 Linux。
+# 若让 Git 把源码写成 CRLF，会出两类真故障：
+#   · shell 脚本报 `$'\r': command not found`
+#   · GitHub Actions 的 run: 步骤直接失败（同样是不可见字符）
+# 所以仓库与工作区一律 LF。
+# ============================================================
+* text=auto eol=lf
+
+# 二进制文件不参与换行转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.zip  binary
+*.gz   binary
+*.tgz  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.pdf  binary
+
+# 明确声明类型，方便 GitHub 正确高亮与统计
+*.md   text
+*.yml  text
+*.yaml text
