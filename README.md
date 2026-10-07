@@ -18,10 +18,10 @@
 | 模块 | 能做什么 |
 | --- | --- |
 | 仪表盘 | CPU / 内存 / 磁盘 / 负载 + **资源趋势曲线**（后端落库，2 分钟一条、保留 30 天，可切 1 小时 ~ 30 天），网站·域名·容器·部署统计，**证书到期提醒**，最近操作日志 |
-| 网站管理 | 宝塔站点列表（含**证书剩余天数**）、一键新建静态站、删除、申请 SSL，**站点日志与 Nginx 配置查看** |
+| 网站管理 | 宝塔站点列表（含**证书剩余天数**）、一键新建静态站、删除、申请 SSL，**站点日志 / Nginx 配置查看**，**配置变更历史 + 一键回滚**（B2） |
 | 证书与安全 | **全站证书台账 + 到期倒计时**（口径与宝塔一致）、巡检结论、单个/批量续签 |
 | 健康巡检 | **6 项自动体检 + 一键修复 + 自动自愈**（带作用域白名单、熔断与全量留痕） |
-| 告警中心 | 顶栏铃铛 + 未读红点 + 抽屉列表；**同一问题按指纹去重**，巡检/部署/自愈失败为触发源；支持通用 Webhook 与飞书机器人 |
+| 告警中心 | 顶栏铃铛 + 未读红点 + 抽屉列表；**同一问题按指纹去重**，巡检/部署/自愈失败为触发源；支持通用 Webhook、飞书机器人、**企业微信群机器人**（三个通道可同时开、并行推送） |
 | 域名管理 | Cloudflare 域名区域、DNS 记录增删改、橙色云/灰色云一键切换 |
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
@@ -428,6 +428,9 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | GET/POST | `/api/websites` | 网站列表 / 新建 |
 | GET/DELETE | `/api/websites/:name` | 详情 / 删除 |
 | POST | `/api/websites/:name/ssl` | 申请或部署证书 |
+| GET | `/api/websites/:name/snapshots` | 配置备份快照列表（变更历史） |
+| GET | `/api/websites/:name/snapshots/diff` | 两份配置的行级差异（`a` 省略=当前线上） |
+| POST | `/api/websites/:name/snapshots/restore` | 一键回滚到某份备份（必须传 `confirm: true`） |
 | GET | `/api/domains/zones` | 域名区域列表 |
 | GET/POST | `/api/domains/zones/:zoneId/records` | DNS 记录列表 / 新增 |
 | PUT/DELETE | `/api/domains/zones/:zoneId/records/:recordId` | 修改（含代理开关）/ 删除 |
@@ -713,7 +716,6 @@ Missing named parameter "current_step"
 > `/sys/fs/cgroup/memory.max`。本项目展示的是「整台服务器」的水位，用宿主机值是对的。
 
 ### 17.16 给 element-plus 指定固定 chunk 名 = 把全站组件钉在首屏
-
 `vite.config.js` 里写了 `if (id.includes('element-plus')) return 'element'`，
 本意是「单独切块、吃长缓存」，实际效果却是：
 
@@ -725,6 +727,27 @@ Missing named parameter "current_step"
 **解决**：不给 element-plus 指定 chunk，交给 Rollup 按引用关系自己切
 （入口只带走自己用到的，组件跟着各自路由懒加载，多处共用的自动提升成共享块）。
 **首屏 427KB → 154KB gzip（−64%）**。ECharts 与 Vue 仍单独成块吃长缓存。
+
+### 17.17 宝塔 `/files?action=GetDir` 返回的字段是 `FILES`，不是 `FILE`
+
+做「配置历史」时需要列 nginx 配置目录里的 `.conf` 与 `.conf.bak.*` 文件，
+结果一份都列不出来 —— 原来 `listDir()` 读的是 `res.FILE`，而宝塔返回的是 **`res.FILES`（复数）**，
+于是**文件列表永远是空的**，只有 `res.DIR` 里的子目录能列出来。
+
+这个 bug 存在很久没被发现，是因为它唯一的调用方 `listBackups()` 只看 `/www/backup` 下的
+**子目录**，正好绕开了出问题的那一半。
+
+> 教训：解析第三方响应时，**拿一个真实响应把每个字段都打印出来**，比照着文档写更靠谱；
+> 另外「只有一半能用」的函数，往往意味着另一半根本没被真正使用过。
+
+### 17.18 请求体 JSON 语法错误被当成 500
+
+body-parser 在 JSON 语法错误时抛的是 `{ status: 400, expose: true }`，
+但错误处理中间件当时只认 `AppError`，其余一律 500 —— 于是调用方看到的是
+「服务器内部错误，请查看后端日志」，转头去后端日志里找一个根本不存在的 bug。
+
+**解决**：识别带 `expose: true` 的 4xx 框架异常，按真实状态码与原因返回
+（`isClientError()`）。5xx 的框架异常仍按未捕获异常处理，避免把内部细节透出去。
 
 ---
 
