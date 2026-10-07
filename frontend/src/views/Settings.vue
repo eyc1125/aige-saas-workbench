@@ -263,12 +263,44 @@
         />
 
         <el-form label-position="top">
+          <el-form-item label="企业微信群机器人（可选，推荐）">
+            <el-input
+              v-model="form.alert_wecom_webhook"
+              :placeholder="
+                settingsMeta.alert_wecom_webhook?.hasValue
+                  ? `已保存（${settingsMeta.alert_wecom_webhook.value}），留空表示不修改`
+                  : 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx'
+              "
+              clearable
+            />
+            <p class="field-tip">
+              企业微信里打开任意「群聊」→「群设置 → 群机器人 → 添加机器人」，复制它的 Webhook
+              地址即可。推的是 markdown 卡片，紧急/警告会标成橙色。
+            </p>
+          </el-form-item>
+
+          <el-form-item label="飞书机器人 Webhook（可选）">
+            <el-input
+              v-model="form.alert_feishu_webhook"
+              :placeholder="
+                settingsMeta.alert_feishu_webhook?.hasValue
+                  ? `已保存（${settingsMeta.alert_feishu_webhook.value}），留空表示不修改`
+                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'
+              "
+              clearable
+            />
+            <p class="field-tip">
+              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。 ⚠️
+              若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
+            </p>
+          </el-form-item>
+
           <el-form-item label="通用 Webhook（可选）">
             <el-input
               v-model="form.alert_webhook_url"
               :placeholder="
                 settingsMeta.alert_webhook_url?.hasValue
-                  ? `已保存（${settingsMeta.alert_webhook_url.masked}），留空表示不修改`
+                  ? `已保存（${settingsMeta.alert_webhook_url.value}），留空表示不修改`
                   : 'https://你的地址/alert'
               "
               clearable
@@ -278,23 +310,16 @@
               时间），方便接你自己的系统。
             </p>
           </el-form-item>
-
-          <el-form-item label="飞书机器人 Webhook（可选，推荐）">
-            <el-input
-              v-model="form.alert_feishu_webhook"
-              :placeholder="
-                settingsMeta.alert_feishu_webhook?.hasValue
-                  ? `已保存（${settingsMeta.alert_feishu_webhook.masked}），留空表示不修改`
-                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'
-              "
-              clearable
-            />
-            <p class="field-tip">
-              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。国内可达、零成本。 ⚠️
-              若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
-            </p>
-          </el-form-item>
         </el-form>
+
+        <el-alert
+          class="mcp-note"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="飞书与企业微信的地址不能混填"
+          description="两者是不同协议：飞书是 {msg_type, content}，企业微信是 {msgtype, markdown}，成功判定也不同（code vs errcode）。填错位置会一直推送失败。三个通道可以同时配，会并行推送、互不影响。"
+        />
 
         <p class="field-tip">
           防刷屏机制：同一问题 30 分钟内只推一次；问题重复出现只累加次数（不会刷出一堆重复告警）。
@@ -516,6 +541,7 @@ const form = reactive({
   // 告警外部通道（敏感项，留空=不修改）
   alert_webhook_url: '',
   alert_feishu_webhook: '',
+  alert_wecom_webhook: '',
 });
 
 /** 保存时的初始快照，用于判断「是否有改动」 */
@@ -532,17 +558,11 @@ const DEPLOY_KEYS = [
   'host_data_dir',
   'registry_mirror',
 ];
-/** 告警外部通道（两个都是敏感项，留空表示不修改） */
-const ALERT_KEYS = ['alert_webhook_url', 'alert_feishu_webhook'];
+/** 告警外部通道（三个都是敏感项，留空表示不修改） */
+const ALERT_KEYS = ['alert_webhook_url', 'alert_feishu_webhook', 'alert_wecom_webhook'];
 
 /** 是否已配置任一外部通道（只用于界面上的状态徽标） */
-const isAlertOn = computed(
-  () =>
-    !!(
-      settingsMeta.value.alert_webhook_url?.hasValue ||
-      settingsMeta.value.alert_feishu_webhook?.hasValue
-    )
-);
+const isAlertOn = computed(() => ALERT_KEYS.some((key) => settingsMeta.value[key]?.hasValue));
 
 // ---------------- 分组定义 ----------------
 const connectionGroups = computed(() => [

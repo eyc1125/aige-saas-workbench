@@ -88,8 +88,10 @@ function initSettings() {
     ['host_data_dir', config.deploy.hostDataDir, 0],
     ['registry_mirror', config.deploy.registryMirror, 0],
     // 告警外部通道（留空=只用站内告警；在「系统设置 → 告警通知」里填）
+    // 飞书与企业微信是两种协议，各自独立一格，不能共用（格式差异见 services/notify.js）
     ['alert_webhook_url', '', 1],
     ['alert_feishu_webhook', '', 1],
+    ['alert_wecom_webhook', '', 1],
   ];
 
   const insert = db.prepare(

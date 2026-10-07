@@ -57,9 +57,11 @@ const SCHEMA = {
   // MCP 连接令牌：数据库里有值就优先用它（便于在界面上重新生成），否则用 .env 里的
   mcp_auth_token: { secret: true, label: 'MCP 连接令牌', def: () => config.mcpAuthToken },
   // ---------------- 告警外部通道 ----------------
-  // 这两个地址里通常带着机器人的 access_token，等于凭据，所以按敏感项加密存储
+  // 这几个地址里通常带着机器人的 access_token/key，等于凭据，所以按敏感项加密存储。
+  // ⚠️ 飞书与企业微信是**两种不同协议**，地址不能混填（格式差异见 services/notify.js 顶部）
   alert_webhook_url: { secret: true, label: '告警 Webhook 地址', def: () => '' },
   alert_feishu_webhook: { secret: true, label: '飞书机器人 Webhook', def: () => '' },
+  alert_wecom_webhook: { secret: true, label: '企业微信群机器人 Webhook', def: () => '' },
 };
 
 const selectStmt = db.prepare('SELECT key, value, is_secret FROM settings WHERE key = ?');

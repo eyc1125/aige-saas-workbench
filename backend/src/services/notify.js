@@ -14,7 +14,14 @@
  * 通道：
  *   · 站内（必开）—— 落 SQLite，顶栏铃铛 + 抽屉列表，未读红点
  *   · Webhook（可选）—— POST 一段 JSON 到任意地址，方便接自己的系统
- *   · 飞书机器人（可选）—— 走飞书自定义机器人协议；国内可达、零成本
+ *   · 飞书机器人（可选）—— 走飞书自定义机器人协议
+ *   · 企业微信群机器人（可选）—— 走企业微信「群机器人」协议
+ *
+ * ⚠️ 飞书与企业微信**格式不一样，不能混用同一个地址**（这是最容易踩的坑）：
+ *   飞书：{"msg_type":"text","content":{"text":"..."}}   成功返回 {"code":0}
+ *   企微：{"msgtype":"markdown","markdown":{"content":"..."}}  成功返回 {"errcode":0}
+ *   字段名大小写、外层结构、成功判定全都不同，所以拆成两个独立通道。
+ *   两个都填 = 两边都推（对应 getChannels/dispatch 里的并行 tasks）。
  */
 'use strict';
 
@@ -28,6 +35,7 @@ const QUIET_WINDOW_MS = 30 * 60 * 1000;
 /** 设置表里的键名 */
 const KEY_WEBHOOK = 'alert_webhook_url';
 const KEY_FEISHU = 'alert_feishu_webhook';
+const KEY_WECOM = 'alert_wecom_webhook';
 
 const LEVEL_ORDER = { critical: 0, warning: 1, info: 2 };
 
@@ -230,13 +238,17 @@ function prune() {
 // 外发通道
 // ============================================================
 
-/** 读取通知配置（webhook / 飞书是否已填） */
+/** 读取通知配置（webhook / 飞书 / 企微 是否已填） */
 function getChannels() {
   const webhook = settings.get(KEY_WEBHOOK) || '';
   const feishu = settings.get(KEY_FEISHU) || '';
+  const wecom = settings.get(KEY_WECOM) || '';
   return {
     webhook: { enabled: !!webhook, urlHint: webhook ? maskUrl(webhook) : '' },
     feishu: { enabled: !!feishu, urlHint: feishu ? maskUrl(feishu) : '' },
+    wecom: { enabled: !!wecom, urlHint: wecom ? maskUrl(wecom) : '' },
+    // 只要有任意一个通道启用，外部通知就算「已开启」
+    anyEnabled: !!(webhook || feishu || wecom),
     quietWindowMinutes: QUIET_WINDOW_MS / 60000,
   };
 }
@@ -262,6 +274,39 @@ function feishuBody({ level, source, title, detail }) {
   return { msg_type: 'text', content: { text: lines.join('\n') } };
 }
 
+/**
+ * 企业微信群机器人的 markdown 消息体
+ * ------------------------------------------------------------------
+ * 用的是 markdown 而不是 text：企微的 text 消息全是一个色，看不出严重度；
+ * markdown 支持 `font color`，紧急/警告能标成橙色，一眼分得出来。
+ *
+ * 注意企微 markdown 的能力边界（别写它不支持的东西，会原样显示成乱码）：
+ *   · 支持：`#` 标题、`**加粗**`、`>` 引用、`[]()` 链接、`<font color="info|comment|warning">`
+ *   · **不支持**：表格、代码块高亮、图片混排
+ *   · 单条 content 上限 4096 字节，超了整条会被拒（所以 detail 必须截断）
+ */
+const WECOM_COLOR = { critical: 'warning', warning: 'warning', info: 'info' };
+
+function wecomBody({ level, source, title, detail }) {
+  const color = WECOM_COLOR[level] || 'comment';
+  const lines = [
+    `<font color="${color}">${LEVEL_TEXT[level] || '提示'}</font>｜艾哥 SaaS 工作台`,
+    '',
+    `> **来源**：${source}`,
+    `> **事件**：${title}`,
+  ];
+  if (detail) lines.push('', String(detail).slice(0, 800));
+  lines.push('', `<font color="comment">${new Date().toLocaleString('zh-CN')}</font>`);
+
+  const content = lines.join('\n');
+  // 兜底再按字节截一次：中文 3 字节/字，800 字符的 detail 加上模板仍在限内，
+  // 但 detail 里若混了大量 emoji/组合字符，字符数会低估字节数，所以再卡一道
+  return {
+    msgtype: 'markdown',
+    markdown: { content: Buffer.byteLength(content) > 4000 ? content.slice(0, 1200) : content },
+  };
+}
+
 /** 通用 webhook 的 JSON 体 */
 function webhookBody(payload) {
   return {
@@ -278,11 +323,16 @@ function webhookBody(payload) {
 /**
  * 把一条告警发到所有已启用的通道
  * 返回是否至少有一个通道成功
+ *
+ * 三个通道**并行发**而不是串行：串行的话「webhook 超时 10s + 飞书超时 10s + 企微 10s」
+ * 最坏要等 30 秒，而 raise() 是会被巡检主流程等待的。
+ * 并行之后最坏仍是各自的超时时间，不会叠加。
  */
 async function dispatch(payload) {
   const webhook = settings.get(KEY_WEBHOOK) || '';
   const feishu = settings.get(KEY_FEISHU) || '';
-  if (!webhook && !feishu) return false;
+  const wecom = settings.get(KEY_WECOM) || '';
+  if (!webhook && !feishu && !wecom) return false;
 
   const tasks = [];
 
@@ -325,6 +375,27 @@ async function dispatch(payload) {
     );
   }
 
+  if (wecom) {
+    tasks.push(
+      request(wecom, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: wecomBody(payload),
+        timeout: 10000,
+        serviceName: '企业微信机器人',
+      })
+        .then((res) => {
+          // 企微成功返回 {errcode:0, errmsg:'ok'}；HTTP 一直是 200，必须在响应体里判
+          const code = res && typeof res === 'object' ? res.errcode : undefined;
+          if (code !== undefined && code !== 0) {
+            return { channel: 'wecom', ok: false, message: wecomErrorHint(code, res.errmsg) };
+          }
+          return { channel: 'wecom', ok: true };
+        })
+        .catch((err) => ({ channel: 'wecom', ok: false, message: err.message }))
+    );
+  }
+
   const results = await Promise.all(tasks);
   for (const r of results) {
     if (!r.ok) console.warn(`[notify] ${r.channel} 推送失败：${r.message}`);
@@ -332,11 +403,32 @@ async function dispatch(payload) {
   return results.some((r) => r.ok);
 }
 
+/**
+ * 企业微信常见错误码 → 人话
+ * 企微的 errcode 只看数字根本猜不到问题，而设置页又不能显示完整地址，
+ * 所以把最容易撞的几个直接翻译好，省掉「去翻文档」这一步。
+ */
+function wecomErrorHint(code, msg) {
+  const hints = {
+    93000: 'Webhook 地址无效 —— 群机器人的 key 复制少了或已重置，请回群里重新复制',
+    40001: 'Webhook 地址无效或机器人已被移出群',
+    45009: '接口调用超过限制（企微限 20 条/分钟），稍后会自动恢复',
+    40058: '机器人被停用或群已解散',
+  };
+  const hint = hints[code];
+  return hint
+    ? `企业微信 errcode=${code}：${hint}`
+    : `企业微信 errcode=${code}（${msg || '未知错误'}）`;
+}
+
 /** 发一条测试告警（设置页的「发送测试」用） */
 async function sendTest() {
   const channels = getChannels();
-  if (!channels.webhook.enabled && !channels.feishu.enabled) {
-    return { ok: false, message: '还没有配置任何外部通道（Webhook / 飞书），只写入了站内告警' };
+  if (!channels.anyEnabled) {
+    return {
+      ok: false,
+      message: '还没有配置任何外部通道（Webhook / 飞书 / 企业微信），只写入了站内告警',
+    };
   }
   const ok = await dispatch({
     level: 'info',
@@ -347,7 +439,9 @@ async function sendTest() {
   });
   return {
     ok,
-    message: ok ? '测试告警已发出，请检查接收端' : '发送失败，请检查地址是否正确（详见后端日志）',
+    message: ok
+      ? '测试告警已发出，请检查接收端（若同时配了多个通道，都发成功了才算成功）'
+      : '发送失败，请检查地址是否正确（常见原因：把飞书地址填到了企业微信栏，或反过来）',
   };
 }
 
@@ -364,4 +458,5 @@ module.exports = {
   sendTest,
   KEY_WEBHOOK,
   KEY_FEISHU,
+  KEY_WECOM,
 };

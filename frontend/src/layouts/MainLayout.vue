@@ -301,6 +301,7 @@ const channelText = computed(() => {
   const on = [];
   if (alertChannels.value.webhook?.enabled) on.push('Webhook 已配');
   if (alertChannels.value.feishu?.enabled) on.push('飞书已配');
+  if (alertChannels.value.wecom?.enabled) on.push('企业微信已配');
   return on.length ? on.join('、') : '仅站内（未配外部通道）';
 });
 
