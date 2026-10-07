@@ -46,6 +46,9 @@ const stmtTouch = db.prepare(`
          level = ?,
          title = ?,
          detail = ?,
+         -- 关键：问题重新出现时必须把已读清掉，否则"看过一次"之后
+         -- 后续再发生就不再亮红点，等于把告警静音了（这是实测踩到的坑）
+         read_at = NULL,
          updated_at = datetime('now', 'localtime')
    WHERE id = ?
 `);

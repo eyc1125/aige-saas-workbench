@@ -325,6 +325,8 @@ const healthHint = computed(() => {
 async function loadHealth() {
   try {
     health.value = await inspectApi.run();
+    // 巡检会同步产生/关闭告警，广播一下让顶栏铃铛立刻更新（否则要等最多 60 秒）
+    window.dispatchEvent(new CustomEvent('aige:alerts-changed'));
   } catch {
     // 体检失败不影响仪表盘其余部分
     health.value = null;

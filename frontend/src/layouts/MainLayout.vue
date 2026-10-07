@@ -274,6 +274,15 @@ async function loadAlertSummary() {
   }
 }
 
+/**
+ * 巡检类操作用广播通知顶栏立刻刷新红点
+ * 背景：顶栏是 60 秒轮询一次汇总的，如果不广播，用户刚跑完巡检、
+ *      告警已经产生了，铃铛却要等最多一分钟才变红 —— 体感像"没生效"。
+ * 用 window 事件而不是 Pinia：这里只有一个订阅方，不值得为此引入一个 store。
+ */
+const ALERTS_CHANGED_EVENT = 'aige:alerts-changed';
+const onAlertsChanged = () => loadAlertSummary();
+
 async function loadAlerts() {
   alertLoading.value = true;
   try {
@@ -338,10 +347,12 @@ onMounted(async () => {
   // 告警红点：60 秒轮询一次汇总（很轻），不拉列表
   loadAlertSummary();
   alertTimer = setInterval(loadAlertSummary, 60000);
+  window.addEventListener(ALERTS_CHANGED_EVENT, onAlertsChanged);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
+  window.removeEventListener(ALERTS_CHANGED_EVENT, onAlertsChanged);
   if (alertTimer) clearInterval(alertTimer);
 });
 </script>
@@ -515,6 +526,9 @@ onBeforeUnmount(() => {
 
 .topbar__titles {
   min-width: 0;
+  /* 关键：h1 里的中文词组不能断行，会撑出 min-content 宽度把右侧控件顶出去，
+     所以这里必须允许标题被裁切（裁剪只是兜底，正常宽度下不会触发）。 */
+  overflow: hidden;
 }
 
 .topbar__title {
@@ -523,6 +537,9 @@ onBeforeUnmount(() => {
   letter-spacing: -0.015em;
   line-height: 1.2;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar__subtitle {
@@ -841,6 +858,35 @@ onBeforeUnmount(() => {
   /* 侧栏抽屉里的导航项也抬高，避免误触 */
   .side__collapse {
     height: 44px;
+  }
+}
+
+/* ==================== 超窄屏（≤400px）====================
+   320px 上顶栏要放「汉堡 + 铃铛 + 主题 + 用户菜单」四个控件，
+   用默认间距会被挤出去 5–17px（实测由验收台抓到）。
+   这里只收紧间距、去掉装饰性的下拉箭头 —— 压缩空隙，不减少功能。
+   注意必须写在 scoped 块里：scoped 样式带 [data-v-*] 属性选择器，
+   同选择器下特异性更高，写在非 scoped 块里会被盖掉。 */
+@media (max-width: 400px) {
+  .topbar {
+    padding: 0 var(--sp-3);
+  }
+
+  .topbar__left,
+  .topbar__right {
+    gap: var(--sp-2);
+  }
+
+  .user {
+    padding: 0 var(--sp-1) 0 3px;
+  }
+
+  .user__caret {
+    display: none;
+  }
+
+  .topbar__title {
+    font-size: var(--fs-md);
   }
 }
 </style>

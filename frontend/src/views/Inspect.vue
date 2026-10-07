@@ -241,6 +241,8 @@ async function load() {
     const data = await inspectApi.run();
     applyPayload(data);
     state.value = checks.value.length ? 'ready' : 'empty';
+    // 巡检会同步产生/关闭告警 → 通知顶栏铃铛立刻刷新
+    window.dispatchEvent(new CustomEvent('aige:alerts-changed'));
   } catch (err) {
     errorMessage.value = err.message || '未知错误';
     state.value = 'error';
