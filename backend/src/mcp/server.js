@@ -8,10 +8,17 @@
  *        POST /messages  客户端回传消息（sessionId 区分连接）
  *        GET  /health    健康检查
  *
- * 认证：请求需带 MCP 令牌，支持三种传法（哪个顺手用哪个）：
+ * 认证：请求头带 MCP 令牌，两种写法任选：
  *        Authorization: Bearer <token>
  *        x-mcp-token: <token>
- *        ?token=<token>
+ *      ⛔ 不支持 `?token=`（URL 查询参数）—— 原因见下方 extractToken 上的注释，
+ *         一句话：SSE 客户端只在建连时用 URL，后面每次调工具都不会带上它，
+ *         支持它等于提供一个「能连上但一用就 401」的半坏路径。
+ *
+ * 长连接保活：每 25 秒发一次 SSE 心跳（`:` 注释行）。
+ *      ⛔ 这个必须有：服务经 Cloudflare 橙色云对外，**CF 免费版对空闲连接约 100 秒就断**，
+ *         而 SSE 只在调用工具时才发数据 —— 不心跳的话，AI 停一会儿连接就被掐掉。
+ *      同时限制同时会话数（20）并按 15 分钟空闲清理僵尸会话。
  *
  * 令牌分级（D2 · 只读令牌）：
  *   full     —— 全部工具
@@ -43,6 +50,23 @@ const { SERVER_INFO, SERVER_INSTRUCTIONS } = require('./instructions');
 
 const SCOPE_FULL = 'full';
 const SCOPE_READONLY = 'readonly';
+
+/**
+ * SSE 心跳间隔：25 秒
+ * ------------------------------------------------------------------
+ * ⛔ 为什么这个必须有：这个 MCP 是通过 `https://aige-saas-mcp.miaocaieyc.com.cn`
+ *    （Cloudflare 橙色云）对外暴露的，而 **Cloudflare 免费版对空闲连接约 100 秒就断**。
+ *    我们的 SSE 只有在「调用工具」时才会发数据 —— 也就是说，AI 一旦停下来思考
+ *    一分多钟，连接就会被中间链路掐掉，客户端看到的是「MCP 断了」。
+ *    25 秒一次定时写注释行，既刷新链路的空闲计时，又能顺手发现已经死掉的连接。
+ */
+const SSE_HEARTBEAT_MS = 25 * 1000;
+
+/** 同时最多几个 MCP 会话（正常一个人也就 1~3 个客户端；上限是防泄漏，不是限流） */
+const MAX_SESSIONS = 20;
+
+/** 多久没收到客户端任何消息就算「僵尸会话」（客户端异常退出时 close 事件可能不来） */
+const SESSION_IDLE_MS = 15 * 60 * 1000;
 
 /** 只读令牌能看到的工具清单（顺序与注册顺序一致，界面上不会跳来跳去） */
 const READONLY_DEFINITIONS = TOOL_DEFINITIONS.filter((t) => READONLY_TOOLS.has(t.name));
@@ -133,13 +157,21 @@ function currentToken() {
   return currentTokens().full;
 }
 
-/** 从请求里取令牌（三种传法） */
+/**
+ * 从请求里取令牌
+ * ------------------------------------------------------------------
+ * ⛔ **刻意不支持 `?token=`（URL 查询参数）**，这是踩过之后去掉的：
+ *    SSE 客户端只在**建连那一次**用到 URL，后续每个工具调用都是 POST 到
+ *    服务端下发的 `/messages?sessionId=...`，**那个 URL 里不带我们给的 token** ——
+ *    结果就是「连接显示成功、但每次调工具都 401」，最难查的一种半坏状态。
+ *    而请求头（Authorization / x-mcp-token）会被客户端**原样带到每一次 POST**，所以只认头。
+ *    真要在终端里调试，用：curl -H "x-mcp-token: <token>" ...
+ */
 function extractToken(req) {
   const header = req.headers.authorization || '';
   return (
     (header.startsWith('Bearer ') ? header.slice(7).trim() : '') ||
-    String(req.headers['x-mcp-token'] || '') ||
-    String(req.query.token || '')
+    String(req.headers['x-mcp-token'] || '')
   );
 }
 
@@ -169,7 +201,10 @@ function authMiddleware(req, res, next) {
   if (!scope) {
     return res.status(401).json({
       code: 'UNAUTHORIZED',
-      message: 'MCP 令牌无效，请检查 Authorization: Bearer <token>',
+      message:
+        'MCP 令牌无效或没带上。令牌要放在**请求头**里（`Authorization: Bearer <token>` 或 `x-mcp-token: <token>`），' +
+        '**不要放在 URL 的 ?token= 里** —— SSE 客户端只在建连时用到 URL，后面每次调工具都不会带上它。' +
+        '配置请直接从「系统设置 → MCP 连接」复制。',
       data: null,
     });
   }
@@ -185,8 +220,42 @@ async function startMcpServer() {
   const app = express();
   app.use(express.json({ limit: '5mb' }));
 
-  // 会话表：sessionId → { transport, scope }
+  // 会话表：sessionId → { transport, scope, lastSeenAt }
   const sessions = new Map();
+
+  /** 关闭并移除一个会话（幂等；连接可能已经自己断了） */
+  function dropSession(sessionId, why) {
+    const s = sessions.get(sessionId);
+    if (!s) return;
+    sessions.delete(sessionId);
+    try {
+      s.transport.close?.();
+    } catch {
+      /* 已经断了，忽略 */
+    }
+    console.log(`[mcp] 会话 ${sessionId} 已清理（${why}），剩余 ${sessions.size}`);
+  }
+
+  /**
+   * SSE 心跳 + 僵尸会话清理（一个定时器干两件事）
+   * 客户端会忽略 `:` 开头的注释行，但它确实是一条数据 —— 中间链路（Cloudflare / Nginx）
+   * 的空闲计时因此被刷新，长连接就不会被静默掐断。
+   */
+  const heartbeat = setInterval(() => {
+    const now = Date.now();
+    for (const [id, s] of sessions) {
+      if (now - s.lastSeenAt > SESSION_IDLE_MS) {
+        dropSession(id, '空闲超时');
+        continue;
+      }
+      try {
+        s.transport.res?.write(': keep-alive\n\n');
+      } catch {
+        dropSession(id, '写入失败（连接已断）');
+      }
+    }
+  }, SSE_HEARTBEAT_MS);
+  heartbeat.unref?.();
 
   app.get('/health', (_req, res) => {
     const { full, readonly } = currentTokens();
@@ -197,6 +266,8 @@ async function startMcpServer() {
         service: 'aige-workbench-mcp',
         transport: 'sse',
         sessions: sessions.size,
+        maxSessions: MAX_SESSIONS,
+        heartbeatSeconds: SSE_HEARTBEAT_MS / 1000,
         tools: TOOL_DEFINITIONS.length,
         readonlyTools: READONLY_DEFINITIONS.length,
         authRequired: !!(full || readonly),
@@ -208,21 +279,29 @@ async function startMcpServer() {
 
   // 建立 SSE 连接
   app.get('/sse', authMiddleware, async (req, res) => {
+    // 会话上限：防「客户端异常退出、close 事件没来」导致的会话泄漏
+    if (sessions.size >= MAX_SESSIONS) {
+      console.warn(`[mcp] ⚠️ 会话数已达上限 ${MAX_SESSIONS}，拒绝新连接`);
+      return res.status(503).json({
+        code: 'TOO_MANY_SESSIONS',
+        message: `同时连接的 MCP 客户端已达上限（${MAX_SESSIONS} 个）。请先关掉不用的客户端，稍等片刻再连（空闲会话 15 分钟后会自动清理）。`,
+        data: { sessions: sessions.size },
+      });
+    }
+
     const scope = req.mcpScope;
     const transport = new SSEServerTransport('/messages', res);
-    sessions.set(transport.sessionId, { transport, scope });
+    sessions.set(transport.sessionId, { transport, scope, lastSeenAt: Date.now() });
     console.log(
       `[mcp] 新连接建立，session=${transport.sessionId}，级别=${scope}，当前会话数 ${sessions.size}`
     );
 
-    res.on('close', () => {
-      sessions.delete(transport.sessionId);
-      console.log(`[mcp] 连接关闭，session=${transport.sessionId}，剩余会话数 ${sessions.size}`);
-    });
+    res.on('close', () => dropSession(transport.sessionId, '客户端断开'));
 
     // 每个连接一个独立 Server 实例，级别在建连时就固化下来
     const server = createMcpServer({ scope });
     await server.connect(transport);
+    return undefined;
   });
 
   // 客户端回传消息
@@ -236,6 +315,9 @@ async function startMcpServer() {
         data: null,
       });
     }
+
+    // 有消息往来 = 这个会话还活着，刷新空闲计时
+    session.lastSeenAt = Date.now();
 
     // 级别必须与建连时一致：否则拿只读令牌往全权 session 发消息就能提权
     if (session.scope !== req.mcpScope) {

@@ -105,6 +105,11 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - **蒲公英（内测分发）** —— 看版本/下载页/二维码用下面的只读工具；**上传安装包也由本工作台承担**
   （见下方「把安装包发到蒲公英」），**不需要再单独挂蒲公英官方 MCP 或装 CLI**
 
+> ⚠️ **主人已经（或即将）停用宝塔面板与 Cloudflare 的官方 MCP，只保留本工作台这一个。**
+> 这意味着：宝塔/Cloudflare 的任何操作**都只能走这里** —— 本系统封装的工具优先，
+> 没封装的用 \`call_bt_api\` 兜底（端点速查表见下方「⑩ 万能兜底」）。
+> 遇到「这个操作本 MCP 好像没有」时，**先想 \`call_bt_api\`，不要回答「做不到」**。
+
 **⚠️ 有两组是纯只读，别承诺写操作：**
 - **GitHub**：只能看提交与 CI 状态（\`list_repo_commits\` / \`get_ci_status\`），
   **不能**建 Issue / 提 PR / 重跑 CI —— 要写操作得另配 GitHub MCP。
@@ -192,9 +197,44 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - ⚠️ 本工作台自己的定时清理（指标采样、日志保留、告警清理）在后端进程里跑，**不在这个清单里**，
   别回答「本项目没有定时任务所以什么东西都没在清理」
 
-**⑩ 万能兜底**
-- \`call_bt_api\` — 直接调用宝塔任意 API 端点。本系统没封装的能力（防火墙、
-  FTP、数据库、文件压缩等）都用它，端点参考 https://www.bt.cn/api-doc/
+**⑩ 万能兜底（宝塔任意端点）**
+- \`call_bt_api\` — 直接调用宝塔任意 API 端点。本系统没封装的能力（防火墙、FTP、数据库、
+  文件压缩、系统服务…）都用它。端点参考 https://www.bt.cn/api-doc/
+
+### ⚠️ 用 \`call_bt_api\` 之前必读
+
+1. **参数怎么传**：\`endpoint\` 传**带 query 的路径**（如 \`/crontab?action=GetCrontab\`），
+   业务参数放 \`params\` 对象（会被序列化成表单体）。鉴权参数（\`request_time\` / \`request_token\`）
+   **由客户端自动生成**，不要自己传。
+2. **默认 POST**：宝塔写操作基本都是 POST，所以不传 \`method\` 就是 POST；
+   少数纯查询接口要 GET，显式传 \`method: "GET"\`。
+3. **只读令牌用不了它** —— \`call_bt_api\` 被归为写工具（它能触达任意写接口）。只读连接里它连清单都不出现。
+4. **动线上配置前先读一遍**：先 Get 看清现状，再改；改完能用系统自带工具验证的（如 \`get_nginx_config\`）就验证一下。
+
+**已验证可用的端点**（本系统代码里真实在用，返回结构已知）：
+
+| 用途 | 端点 |
+| --- | --- |
+| 系统信息 / 磁盘 / 网络 | \`/system?action=GetSystemTotal\`、\`/system?action=GetDiskInfo\`、\`/system?action=GetNetWork\` |
+| 站点列表（\`table=sites\`） | \`/data?action=getData\` |
+| 列目录 / 读文件 / 写文件 | \`/files?action=GetDir\`、\`/files?action=GetFileBody\`、\`/files?action=SaveFileBody\` |
+| 计划任务列表 | \`/crontab?action=GetCrontab\` |
+| 申请证书 | \`/acme?action=apply_cert_api\`（本系统已用 \`apply_ssl\` 封装） |
+
+**常见但本系统未验证的端点族**（宝塔文档里有，用之前**先小步试、并核对返回**，
+不要直接拿它做破坏性操作）：
+
+| 用途 | 端点族 |
+| --- | --- |
+| 防火墙 | \`/firewall?action=GetList\`、\`AddFirewallRules\`、\`DelFirewallRules\`、\`AddPortRule\` |
+| 数据库 | \`/data?action=getData\`（\`table=databases\`）、\`/database?action=AddDatabase\` / \`DeleteDatabase\` |
+| FTP | \`/data?action=getData\`（\`table=ftps\`）、\`/ftp?action=AddUser\` / \`DeleteUser\` |
+| 计划任务（增删/启停） | \`/crontab?action=AddCrontab\` / \`DelCrontab\` / \`StartTask\` / \`StopTask\` |
+| 站点增删 | \`/site?action=AddSite\` / \`DeleteSite\` |
+| 服务启停 | \`/system?action=ServiceAdmin\` |
+
+> ⛔ **共享服务器红线**：这台机器上还有别的项目（koyca / tito-* / ogkur 等）。
+> 用 \`call_bt_api\` 时**只操作与本项目相关的东西**；涉及「删/停/清」的动作，先向主人报备。
 
 ## 二、常见任务的推荐工作流
 

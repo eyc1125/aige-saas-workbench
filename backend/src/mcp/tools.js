@@ -642,15 +642,47 @@ const WRITE_TOOLS = new Set([
 /** 统一成功结果 */
 const ok = (data, message = '操作成功') => ({ success: true, data: data ?? null, message });
 
-/** 把域名解析成 zone_id（zone_id 缺省时使用） */
-async function resolveZoneId({ zone_id, domain }) {
-  if (zone_id) return zone_id;
+/**
+ * 取「网站」标识（**宽容输入**）
+ * ------------------------------------------------------------------
+ * 站点名、网站域名、站点标识在本系统里指的是同一个东西，但不同工具的参数名
+ * 历史上分别叫过 \`site\` / \`siteName\` / \`domain\`。AI 读到的是每个工具的 JSON Schema，
+ * 一不留神就会在三个名字之间猜错，然后「报错 → 重读 schema → 重试」白跑一轮。
+ * 三种都认一下，比要求 AI 永远别猜错更实际。
+ */
+const pickSite = (args = {}) =>
+  String(args.site || args.siteName || args.domain || args.name || '').trim();
+
+/** 取「区域 ID」：文档口径是 \`zone_id\`，但驼峰 \`zoneId\` 也认（AI 很爱写驼峰） */
+const pickZoneId = (args = {}) => String(args.zone_id || args.zoneId || '').trim();
+
+/** 取「记录 ID」：同理，\`record_id\` 与 \`recordId\` 都认 */
+const pickRecordId = (args = {}) => String(args.record_id || args.recordId || '').trim();
+
+/** Cloudflare 的 zone_id 形状：32 位十六进制（用来区分「这是 ID」还是「这是域名」） */
+const looksLikeZoneId = (v) => /^[0-9a-f]{32}$/i.test(String(v || ''));
+
+/** 把 zone_id / 域名 解析成真正的 zone_id（zone_id 缺省时自动定位） */
+async function resolveZoneId(args = {}) {
+  const raw = pickZoneId(args);
+
+  // ⛔ 这里必须分辨「传的是 ID 还是域名」：
+  //    AI 很爱把域名塞进 zoneId（参数名看着就像要 ID），如果直接当 ID 用，
+  //    Cloudflare 会返回一个含糊的错误，排查方向会被带偏。
+  //    zone_id 是 32 位十六进制，不像就当作域名走自动定位。
+  if (raw && looksLikeZoneId(raw)) return raw;
+
+  const domain = String(args.domain || (String(raw).includes('.') ? raw : '')).trim();
   if (!domain) {
-    throw Object.assign(new Error('需要提供 zone_id，或提供完整域名以便自动定位'), {
-      expected: true,
-      status: 400,
-    });
+    throw Object.assign(
+      new Error(
+        '需要提供 zone_id（32 位，或 zoneId），或者直接给一个完整域名' +
+          '（如 aige-saas-panel.miaocaieyc.com.cn）让我自动定位'
+      ),
+      { expected: true, status: 400 }
+    );
   }
+
   const cf = cloudflareService.createClient();
   const zone = await cf.findZoneByDomain(domain);
   return zone.id;
@@ -831,18 +863,20 @@ const TOOL_HANDLERS = {
   },
 
   /** 7. DNS 记录列表 */
-  async list_dns_records({ zone_id, domain, type = '', search = '' }) {
-    const zoneId = await resolveZoneId({ zone_id, domain });
+  async list_dns_records(args = {}) {
+    const { type = '', search = '' } = args;
+    const zoneId = await resolveZoneId(args);
     const records = await cloudflareService.createClient().listDnsRecords(zoneId, { type, search });
     return ok({ zoneId, list: records, total: records.length }, `共 ${records.length} 条解析记录`);
   },
 
   /** 8. 添加 DNS 记录 */
-  async add_dns_record({ zone_id, type, name, content, proxied = true, ttl, priority }) {
+  async add_dns_record(args = {}) {
+    const { type, name, content, proxied = true, ttl, priority } = args;
     if (!type || !name || !content) {
       return { success: false, data: null, message: 'type、name、content 均为必填' };
     }
-    const zoneId = await resolveZoneId({ zone_id, domain: name });
+    const zoneId = await resolveZoneId({ ...args, domain: args.domain || name });
     const cf = cloudflareService.createClient();
 
     const { record, created } = await cf.ensureDnsRecord(zoneId, {
@@ -864,11 +898,13 @@ const TOOL_HANDLERS = {
   },
 
   /** 9. 删除 DNS 记录 */
-  async delete_dns_record({ zone_id, record_id }) {
-    if (!zone_id || !record_id)
-      return { success: false, data: null, message: 'zone_id 与 record_id 均为必填' };
-    const result = await cloudflareService.createClient().deleteDnsRecord(zone_id, record_id);
-    return ok(result, `解析已删除（record_id: ${record_id}）`);
+  async delete_dns_record(args = {}) {
+    const zoneId = await resolveZoneId(args);
+    const recordId = pickRecordId(args);
+    if (!recordId)
+      return { success: false, data: null, message: '需要提供 record_id（recordId 也认）' };
+    const result = await cloudflareService.createClient().deleteDnsRecord(zoneId, recordId);
+    return ok(result, `解析已删除（record_id: ${recordId}）`);
   },
 
   /** 10. 容器列表 */
@@ -1028,8 +1064,16 @@ const TOOL_HANDLERS = {
   // ============================================================
 
   /** 14. 站点日志（访问 / 错误） */
-  async get_site_logs({ site, type = 'access', lines = 100 }) {
-    if (!site) return { success: false, data: null, message: '需要提供 site（网站域名）' };
+  async get_site_logs(args = {}) {
+    const { type = 'access', lines = 100 } = args;
+    const site = pickSite(args);
+    if (!site) {
+      return {
+        success: false,
+        data: null,
+        message: '需要提供 site（网站域名；siteName / domain 也认）',
+      };
+    }
     const res = await baotaService.createClient().getSiteLogs(site, { type, lines });
     return ok(
       res,
@@ -1038,16 +1082,25 @@ const TOOL_HANDLERS = {
   },
 
   /** 15. 读取站点 Nginx 配置 */
-  async get_nginx_config({ site }) {
-    if (!site) return { success: false, data: null, message: '需要提供 site（网站域名）' };
+  async get_nginx_config(args = {}) {
+    const site = pickSite(args);
+    if (!site) {
+      return {
+        success: false,
+        data: null,
+        message: '需要提供 site（网站域名；siteName / domain 也认）',
+      };
+    }
     const res = await baotaService.createClient().getNginxConfig(site);
     return ok(res, `已读取 ${site} 的 Nginx 配置（${res.content.length} 字符）`);
   },
 
   /** 16. 写入站点 Nginx 配置（自动备份 + 试载） */
-  async save_nginx_config({ site, content }) {
+  async save_nginx_config(args = {}) {
+    const site = pickSite(args);
+    const { content } = args;
     if (!site || !content)
-      return { success: false, data: null, message: '需要提供 site 与 content' };
+      return { success: false, data: null, message: '需要提供 site（网站域名）与 content' };
     const res = await baotaService.createClient().saveNginxConfig(site, content);
     return ok(res, `已写入 ${site} 的配置${res.backupPath ? '（原文件已备份）' : ''}并重载 Nginx`);
   },
@@ -1096,7 +1149,8 @@ const TOOL_HANDLERS = {
   },
 
   /** 22. 修改 DNS 记录 */
-  async update_dns_record({ zone_id, domain, record_id, name, type, content, proxied }) {
+  async update_dns_record(args = {}) {
+    const { name, type, content, proxied } = args;
     if (content === undefined && proxied === undefined) {
       return {
         success: false,
@@ -1105,10 +1159,10 @@ const TOOL_HANDLERS = {
       };
     }
     const cf = cloudflareService.createClient();
-    const zoneId = await resolveZoneId({ zone_id, domain });
+    const zoneId = await resolveZoneId(args);
 
     // 没给 record_id 就用 name（+可选 type）定位
-    let recordId = record_id;
+    let recordId = pickRecordId(args);
     if (!recordId) {
       if (!name)
         return {
@@ -1142,18 +1196,20 @@ const TOOL_HANDLERS = {
   },
 
   /** 23. 清理 Cloudflare 缓存 */
-  async purge_cloudflare_cache({ zone_id, domain, urls }) {
-    const zoneId = await resolveZoneId({ zone_id, domain });
-    const res = await cloudflareService.createClient().purgeCache(zoneId, { urls });
+  async purge_cloudflare_cache(args = {}) {
+    const zoneId = await resolveZoneId(args);
+    const res = await cloudflareService.createClient().purgeCache(zoneId, { urls: args.urls });
     return ok(
       res,
-      res.mode === 'everything' ? '已提交全量缓存清理' : `已提交 ${urls.length} 个 URL 的缓存清理`
+      res.mode === 'everything'
+        ? '已提交全量缓存清理'
+        : `已提交 ${args.urls.length} 个 URL 的缓存清理`
     );
   },
 
   /** 24. 区域详情 */
-  async get_zone_info({ zone_id, domain }) {
-    const zoneId = await resolveZoneId({ zone_id, domain });
+  async get_zone_info(args = {}) {
+    const zoneId = await resolveZoneId(args);
     const res = await cloudflareService.createClient().getZone(zoneId);
     return ok(
       res,
