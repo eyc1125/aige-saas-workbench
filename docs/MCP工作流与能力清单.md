@@ -138,16 +138,26 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 > 配额只有 **60 次/小时且按服务器出口 IP 算**（全服务器共用）—— 别拿它做轮询。
 > 配一个 Fine-grained 只读 PAT 可升到 5000 次/小时（见 README §16.3）。
 
-### ⑧ 应用分发（蒲公英 · **只读**）
+### ⑧ 应用分发（蒲公英 · **MCP 侧只读，上传走 REST**）
 
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |
 | `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
 | `get_distributed_app` | `appKey` | 某个应用的全部历史版本（appKey 从上面那个工具拿） |
 
-> ⚠️ 这一组**只能读**。**上传安装包不在本工作台的能力范围内** ——
-> 请引导用户用蒲公英官方工具链：官方 MCP（`npx -y pgyer-mcp-server`，**跑在本机、能读本地 APK**）
-> 或官方 CLI（`pgyer upload ./app-release.apk`）。原因见 README §16.4。
+> ⚠️ **这一组只能读**（蒲公英的写接口里有「上传」和「删除应用」，本工作台刻意没有把它们
+> 暴露成 MCP 工具，避免 AI 误删应用）。但**上传安装包是支持的**，走 REST 接口而**不是** MCP 工具：
+>
+> ```bash
+> curl -X POST "https://aige-saas-panel.miaocaieyc.com.cn/api/distribute/upload?fileName=app-release.apk" \
+>   -H "Authorization: Bearer <你的登录令牌>" \
+>   -H "Content-Type: application/octet-stream" \
+>   --data-binary @./app-release.apk
+> ```
+>
+> · 文件**直接作为请求体**（不要用 multipart），单包 ≤ **100MB**（`.apk / .ipa / .hap`）
+> · 后端只在内存过一遍就转给蒲公英，**不落服务器磁盘**
+> · 没有终端时，在「应用分发」页用拖拽上传区传也一样
 
 ### ⑨ 万能兜底
 
@@ -298,14 +308,33 @@ call_bt_api           ← 走宝塔的清理接口做进一步处理
   其余（改 CF SSL 模式、改密码、补站点证书）始终留给人工确认。
 - 每次自动执行的结论会保留在页面「最近一次自动执行」里，同时写入操作日志。
 
+### 6.3.1 事件驱动自愈（C2 · 与自动自愈同生共死）
+
+定时巡检最快也要等一个周期；容器崩了应该**立刻**知道。所以开关一打开，
+后端会同时**订阅 Docker 事件流**（`GET /events`，长连接 NDJSON，过滤 `container die`）：
+
+| 环节 | 做法 |
+| --- | --- |
+| 触发 | 收到事件 → 只看本项目自己的容器（`aige.managed=true` 标签或白名单容器名）→ 调一次 `container_down` 修复 |
+| 复用而非另起一套 | 走的就是 `applyFix('container_down')`：同一套白名单、熔断、留痕。容器已被 restart 策略拉起时，`inspect()` 会看到它在运行 → 以「无需修复」结束，不会多余动作 |
+| 防风暴 | ① 沿用同一熔断（30 分钟 3 次）；② 同容器 **3 分钟**冷却；③ 全局 **10 秒**防抖 |
+| 断线 | 15 秒后自动重连；关掉自动自愈立即断开，不做无开关的常驻连接 |
+
+页面上会显示「已接入 / 未接入」与本次运行已触发次数。
+
 ### 6.4 巡检接口（供界面与 AI 用）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/inspect` | 跑一遍巡检，返回各项结论 + 自动自愈状态 |
+| GET | `/api/inspect` | 跑一遍巡检，返回各项结论 + 自动自愈 / 事件驱动状态 |
 | POST | `/api/inspect/fix` | `{ checkId }` 执行某项修复 |
-| PUT | `/api/inspect/auto` | `{ enabled, intervalMin }` 开关自动自愈 |
+| PUT | `/api/inspect/auto` | `{ enabled, intervalMin }` 开关自动自愈（同时开关事件驱动） |
 | POST | `/api/inspect/auto/run` | 立刻跑一轮自动自愈 |
+
+### 6.5 操作日志保留策略
+
+`operation_logs` 与指标、告警同一套模式：**保留 90 天 + 最多 20000 条**（双保险），
+启动清一次 + 每天一次。此前这张表只写不清，MCP 高频调用几天就能堆上万行。
 
 ---
 
