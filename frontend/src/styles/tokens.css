@@ -1,8 +1,12 @@
 /* ============================================================
  * 设计令牌 · 白底轻科技风（后台管理系统）
- * finesse · register=product · A=brand-green on tinted white · B=400/500/600
+ * finesse · register=product · A=brand-accent, switchable presets (default teal 元气青) · B=400/500/600
  * C=sidebar shell + dense tables · D=feedback-only motion · E=hairline + tinted shadow
  * SOUL=5 SPECTACLE=2 DENSITY=8
+ *
+ * ⚠️ A 这行曾长期写着 brand-green —— 那是 v4 的事实，v5 起主色已改为
+ *    **可切换预设**（6 套色 × 明暗 = 12 组，默认 teal 取自 logo 主色）。
+ *    轮换记忆看 .finesse/log.json，那才是权威。
  *
  * 品牌色说明（v4 · 真正的绿色）：
  *   主色 = 森林绿 #15803d（hue ≈142°，饱和度拉满但明度压住）。
