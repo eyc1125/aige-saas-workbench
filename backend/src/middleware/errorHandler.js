@@ -28,6 +28,22 @@ function isClientError(err) {
   return Number.isInteger(status) && status >= 400 && status < 500 && err?.expose === true;
 }
 
+/**
+ * body-parser 的报错是英文的，直接抛给前端等于没说
+ * ------------------------------------------------------------------
+ * 典型是上传安装包超过 `express.raw({ limit })` 时抛的：
+ *   { type: 'entity.too.large', status: 413, expose: true, limit: 104857600 }
+ * 前端看到 "request entity too large" 根本不知道该做什么，
+ * 所以换成「多大上限 / 该怎么办」的中文。
+ */
+function friendlyMessage(err) {
+  if (err?.type === 'entity.too.large') {
+    const mb = err.limit ? Math.round(err.limit / 1024 / 1024) : null;
+    return `请求体太大${mb ? `，上限 ${mb}MB` : ''}。请换更小的文件，或分次上传。`;
+  }
+  return err.message;
+}
+
 // Express 靠「4 个参数」识别错误处理中间件，_next 不能省（下划线前缀表示有意不用）
 function errorHandler(err, req, res, _next) {
   const clientError = isClientError(err);
@@ -44,7 +60,7 @@ function errorHandler(err, req, res, _next) {
     code: isExpected
       ? err.code || (clientError ? 'INVALID_REQUEST' : 'BUSINESS_ERROR')
       : 'INTERNAL_ERROR',
-    message: isExpected ? err.message : '服务器内部错误，请查看后端日志',
+    message: isExpected ? friendlyMessage(err) : '服务器内部错误，请查看后端日志',
     data: null,
   };
   if (isExpected && err.detail) body.detail = err.detail;

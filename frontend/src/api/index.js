@@ -157,6 +157,25 @@ export const distributeApi = {
   /** 单个应用详情与历史版本 */
   detail: (appKey) =>
     request.get(`/distribute/apps/${encodeURIComponent(appKey)}`, { silent: true }),
+  /**
+   * 上传安装包到蒲公英
+   * ------------------------------------------------------------------
+   * **文件直接当请求体**（application/octet-stream），不走 multipart ——
+   * 这样后端不需要任何 multipart 解析依赖，也不用落盘。
+   * @param {File} file
+   * @param {(loaded:number, total:number)=>void} [onProgress] 上传进度（axios 的 onUploadProgress）
+   */
+  upload: (file, onProgress) =>
+    request.post(`/distribute/upload?fileName=${encodeURIComponent(file.name)}`, file, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+      // 上传完还要等蒲公英解析，后两层 nginx 都给到 600s，这里不能先超时
+      timeout: 600000,
+      // axios 对请求体/响应体有默认上限，安装包会被它自己拦掉 —— 这里显式放开
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      onUploadProgress: (e) => onProgress?.(e.loaded, e.total || file.size),
+      silent: true,
+    }),
 };
 
 // ==================== 系统设置 ====================

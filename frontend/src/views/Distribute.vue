@@ -19,15 +19,51 @@
       </div>
     </section>
 
-    <!-- ==================== 上传路径说明（只读页，说清去哪儿传） ==================== -->
-    <section v-if="state === 'ready'" class="surface notice">
+    <!-- ==================== 上传区（有写权限时） ==================== -->
+    <section
+      v-if="config.configured && canUpload"
+      class="surface uploader"
+      :class="{ 'is-over': dragOver, 'is-busy': uploading }"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".apk,.ipa,.hap"
+        class="uploader__input"
+        @change="onPick"
+      />
+
+      <div v-if="!uploading" class="uploader__idle" @click="pick">
+        <span class="uploader__glyph"
+          ><el-icon><Upload /></el-icon
+        ></span>
+        <p class="uploader__title">把安装包拖到这里，或点击选择文件</p>
+        <p class="uploader__hint">
+          支持 .apk / .ipa / .hap，单个不超过 <strong>{{ MAX_MB }}MB</strong>
+        </p>
+        <p class="uploader__note">
+          文件只在内存里过一遍就转交蒲公英，<strong>不会留在本服务器上</strong>
+        </p>
+      </div>
+
+      <div v-else class="uploader__busy">
+        <p class="uploader__fname">{{ uploadingName }}</p>
+        <div class="uploader__bar"><span :style="{ width: `${percent}%` }" /></div>
+        <p class="uploader__phase tnum">{{ phaseText }}</p>
+      </div>
+    </section>
+
+    <!-- 只读身份：说明为什么看不到上传 -->
+    <section v-else-if="config.configured && !canUpload" class="surface notice">
       <el-icon class="notice__icon"><WarningFilled /></el-icon>
       <div class="notice__body">
-        <p class="notice__title">这一页是只读的：看版本、取下载页与二维码</p>
+        <p class="notice__title">你可以查看版本与二维码，但不能上传</p>
         <p class="notice__desc">
-          <strong>上传安装包</strong>请用蒲公英官方工具链（它跑在你本机，能直接读本地 APK）：<br />
-          官方 MCP：<code>npx -y pgyer-mcp-server</code> + 环境变量 <code>PGYER_API_KEY</code>；
-          官方 CLI：<code>npm i -g @pgyer/cli</code> 后 <code>pgyer upload ./app-release.apk</code>
+          上传需要「运维」或「管理员」角色。需要传包请找管理员，或让 AI 用
+          <code>POST /api/distribute/upload</code> 代传。
         </p>
       </div>
     </section>
@@ -64,15 +100,13 @@
         ></span>
         <p class="blank__title">蒲公英账号下还没有安装包</p>
         <p class="blank__desc">
-          在当前电脑上装一次官方 CLI 就能传（它会自己打开安卓工程的构建产物目录）：
+          直接在<strong>上面的上传区</strong>把安装包拖进来就行 —— 传完这里会出现版本与二维码。
         </p>
+        <p class="blank__desc">也可以在终端用一条命令传（不依赖浏览器、适合脚本与 CI）：</p>
         <pre class="blank__code">
-npm i -g @pgyer/cli
-pgyer auth login
-pgyer upload ./app-release.apk</pre>
-        <p class="blank__desc">
-          或者让 AI 助手代劳 —— 配好蒲公英官方 MCP 后，直接说「把 xxx.apk 传上去」即可。
-        </p>
+curl -X POST --data-binary @app-release.apk \
+  -H "Authorization: Bearer &lt;工作台令牌&gt;" \
+  "https://aige-saas-panel.miaocaieyc.com.cn/api/distribute/upload?fileName=app-release.apk"</pre>
       </div>
     </section>
 
@@ -156,7 +190,7 @@ pgyer upload ./app-release.apk</pre>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
 import StateBlock from '@/components/StateBlock.vue';
@@ -175,6 +209,24 @@ const config = ref({ configured: false, cacheTtlSeconds: 60 });
 const lastLoadedAt = ref(null);
 /** 二维码图挂了就退回文字，别在页面上留一个破图 */
 const brokenQr = reactive({});
+
+// ---------------- 上传 ----------------
+/** 与后端 MAX_UPLOAD_BYTES、两层 nginx、Cloudflare 免费版保持一致 */
+const MAX_MB = 100;
+const fileInput = ref(null);
+const dragOver = ref(false);
+const uploading = ref(false);
+const uploadingName = ref('');
+const percent = ref(0);
+/** 传完了、正在等蒲公英解析 —— 这两段在用户看来是两件事，得分开说 */
+const parsing = ref(false);
+
+const canUpload = computed(() => auth.canWrite !== false);
+
+const phaseText = computed(() => {
+  if (parsing.value) return '已上传，正在等蒲公英解析…';
+  return `上传中 ${percent.value}%`;
+});
 
 function relTime(input) {
   if (!input) return '未知';
@@ -211,6 +263,88 @@ async function copyDownloadPage(url) {
 
 function goSettings() {
   if (auth.isAdmin) window.location.hash = '#/settings';
+}
+
+// ---------------- 上传 ----------------
+function pick() {
+  if (!uploading.value) fileInput.value?.click();
+}
+
+function onPick(event) {
+  const file = event.target.files?.[0];
+  event.target.value = ''; // 清空 value，否则同一个文件连传两次不会再触发 change
+  if (file) startUpload(file);
+}
+
+function onDragOver(event) {
+  event.preventDefault();
+  if (!uploading.value) dragOver.value = true;
+}
+
+function onDragLeave() {
+  dragOver.value = false;
+}
+
+function onDrop(event) {
+  event.preventDefault();
+  dragOver.value = false;
+  if (uploading.value) return;
+  const file = event.dataTransfer?.files?.[0];
+  if (file) startUpload(file);
+}
+
+/** 把失败原因说成「用户该做什么」，而不是把 axios 的英文原样抛出去 */
+function uploadErrorText(err) {
+  const status = err?.status;
+  const serverMsg = err?.message || '';
+  if (status === 413) return `文件超过 ${MAX_MB}MB 上限（Cloudflare 与 nginx 都会直接拒绝）`;
+  if (status === 403) return '当前账号没有上传权限（需要运维或管理员）';
+  if (status === 401) return '登录已过期，请重新登录后再上传';
+  return serverMsg || '上传失败，请稍后重试';
+}
+
+async function startUpload(file) {
+  const name = String(file.name || '');
+
+  // 先在前端拦一道：省掉「传上去才被拒」这种白费功夫的体验
+  if (!/\.(apk|ipa|hap)$/i.test(name)) {
+    ElMessage.error('只支持 .apk / .ipa / .hap 三种安装包');
+    return;
+  }
+  if (file.size > MAX_MB * 1024 * 1024) {
+    ElMessage.error(
+      `「${name}」有 ${(file.size / 1024 / 1024).toFixed(1)}MB，超过 ${MAX_MB}MB 上限`
+    );
+    return;
+  }
+
+  uploading.value = true;
+  uploadingName.value = name;
+  percent.value = 0;
+  parsing.value = false;
+
+  try {
+    const result = await distributeApi.upload(file, (loaded, total) => {
+      const p = total ? Math.round((loaded / total) * 100) : 0;
+      // 不要到 100 就显示完成 —— 后面还有蒲公英解析那一段，说清楚在等什么
+      percent.value = Math.min(99, p);
+      if (p >= 100) parsing.value = true;
+    });
+    percent.value = 100;
+    await loadAll();
+    if (result?.pending) {
+      ElMessage.warning('已上传，蒲公英还在解析，稍后刷新即可看到新版本');
+    } else {
+      ElMessage.success(`上传成功：${result?.name} v${result?.version}`);
+    }
+  } catch (err) {
+    ElMessage.error(uploadErrorText(err));
+  } finally {
+    uploading.value = false;
+    uploadingName.value = '';
+    percent.value = 0;
+    parsing.value = false;
+  }
 }
 
 async function loadAll() {
@@ -316,6 +450,107 @@ onMounted(loadAll);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 11px;
   color: var(--text-primary);
+}
+
+/* ---------------- 上传区 ---------------- */
+.uploader {
+  position: relative;
+  padding: 0;
+  border-style: dashed;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.uploader.is-over {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.uploader__input {
+  display: none;
+}
+
+.uploader__idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-6) var(--sp-5);
+  cursor: pointer;
+  text-align: center;
+}
+
+.uploader__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+  font-size: 18px;
+  color: var(--text-tertiary);
+  transition:
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-card) var(--ease);
+}
+
+.uploader.is-over .uploader__glyph {
+  color: var(--brand);
+  transform: translateY(-2px);
+}
+
+.uploader__title {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.uploader__hint {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.uploader__note {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.uploader__busy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+}
+
+.uploader__fname {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.uploader__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.uploader__bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width var(--dur-card) var(--ease);
+}
+
+.uploader__phase {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
 }
 
 /* ---------------- 空账号 ---------------- */
