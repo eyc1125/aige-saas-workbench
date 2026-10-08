@@ -48,10 +48,10 @@ jobs:
       actions: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 初始化 CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           # 前后端都是 JS，一个语言即可覆盖
           languages: javascript-typescript
@@ -59,7 +59,7 @@ jobs:
           queries: security-and-quality
 
       - name: 分析并上传结果
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: /language:javascript-typescript
 
@@ -71,7 +71,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 扫描并生成 SARIF（依赖漏洞 + Dockerfile/compose 配置 + 明文密钥）
         uses: aquasecurity/trivy-action@v0.36.0
@@ -91,7 +91,7 @@ jobs:
 
       - name: 上传到 Security 面板
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy
