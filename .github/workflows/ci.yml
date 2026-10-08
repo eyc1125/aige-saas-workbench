@@ -34,7 +34,7 @@ jobs:
     name: 规范检查
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # commitlint 要读提交历史，默认的浅克隆只有 1 个提交，会校验失败
           fetch-depth: 0
@@ -82,7 +82,7 @@ jobs:
     name: 后端语法检查
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -145,7 +145,7 @@ jobs:
     name: 后端自检
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -200,7 +200,7 @@ jobs:
     name: 前端构建
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

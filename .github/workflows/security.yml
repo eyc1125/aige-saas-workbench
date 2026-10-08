@@ -48,7 +48,7 @@ jobs:
       actions: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 初始化 CodeQL
         uses: github/codeql-action/init@v3
@@ -71,7 +71,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 扫描并生成 SARIF（依赖漏洞 + Dockerfile/compose 配置 + 明文密钥）
         uses: aquasecurity/trivy-action@v0.36.0
