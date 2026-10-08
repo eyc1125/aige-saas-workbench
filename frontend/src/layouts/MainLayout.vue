@@ -234,6 +234,7 @@ const ALL_NAV = [
   { path: '/domains', title: '域名管理', icon: 'Connection' },
   { path: '/docker', title: 'Docker 管理', icon: 'Box' },
   { path: '/apps', title: '应用商店', icon: 'Grid' },
+  { path: '/repos', title: '代码仓库', icon: 'FolderOpened' },
   { path: '/settings', title: '系统设置', icon: 'Setting', adminOnly: true },
 ];
 

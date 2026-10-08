@@ -69,6 +69,7 @@ const TOOL_GROUPS = [
     group: '应用部署（本系统独有）',
     tools: ['list_app_templates', 'deploy_app', 'get_deploy_logs'],
   },
+  { group: '代码仓库（GitHub，只读）', tools: ['list_repo_commits', 'get_ci_status'] },
   { group: '万能兜底', tools: ['call_bt_api'] },
 ];
 
@@ -136,7 +137,14 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维能力
 - \`deploy_app\` — 一键部署：自动完成「加 DNS 解析 → 拉镜像 → 起容器 → 申请证书 → 配反向代理」
 - \`get_deploy_logs\` — 部署进度与实时日志
 
-**⑦ 万能兜底**
+**⑦ 代码仓库（GitHub · 只读）**
+- \`list_repo_commits\` — 仓库最近提交（作者、时间、提交信息首行、短 SHA）+ 默认分支 / 语言 / 最近推送时间
+- \`get_ci_status\` — GitHub Actions 最近若干次运行的状态（成功 / 失败 / 进行中）、分支、触发方式、耗时
+- 仓库名格式为 \`owner/repo\`，**省略时用「系统设置 → 代码仓库」里配置的第一个仓库**。
+- ⚠️ 这一组**只能读**，改不了 GitHub 上任何东西。没有配令牌时走匿名访问，
+  但配额只有 60 次/小时（按服务器出口 IP 算，全服务器共用），别拿它做轮询。
+
+**⑧ 万能兜底**
 - \`call_bt_api\` — 直接调用宝塔任意 API 端点。本系统没封装的能力（计划任务、防火墙、
   FTP、数据库、文件压缩等）都用它，端点参考 https://www.bt.cn/api-doc/
 
@@ -165,6 +173,11 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 
 **「改完网站内容，访客还是旧版」**
 \`purge_cloudflare_cache\` 清缓存。
+
+**「CI 是不是挂了 / 最近改了什么代码」**
+\`get_ci_status\` 先看现在绿不绿（最新一次是什么结论、哪条分支），
+再用 \`list_repo_commits\` 看最近提交是不是跟失败的这次对得上。
+要具体报错得点到 GitHub 上看日志——本工作台只做「发现问题」，不做「翻日志」。
 
 **「磁盘快满了」**
 \`get_server_status\`（看磁盘用量）→ \`list_images\` + \`list_containers\`（找出占空间的）

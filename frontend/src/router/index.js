@@ -75,6 +75,16 @@ const routes = [
         meta: { title: '应用商店', subtitle: '一键部署应用并自动配好域名与 HTTPS', icon: 'Grid' },
       },
       {
+        path: 'repos',
+        name: 'repos',
+        component: () => import('@/views/Repo.vue'),
+        meta: {
+          title: '代码仓库',
+          subtitle: '提交、Actions 与 Issue，不用跳浏览器',
+          icon: 'FolderOpened',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/Settings.vue'),

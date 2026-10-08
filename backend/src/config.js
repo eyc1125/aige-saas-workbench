@@ -70,6 +70,18 @@ const config = {
     accountEmail: str('CF_ACCOUNT_EMAIL', ''),
   },
 
+  // ---------------- GitHub（B4 代码仓库页） ----------------
+  // 令牌留空 = 走匿名访问：公开仓库一样能读，但配额是 **60 次/小时**（按服务器出口 IP 算），
+  // 而且这个配额是全服务器共用的。配上令牌后是 5000 次/小时。
+  // 只读用途，建议用 Fine-grained PAT，只勾 Metadata / Contents / Actions / Issues / Pull requests 的读权限。
+  github: {
+    token: str('GITHUB_TOKEN', ''),
+    // 关注的仓库（owner/repo），逗号分隔。留空则界面上没有任何仓库可看。
+    repos: list('GITHUB_REPOS', []),
+    // 国内服务器访问 api.github.com 偶尔不稳，允许换一个可达的入口
+    apiBase: str('GITHUB_API_BASE', 'https://api.github.com').replace(/\/+$/, ''),
+  },
+
   // ---------------- Docker ----------------
   docker: {
     host: str('DOCKER_HOST', 'unix:///var/run/docker.sock'),

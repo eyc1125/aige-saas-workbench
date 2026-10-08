@@ -19,9 +19,9 @@
  *   node .qa/audit.mjs
  *   node .qa/audit.mjs --origin=https://aige-saas-panel.miaocaieyc.com.cn
  */
-import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { join, resolve, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // ---------------- 配置 ----------------
@@ -48,6 +48,122 @@ const SHOT_DIR = resolve('.qa/shots');
 const PROFILE = join(tmpdir(), `aige-qa-${Date.now()}`);
 const DEBUG_PORT = Number(arg('port', '9333'));
 
+/* ============================================================
+ * 浏览器进程的收尾（⛔ 这里是曾经踩过大坑的地方）
+ * ------------------------------------------------------------
+ * 教训：一开始收尾只写 `child.kill()`，结果**在 Windows 上它只终止主进程**，
+ *      渲染 / GPU / utility 子进程会被孤儿化并继续活着，还占着临时档目录。
+ *      连续跑几轮体检下来，本机攒出 **248 个残留 msedge 进程、吃掉 5.8GB 内存**，
+ *      最后连 `npm run check` 都因为系统内存不够而 OOM。
+ *      更糟的是脚本中途抛异常时走的是 `.catch` 里的 `process.exit(1)`，
+ *      那条路径上**一个进程都没杀** —— 这才是残留的主要来源。
+ *
+ * 所以：① 结束必须用整棵进程树（Windows 用 taskkill /T /F）；
+ *      ② 所有退出路径（正常 / 异常 / Ctrl+C）都要收尾。
+ * ============================================================ */
+let child = null;
+let cleaned = false;
+
+/** 结束整棵进程树，而不只是主进程 */
+function killTree(pid) {
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      process.kill(pid, 'SIGKILL');
+    }
+  } catch {
+    /* 已经退出就什么都不用做 */
+  }
+}
+
+/**
+ * 兜底：按「命令行里带着本次临时档名」把残留进程逐个杀掉。
+ *
+ * 为什么需要它：Edge 的主进程有时会**先于 cleanup 自己退出**（headless 断开 CDP 后就会），
+ * 主进程一没，`taskkill /T` 就够不到已经被孤儿化的渲染 / GPU 子进程了。
+ * 临时档名是 `aige-qa-<时间戳>`，每次都不同 —— 拿它当标记精确匹配，
+ * **不可能误伤用户自己开着的浏览器**。
+ */
+function killByProfileTag() {
+  if (process.platform !== 'win32') return;
+  const tag = basename(PROFILE); // 形如 aige-qa-1791453341000，不含反斜杠，安全
+  const script =
+    'Get-CimInstance Win32_Process | ' +
+    `Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*${tag}*' } | ` +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }';
+  try {
+    spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      stdio: 'ignore',
+      timeout: 20000,
+    });
+  } catch {
+    /* 兜底失败不影响体检结论 */
+  }
+}
+
+/** 收尾：杀浏览器 + 删临时档。可重复调用 */
+function cleanup() {
+  if (cleaned) return;
+  cleaned = true;
+  killTree(child?.pid);
+  killByProfileTag();
+  // 子进程刚被杀时目录可能还被系统占着，重试几次
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      rmSync(PROFILE, { recursive: true, force: true });
+      return;
+    } catch {
+      /* 下一轮再试 */
+    }
+  }
+}
+
+process.on('exit', cleanup);
+process.on('SIGINT', () => {
+  cleanup();
+  process.exit(130);
+});
+process.on('SIGTERM', () => {
+  cleanup();
+  process.exit(143);
+});
+
+/** 启动时顺手扫掉历史残留（上次异常退出留下的临时档与孤儿浏览器进程） */
+function sweepStaleProfiles() {
+  // 先按前缀清进程：所有带 aige-qa- 的都是本脚本留下的，不会误伤用户自己的浏览器
+  if (process.platform === 'win32') {
+    const script =
+      'Get-CimInstance Win32_Process | ' +
+      "Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*aige-qa-*' } | " +
+      'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }';
+    try {
+      spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        stdio: 'ignore',
+        timeout: 30000,
+      });
+    } catch {
+      /* 清不掉不影响本次体检 */
+    }
+  }
+
+  try {
+    const dir = tmpdir();
+    readdirSync(dir)
+      .filter((n) => n.startsWith('aige-qa-'))
+      .forEach((n) => {
+        try {
+          rmSync(join(dir, n), { recursive: true, force: true });
+        } catch {
+          /* 还占着说明有孤儿进程，删不掉就算了，不影响本次体检 */
+        }
+      });
+  } catch {
+    /* 临时目录读不了也不影响主流程 */
+  }
+}
+
 /** 断点：320 是地板（iPhone SE），768 是两栏该塌陷的位置 */
 const VIEWPORTS = [
   { w: 320, h: 568, name: '320-se', mobile: true },
@@ -67,6 +183,7 @@ const PAGES = [
   { hash: '/domains', name: 'domains', title: '域名管理', shot: true },
   { hash: '/docker', name: 'docker', title: 'Docker 管理', shot: true },
   { hash: '/apps', name: 'apps', title: '应用商店', shot: true },
+  { hash: '/repos', name: 'repos', title: '代码仓库', shot: true },
   { hash: '/settings', name: 'settings', title: '系统设置', shot: true },
 ];
 
@@ -277,12 +394,13 @@ const AUDIT_FN = `(() => {
     process.exit(1);
   }
   mkdirSync(SHOT_DIR, { recursive: true });
+  sweepStaleProfiles();
 
   console.log(`浏览器：${edge}`);
   console.log(`目标站：${ORIGIN}`);
   console.log(`截图目录：${SHOT_DIR}\n`);
 
-  const child = spawn(
+  child = spawn(
     edge,
     [
       '--headless=new',
@@ -304,7 +422,7 @@ const AUDIT_FN = `(() => {
     cdp = await connect();
   } catch (err) {
     console.error(`❌ ${err.message}`);
-    child.kill();
+    cleanup();
     process.exit(1);
   }
 
@@ -563,15 +681,14 @@ const AUDIT_FN = `(() => {
   }
   console.log(`截图：${SHOT_DIR}\n`);
 
-  child.kill();
-  await sleep(600);
-  try {
-    rmSync(PROFILE, { recursive: true, force: true });
-  } catch {
-    /* 临时目录删不掉不影响结果 */
-  }
+  // 收尾交给 cleanup()（它会杀掉整棵进程树并删临时档）。
+  // 不要改回 child.kill() —— 那在 Windows 上会留下一堆孤儿浏览器进程。
+  cleanup();
   process.exit(0);
 })().catch((err) => {
   console.error(`\n❌ 验收台异常：${err.stack || err.message}`);
+  // 异常路径以前直接 exit(1)、一个进程都没杀，是残留的主要来源。
+  // process.on('exit') 里也挂了 cleanup()，这里显式再调一次是为了在退出前就把树杀掉。
+  cleanup();
   process.exit(1);
 });

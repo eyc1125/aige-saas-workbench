@@ -135,6 +135,19 @@ export const appApi = {
   clearTaskLogs: (taskId) => request.delete(`/apps/tasks/${taskId}/logs`),
 };
 
+// ==================== 代码仓库（B4） ====================
+export const repoApi = {
+  /** 配置状态：有没有配令牌、关注了哪些仓库、当前配额 */
+  config: () => request.get('/repos/config', { silent: true }),
+  /** 关注的仓库概览 */
+  list: () => request.get('/repos', { silent: true }),
+  /** 单个仓库的完整数据（提交 / Actions / Issue / PR 一次取回） */
+  detail: (owner, repo) =>
+    request.get(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+      silent: true,
+    }),
+};
+
 // ==================== 系统设置 ====================
 export const settingApi = {
   get: () => request.get('/settings'),

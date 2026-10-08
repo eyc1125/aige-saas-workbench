@@ -19,6 +19,7 @@ const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
 const deployService = require('../services/deploy');
 const healthService = require('../services/health');
+const githubService = require('../services/github');
 const { listTemplates } = require('../services/apps');
 const { writeLog } = require('../utils/logger');
 
@@ -475,6 +476,32 @@ const TOOL_DEFINITIONS = [
       '列出服务器上的 Docker 镜像（标签、大小、被多少容器引用、创建时间）。清理磁盘前先看这个。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'list_repo_commits',
+    description:
+      '获取 GitHub 仓库的最近提交（作者、时间、提交信息首行、commit SHA），以及默认分支、语言、最近推送时间。用于回答「最近改了什么」「上次推送是什么时候」。仓库名格式为 owner/repo，省略时用「系统设置 → 代码仓库」里配置的第一个仓库。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: '仓库名，格式 owner/repo，可省略' },
+        limit: { type: 'number', description: '返回条数，默认 10，最大 30' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_ci_status',
+    description:
+      '获取 GitHub Actions 的运行状态：最近若干次 workflow 的成功 / 失败 / 进行中、所在分支、触发方式、耗时，并给出「现在绿不绿」的判断。排查「CI 挂了」时先用这个，再决定要不要去翻具体日志。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: '仓库名，格式 owner/repo，可省略' },
+        limit: { type: 'number', description: '返回最近几次运行，默认 10，最大 30' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ============================================================
@@ -523,6 +550,10 @@ const READONLY_TOOLS = new Set([
   // 应用部署
   'list_app_templates',
   'get_deploy_logs',
+
+  // 代码仓库（GitHub）—— 纯只读：不碰服务器，也不改 GitHub 上任何东西
+  'list_repo_commits',
+  'get_ci_status',
 ]);
 
 /**
@@ -1123,6 +1154,42 @@ const TOOL_HANDLERS = {
       `共 ${list.length} 个镜像，合计 ${formatBytes(totalSize)}`
     );
   },
+
+  /** 28. 仓库最近提交（B4） */
+  async list_repo_commits({ repo, limit }) {
+    const full = resolveRepo(repo);
+    const count = clampLimit(limit, 10);
+    const [info, commits] = await Promise.all([
+      githubService.repoInfo(full),
+      githubService.listCommits(full, { perPage: count }),
+    ]);
+    return ok(
+      {
+        repo: full,
+        defaultBranch: info.defaultBranch,
+        language: info.language,
+        pushedAt: info.pushedAt,
+        htmlUrl: info.htmlUrl,
+        commits,
+      },
+      `${full} 最近 ${commits.length} 次提交（分支 ${info.defaultBranch}，最近推送 ${info.pushedAt || '未知'}）`
+    );
+  },
+
+  /** 29. CI 状态（B4） */
+  async get_ci_status({ repo, limit }) {
+    const count = clampLimit(limit, 10);
+    const data = await githubService.ciStatus(resolveRepo(repo), { perPage: count });
+    const { latest } = data;
+    const verdict = !latest
+      ? '这个仓库还没有 Actions 运行记录'
+      : latest.status !== 'completed'
+        ? `最新一次正在跑（${latest.name} · ${latest.branch}）`
+        : latest.conclusion === 'success'
+          ? `最新一次通过（${latest.name} · ${latest.branch}）`
+          : `⚠️ 最新一次是 ${latest.conclusion || '未知结果'}（${latest.name} · ${latest.branch}）`;
+    return ok(data, `${data.repo}：${verdict}`);
+  },
 };
 
 /** 人类可读字节数（与 baota 服务里的实现保持一致） */
@@ -1158,6 +1225,31 @@ async function resolveContainer(docker, reference) {
     });
   }
   return hit;
+}
+
+/**
+ * 定位仓库（B4）
+ * AI 常常只给「看下最近提交」而不带仓库名，所以省略时用配置里的第一个仓库。
+ */
+function resolveRepo(reference) {
+  const ref = String(reference || '').trim();
+  if (ref) return githubService.normalize(ref).full;
+
+  const configured = githubService.configuredRepos();
+  if (!configured.length) {
+    throw Object.assign(
+      new Error('没有可用的仓库：请先到「系统设置 → 代码仓库」填写关注的仓库（格式 owner/repo）'),
+      { expected: true, status: 428 }
+    );
+  }
+  return configured[0];
+}
+
+/** 把 AI 传的条数夹在 1..30 —— 它经常会传 100 这种值 */
+function clampLimit(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(30, Math.max(1, Math.round(n)));
 }
 
 /**

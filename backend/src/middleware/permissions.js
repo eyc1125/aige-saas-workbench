@@ -54,6 +54,10 @@ const MODULE_RULES = [
   { path: '/domains', read: 'viewer', write: 'operator' },
   { path: '/docker', read: 'viewer', write: 'operator' },
   { path: '/apps', read: 'viewer', write: 'operator' },
+  // 代码仓库页（B4）：只读的代码/CI 视图，不碰服务器，只读身份也该能看。
+  // ⚠️ 这个模块目前**没有写接口**；write 先按 operator 归类，
+  //    将来真要加「建 Issue / 重跑 CI」这类写操作时，记得重新评估这一行。
+  { path: '/repos', read: 'viewer', write: 'operator' },
   { path: '/logs', read: 'viewer', write: 'admin' },
   // 系统设置里躺着宝塔密钥 / Cloudflare Token / MCP 令牌 / 机器人 Webhook，
   // 「能看到」约等于「能拿到半台服务器」，所以整块（含读）都要求管理员。

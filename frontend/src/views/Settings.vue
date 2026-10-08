@@ -134,6 +134,66 @@
       </div>
     </section>
 
+    <!-- ==================== 代码仓库（B4） ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--info); background: var(--info-soft)">
+          <el-icon><FolderOpened /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">
+            代码仓库
+            <span class="section__state" :class="githubHasToken ? 'is-on' : 'is-off'">
+              {{ githubHasToken ? '已配令牌' : '匿名访问' }}
+            </span>
+          </h2>
+          <p class="section__sub">「代码仓库」页要看的提交与 CI 状态</p>
+        </div>
+      </header>
+
+      <div class="section__body">
+        <el-form label-position="top" class="form-grid">
+          <el-form-item label="关注的仓库" class="span-2">
+            <el-input
+              v-model="form.github_repos"
+              placeholder="eyc1125/aige-saas-workbench"
+              clearable
+            />
+            <p class="field-tip">多个仓库用英文逗号分隔，格式为 owner/repo</p>
+          </el-form-item>
+
+          <el-form-item label="GitHub 令牌（选填）" class="span-2">
+            <el-input
+              v-model="form.github_token"
+              type="password"
+              show-password
+              :placeholder="placeholderOf({ key: 'github_token', secret: true })"
+              clearable
+            />
+            <p class="field-tip">
+              ⚠️ 留空 = <strong>匿名访问</strong>：公开仓库也能看，但配额只有
+              <strong>60 次 / 小时</strong>（按服务器出口 IP 算，全服务器共用），刷十几次就会用完。
+              填一个<strong>只读</strong>的 Fine-grained PAT 可提升到
+              <strong>5000 次 / 小时</strong>。 只需
+              Metadata（必选）、Contents、Actions、Issues、Pull requests 的<strong>读</strong>权限
+              —— 不要用 classic 的全量 repo（那是读写权限，泄露可改代码）。
+            </p>
+          </el-form-item>
+        </el-form>
+
+        <div class="section__actions">
+          <el-button
+            type="primary"
+            :loading="saving === 'github'"
+            :disabled="!isDirty(GITHUB_KEYS)"
+            @click="saveKeys(GITHUB_KEYS, 'github')"
+          >
+            保存
+          </el-button>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== MCP 连接 ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -964,6 +1024,9 @@ const form = reactive({
   alert_feishu_webhook: '',
   alert_feishu_secret: '',
   alert_wecom_webhook: '',
+  // 代码仓库（B4）：令牌是敏感项，仓库列表是普通项
+  github_token: '',
+  github_repos: '',
 });
 
 /** 保存时的初始快照，用于判断「是否有改动」 */
@@ -990,6 +1053,11 @@ const ALERT_KEYS = [
 
 /** 是否已配置任一外部通道（只用于界面上的状态徽标） */
 const isAlertOn = computed(() => ALERT_KEYS.some((key) => settingsMeta.value[key]?.hasValue));
+
+/** 代码仓库（B4）：令牌是敏感项，仓库列表是普通项 */
+const GITHUB_KEYS = ['github_repos', 'github_token'];
+/** 有令牌 = 5000 次/小时；没有 = 匿名 60 次/小时。界面上的徽标用 */
+const githubHasToken = computed(() => !!settingsMeta.value.github_token?.hasValue);
 
 // ---------------- 分组定义 ----------------
 const connectionGroups = computed(() => [

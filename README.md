@@ -25,8 +25,9 @@
 | 域名管理 | Cloudflare 域名区域、DNS 记录增删改、橙色云/灰色云一键切换 |
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
-| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
-| MCP Server | **30 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据） |
+| 代码仓库 | GitHub 只读看板：最近提交、**Actions 运行状态**（最新一次的结论放大展示，失败一眼看得出来）、开放中的 Issue 与 PR、多仓库切换；**60 秒缓存 + 配额可见**（匿名 60 次/小时 / 配只读令牌 5000 次/小时） |
+| 系统设置 | 宝塔 / Cloudflare / Docker / **GitHub** 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
+| MCP Server | **32 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检 + GitHub 仓库只读），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据；只读可见 19 个） |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
 > 后续优化路线与优先级见 **[docs/全面优化方案.md](docs/全面优化方案.md)**。
@@ -99,16 +100,16 @@ aige-saas-workbench/
 │   │   ├── router/              # 路由 + 登录守卫 + 仅管理员页面的角色守卫
 │   │   ├── stores/              # Pinia：auth（含角色判定）/ theme
 │   │   ├── styles/              # 设计令牌 + 全局样式 + EP 主题桥接
-│   │   └── views/               # 8 个页面 + 登录页 + 404
+│   │   └── views/               # 9 个页面 + 登录页 + 404
 │   ├── nginx.conf               # 容器内站点配置（含 /api 反向代理）
 │   └── Dockerfile
 ├── backend/                     # Node.js 后端
 │   ├── src/
 │   │   ├── db/                  # SQLite 连接（driver.js 含驱动回退）、schema.sql、migrate()
 │   │   ├── middleware/          # auth（JWT + 角色现查）/ permissions（权限规则表）/ 错误处理 / 限流
-│   │   ├── routes/              # REST 路由（10 个模块，含 users 用户管理）
-│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics
-│   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js
+│   │   ├── routes/              # REST 路由（11 个模块，含 users 用户管理）
+│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics / github
+│   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js / instructions.js
 │   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类 / TOTP
 │   │   ├── app.js               # Express 装配
 │   │   ├── config.js            # 配置中心（含生产环境安全自检）
@@ -166,8 +167,8 @@ docker compose logs -f backend
 ```
 [db] SQLite 就绪：/app/data/workbench.db（驱动：better-sqlite3）
 [api] REST 接口已启动：http://0.0.0.0:3000/api
-[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 30 个工具）
-[mcp] 已注册 30 个工具，分组一致
+[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 32 个工具）
+[mcp] 已注册 32 个工具，分组一致
 [health] 自动自愈当前关闭（可在「健康巡检」页开启）
 ```
 
@@ -408,7 +409,7 @@ stdio 模式由客户端自己拉起进程，天然可信，无需令牌。
 
 ### 9.5 工具清单
 
-> **完整清单（当前 30 个，分组 + 每条说明）见
+> **完整清单（当前 32 个，分组 + 每条说明）见
 > [docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)。**
 > 下表是其中最早落地的 14 个基础工具，保留在此便于快速对照。
 
@@ -476,6 +477,9 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | POST | `/api/apps/deploy` | 发起一键部署 |
 | GET | `/api/apps/tasks` · `/api/apps/tasks/:taskId` | 部署任务列表 / 详情 |
 | GET | `/api/apps/tasks/:taskId/logs` | 任务日志（`sinceId` 增量） |
+| GET | `/api/repos/config` | 代码仓库配置状态（是否配了令牌、关注了哪些仓库、缓存时长） |
+| GET | `/api/repos` | 关注的仓库概览（含 GitHub 配额） |
+| GET | `/api/repos/:owner/:repo` | 单仓库完整数据（提交 / Actions / Issue / PR 一次取回） |
 | GET/PUT | `/api/settings` | 读取（脱敏）/ 保存配置 |
 | POST | `/api/settings/test/:target` | 连通性测试（`baota`/`cloudflare`/`docker`） |
 | GET | `/api/settings/mcp` · POST `/api/settings/mcp/token` | MCP 信息 / 重置令牌 |
@@ -619,6 +623,34 @@ npm run dev                       # http://127.0.0.1:5173（已配 /api 代理�
 | 算法自己实现（`utils/totp.js`），不引 otplib | 安全功能少一个供应链面；而且零依赖才能拿 RFC 6238 附录 B 的官方时间点做逐字节自检（`npm run check:totp`） |
 
 > ⚠️ 绑定成功后**请立刻把恢复码抄到密码管理器或纸上** —— 它是手机丢失时唯一的退路。
+
+### 16.3 GitHub 令牌（代码仓库页）
+
+「代码仓库」页要读 GitHub，所以需要一把凭据。**不配也能用**，但推荐配。
+
+| 方式 | 配额 | 怎么来 |
+| --- | --- | --- |
+| 匿名（留空） | **60 次/小时**，且**按服务器出口 IP 算**（全服务器共用） | 什么都不用做。公开仓库一样能读 |
+| **Fine-grained PAT（推荐）** | 5000 次/小时 | GitHub → Settings → Developer settings → Fine-grained tokens |
+
+**该勾哪些权限（只要读）**：`Metadata`（必选）、`Contents: Read`、
+`Actions: Read`、`Issues: Read`、`Pull requests: Read`。
+仓库范围选「Only select repositories」并只勾要看的仓库。
+
+> ⛔ **不要用 classic 的全量 `repo`**：那是**读写**权限，一旦泄露能改你的代码。
+> 这个页面只读，给它写权限没有任何好处。
+
+配好后填到 **系统设置 → 代码仓库**（AES 加密存储，与宝塔密钥同级）。
+仓库列表支持多个（逗号分隔），也可以只写一个。
+
+**三个已知的取舍**：
+
+1. **数据有 60 秒缓存**，页面上会明确写出「多久前刷新 · 缓存多少秒」，不假装实时。
+   加缓存是因为匿名配额太少（一个页面要 5 个请求，刷十几次就打满）。
+2. **配额用完 / 令牌无效 / 仓库不存在** 三种情况分别给不同的提示，
+   其中「令牌无效」和「配额用完」会让整页报错（而不是显示一个看似正常的空列表）。
+3. 国内服务器直连 `api.github.com` 偶尔不稳。真遇到超时频繁，
+   可以给 `GITHUB_API_BASE` 换一个可达的入口。
 
 ---
 

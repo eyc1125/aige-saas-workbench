@@ -68,6 +68,15 @@ const SCHEMA = {
   // 飞书机器人开启「签名校验」时需要的密钥；留空=按未开启签名校验发送
   alert_feishu_secret: { secret: true, label: '飞书机器人签名密钥', def: () => '' },
   alert_wecom_webhook: { secret: true, label: '企业微信群机器人 Webhook', def: () => '' },
+
+  // ---------------- GitHub（B4 代码仓库页） ----------------
+  // 只读凭据。留空 = 匿名访问：公开仓库也能读，但配额只有 60 次/小时（按服务器出口 IP 算），
+  // 页面刷十几次就打满；配上是 5000 次/小时。
+  // 建议 Fine-grained PAT，只要 Metadata / Contents / Actions / Issues / Pull requests 的**读**权限，
+  // 不要给 classic 的全量 repo（那是读写权限，泄露可改代码）。
+  github_token: { secret: true, label: 'GitHub 令牌', def: () => config.github.token },
+  // 关注的仓库，逗号分隔的 owner/repo；留空则页面上没有仓库可看
+  github_repos: { secret: false, label: '关注的仓库', def: () => config.github.repos.join(',') },
 };
 
 const selectStmt = db.prepare('SELECT key, value, is_secret FROM settings WHERE key = ?');

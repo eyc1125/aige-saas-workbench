@@ -38,13 +38,14 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 30 个 | 默认就有；「重新生成令牌」可换一把 |
-| **只读令牌** | 17 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
+| **全权令牌** | 全部 32 个 | 默认就有；「重新生成令牌」可换一把 |
+| **只读令牌** | 19 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
-**只读令牌能用的 17 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
+**只读令牌能用的 19 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
 `list_websites`、`get_site_logs`、`get_nginx_config`、`read_file`、`list_directory`、
 `list_backups`、`list_domains`、`list_dns_records`、`get_zone_info`、`list_containers`、
-`get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`。
+`get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`、
+`list_repo_commits`、`get_ci_status`。
 
 **被挡在门外的 13 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
@@ -64,7 +65,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 
 ---
 
-## 二、能力清单（30 个工具 · 按用途分组）
+## 二、能力清单（32 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -125,7 +126,19 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 | `deploy_app` | `app_name` `domain` `wait?` | 一键部署，自动串起「DNS 解析 → 拉镜像 → 起容器 → 申请证书 → 反向代理」 |
 | `get_deploy_logs` | `task_id` `since_id?` | 部署进度与增量日志 |
 
-### ⑦ 万能兜底
+### ⑦ 代码仓库（GitHub · **只读**）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_repo_commits` | `repo?` `limit?` | 仓库最近提交（作者 / 时间 / 提交信息首行 / 短 SHA）+ 默认分支、语言、最近推送时间 |
+| `get_ci_status` | `repo?` `limit?` | GitHub Actions 最近若干次运行的结论、分支、触发方式、耗时 |
+| — | — | `repo` 省略时用「系统设置 → 代码仓库」里配置的**第一个**仓库；`limit` 夹在 1–30 |
+
+> ⚠️ 这一组**只能读**，改不了 GitHub 上任何东西。没配令牌时走匿名访问，
+> 配额只有 **60 次/小时且按服务器出口 IP 算**（全服务器共用）—— 别拿它做轮询。
+> 配一个 Fine-grained 只读 PAT 可升到 5000 次/小时（见 README §16.3）。
+
+### ⑧ 万能兜底
 
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |
