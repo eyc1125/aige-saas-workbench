@@ -108,6 +108,10 @@ pgyer upload ./app-release.apk</pre>
             <dt>历史版本</dt>
             <dd>{{ app.versionCount }} 个</dd>
           </div>
+          <div v-if="app.latest.todayDownloads !== null">
+            <dt>今日下载</dt>
+            <dd class="tnum">{{ app.latest.todayDownloads }}</dd>
+          </div>
         </dl>
 
         <div class="app__qr">

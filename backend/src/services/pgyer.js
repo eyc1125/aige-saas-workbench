@@ -169,67 +169,82 @@ function iconUrl(buildIcon) {
   return `https://cdn-app-icon2.pgyer.com/${dir}/${s}?x-oss-process=image/resize,m_lfit,h_120,w_120/format,jpg`;
 }
 
+/** 蒲公英几乎所有数值字段都是**字符串**（文档写 Integer，实测是 String），统一转一下 */
+function toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function slimBuild(b) {
+  const typeNo = toNum(b.buildType);
   return {
     buildKey: b.buildKey,
     appKey: b.appKey,
     name: b.buildName || '',
     version: b.buildVersion || '',
     versionNo: b.buildVersionNo || '',
-    buildNumber: b.buildBuildVersion,
-    type: b.buildType === 1 ? 'iOS' : b.buildType === 2 ? 'Android' : '未知',
-    fileSize: b.buildFileSize || 0,
+    // ⚠️ 这个字段实测也是字符串（"1"）。不转数字的话排序比较会退化成 NaN，
+    //    「哪个是最新版本」就会算错。
+    buildNumber: toNum(b.buildBuildVersion),
+    type: typeNo === 1 ? 'iOS' : typeNo === 2 ? 'Android' : '未知',
+    fileSize: toNum(b.buildFileSize),
     identifier: b.buildIdentifier || '',
     createdAt: b.buildCreated || '',
-    icon: iconUrl(b.buildIcon),
-    // 这两个字段只有 view / buildInfo 才有，listMy 不返回 —— 见 withQr()
+    icon: b.iconUrl || iconUrl(b.buildIcon),
+    // 短链 listMy 就会带；二维码只有 view / buildInfo 才有
     shortcutUrl: b.buildShortcutUrl || '',
     qrCodeUrl: b.buildQRCodeURL || '',
     downloadPage: b.buildShortcutUrl ? `https://www.pgyer.com/${b.buildShortcutUrl}` : '',
     updateDescription: b.buildUpdateDescription || '',
+    // 只有 view 返回。「今日下载」是内测分发最该看的数字之一
+    todayDownloads: b.todayDownloadCount === undefined ? null : toNum(b.todayDownloadCount),
   };
 }
 
-/** 拉齐所有页（正常个人账号一页就够，这里只是不要静默丢数据） */
+/**
+ * 拉齐所有页。
+ *
+ * ⛔⛔ 这里踩过一个极其隐蔽的坑，务必别再踩：
+ *   官方文档的响应示例把 data 写成**数组** —— `{ code: 0, data: [ {...} ] }`；
+ *   但**实测**是 `{ code: 0, data: { list: [...], total: "2", page: 1 } }`，
+ *   data 是**对象**、里面才套 `list`。
+ *
+ *   第一版就是照文档写的 `Array.isArray(data) ? data : []`，结果永远解析成空列表 ——
+ *   表现是「我明明传过包，页面上一个都没有」，**而且不报错、code 还是 0**，
+ *   属于最难发现的那类 bug。教训：**文档只用来定接口名与参数，返回结构必须以实测为准。**
+ *
+ *   所以两种形状都兼容（文档万一改回来也能活），并优先用 total 控制翻页。
+ */
 async function listMyAll() {
   const all = [];
+  let total = null;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const rows = await cachedPost(`listMy:${page}`, '/apiv2/app/listMy', { page });
-    const list = Array.isArray(rows) ? rows : [];
+    const data = await cachedPost(`listMy:${page}`, '/apiv2/app/listMy', { page });
+
+    const isArray = Array.isArray(data);
+    const list = isArray ? data : Array.isArray(data?.list) ? data.list : [];
+    if (!isArray && data && data.total !== undefined) total = toNum(data.total);
+
     all.push(...list);
-    if (list.length === 0) break;
+    if (!list.length) break;
+    if (total !== null && all.length >= total) break;
   }
   return all;
 }
 
-/**
- * 补上短链与二维码。
- * listMy 不返回这两个字段，只能逐个 appKey 调 view —— 所以只对**每个应用的当前版本**补，
- * 不是每个历史版本都补（否则 N 个应用 × M 个版本 = N×M 次请求）。
- */
-async function withQr(items) {
-  const seen = new Set();
-  const out = [];
-  for (const item of items) {
-    if (item.shortcutUrl || seen.has(item.appKey)) {
-      out.push(item);
-      continue;
-    }
-    seen.add(item.appKey);
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const d = await cachedPost(`view:${item.appKey}:${item.buildKey}`, '/apiv2/app/view', {
-        appKey: item.appKey,
-        buildKey: item.buildKey,
-      });
-      out.push({ ...item, ...slimBuild({ ...d, appKey: item.appKey }) });
-    } catch {
-      // 单个应用取不到二维码不该让整页失败
-      out.push(item);
-    }
+/** 从 view 补当前版本的二维码与今日下载（listMy 不带二维码） */
+async function enrichFromView(item) {
+  try {
+    const d = await cachedPost(`view:${item.appKey}:${item.buildKey}`, '/apiv2/app/view', {
+      appKey: item.appKey,
+      buildKey: item.buildKey,
+    });
+    return slimBuild({ ...d, appKey: item.appKey });
+  } catch {
+    // 单个应用取不到二维码不该让整页失败：短链 listMy 就有，下载页照样能显示
+    return item;
   }
-  return out;
 }
 
 // ============================================================
@@ -260,20 +275,19 @@ async function listApps() {
 
   const items = [];
   for (const g of groups.values()) {
-    // buildBuildVersion 是蒲公英生成的版本序号，最大的是最新
-    g.builds.sort((a, b) => (a.buildNumber || 0) - (b.buildNumber || 0));
-    const latest = g.builds[g.builds.length - 1];
-    // 只给当前版本补二维码
+    // buildBuildVersion 是蒲公英生成的版本序号，**最大的是最新**（注意它是字符串）
+    g.builds.sort((a, b) => b.buildNumber - a.buildNumber);
+    // 只给当前版本补二维码 / 今日下载（view 只调这一次，不是每个历史版本都调）
     // eslint-disable-next-line no-await-in-loop
-    const [withQrLatest] = await withQr([latest]);
+    const latest = await enrichFromView(g.builds[0]);
     items.push({
       appKey: g.appKey,
-      name: withQrLatest.name || g.name,
-      icon: withQrLatest.icon || g.icon,
-      type: withQrLatest.type || g.type,
-      identifier: withQrLatest.identifier || g.identifier,
+      name: latest.name || g.name,
+      icon: latest.icon || g.icon,
+      type: latest.type || g.type,
+      identifier: latest.identifier || g.identifier,
       versionCount: g.builds.length,
-      latest: withQrLatest,
+      latest,
     });
   }
 
@@ -291,7 +305,7 @@ async function appDetail(appKey) {
   if (!mine.length) {
     throw new AppError('在蒲公英账号下找不到这个应用', 404, 'NOT_FOUND');
   }
-  mine.sort((a, b) => (b.buildNumber || 0) - (a.buildNumber || 0));
+  mine.sort((a, b) => b.buildNumber - a.buildNumber);
 
   const latest = await apiPost('/apiv2/app/view', { appKey: key, buildKey: mine[0].buildKey });
   return {
