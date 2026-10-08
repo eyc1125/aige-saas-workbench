@@ -32,6 +32,38 @@
 
 ---
 
+## 一·五、只读令牌（给「只需要看」的 AI）
+
+令牌分两档，**级别由「用哪把令牌」决定**，与客户端自称什么无关：
+
+| 令牌 | 能调用的工具 | 怎么来 |
+| --- | --- | --- |
+| **全权令牌** | 全部 30 个 | 默认就有；「重新生成令牌」可换一把 |
+| **只读令牌** | 17 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
+
+**只读令牌能用的 17 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
+`list_websites`、`get_site_logs`、`get_nginx_config`、`read_file`、`list_directory`、
+`list_backups`、`list_domains`、`list_dns_records`、`get_zone_info`、`list_containers`、
+`get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`。
+
+**被挡在门外的 13 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
+`save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
+`purge_cloudflare_cache`、`restart_container`、`manage_container`、`deploy_app`、
+`apply_health_fix`、`call_bt_api`。
+
+AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会白试）；即使强行业务调用，
+服务端也会返回 `isError: true` 与「只读令牌无权调用…」。
+
+> `run_health_checks` 归只读是个**有意的取舍**：它会写告警记录、可能外发通知，
+> 但不碰服务器本身，而它正是只读 AI 最该干的事；告警有指纹去重 + 30 分钟静默窗口，
+> 反复触发也刷不了屏。真正会改服务器的是 `apply_health_fix`（写）。
+
+> 🛠 维护须知：工具归类在 `backend/src/mcp/tools.js` 的 `READONLY_TOOLS` / `WRITE_TOOLS`，
+> **两份名单必须恰好铺满全部工具且互不重叠**，否则 CI 会红
+> （`backend/scripts/selfcheck-mcp-scope.js`，本地 `npm run check:scope`）。
+
+---
+
 ## 二、能力清单（30 个工具 · 按用途分组）
 
 ### ① 巡检与自愈

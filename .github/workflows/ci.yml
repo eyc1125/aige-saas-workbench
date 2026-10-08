@@ -180,6 +180,14 @@ jobs:
             console.log('✅ 工具清单、分组、说明文字三者一致');
           "
 
+      - name: MCP 工具作用域自检（只读 / 写 必须归类完整）
+        # 只读令牌的安全性全押在 tools.js 的 READONLY_TOOLS 白名单上。
+        # 以后新增工具若忘了归类，这一条会直接红 —— 否则只读令牌要么悄悄多出
+        # 一个写权限，要么少一个只读工具（AI 会以为工具不存在，绕路去做别的事）。
+        # 需要真实工具清单，所以放在这个装了依赖的 job 里，不放不装依赖的 backend-syntax。
+        working-directory: backend
+        run: node scripts/selfcheck-mcp-scope.js
+
   # ---------------- 4. 前端构建 ----------------
   frontend-build:
     name: 前端构建

@@ -56,6 +56,10 @@ const SCHEMA = {
   },
   // MCP 连接令牌：数据库里有值就优先用它（便于在界面上重新生成），否则用 .env 里的
   mcp_auth_token: { secret: true, label: 'MCP 连接令牌', def: () => config.mcpAuthToken },
+  // MCP 只读令牌（D2）：只能调用 tools.js 里 READONLY_TOOLS 白名单内的工具。
+  // 刻意与全权令牌分开存 —— 级别由「用哪把令牌」决定，不看客户端自称什么，
+  // 所以即使 AI 被诱导，也拿不到写权限。只读令牌没有 .env 兜底，只能由界面生成。
+  mcp_readonly_token: { secret: true, label: 'MCP 只读令牌', def: () => '' },
   // ---------------- 告警外部通道 ----------------
   // 这几个地址里通常带着机器人的 access_token/key，等于凭据，所以按敏感项加密存储。
   // ⚠️ 飞书与企业微信是**两种不同协议**，地址不能混填（格式差异见 services/notify.js 顶部）

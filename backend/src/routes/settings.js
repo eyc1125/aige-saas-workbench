@@ -25,6 +25,8 @@ const baotaService = require('../services/baota');
 const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
 const { TOOL_DEFINITIONS } = require('../mcp/tools');
+// 只读工具清单由 mcp/server.js 推导（与真正生效的鉴权用同一份，避免两边不一致）
+const { READONLY_DEFINITIONS } = require('../mcp/server');
 // 工具分组与总数统一由 mcp/instructions.js 提供（单一来源，避免两处各写一份数字）
 const {
   SERVER_INSTRUCTIONS,
@@ -153,6 +155,12 @@ function resolvePublicUrl(configured, req, port) {
   return `${proto}://${host}${isDefaultPort ? '' : `:${port}`}`;
 }
 
+/** 令牌统一掩码（界面上只露头尾各 4 位，防肩窥；不是防管理员本人） */
+function maskToken(token) {
+  if (!token) return '';
+  return `${token.slice(0, 4)}${'*'.repeat(8)}${token.slice(-4)}`;
+}
+
 /** MCP 连接信息 */
 router.get(
   '/mcp',
@@ -180,6 +188,23 @@ router.get(
         },
       },
     };
+
+    // ---------------- 只读令牌（D2） ----------------
+    // ⚠️ 这里**不自动生成**：全权令牌是「没有就当场生成」，因为界面给出的配置必须复制即用；
+    //    只读令牌不同 —— 没生成就是「不存在这把凭据」，凭空造一把出来等于多一个出入口。
+    //    使用者点「生成只读令牌」时才创建。
+    const readonlyToken = settings.get('mcp_readonly_token') || '';
+    const readonlyConfig = readonlyToken
+      ? {
+          mcpServers: {
+            // 名字带 -readonly，同一个 AI 工具里可以两把并存、一眼分清谁是谁
+            'aige-workbench-readonly': {
+              url: `${mcpUrl}/sse`,
+              headers: { Authorization: `Bearer ${readonlyToken}` },
+            },
+          },
+        }
+      : null;
 
     // 给「人类」看的一页纸：贴到任意 AI 工具里，对方立刻知道这是什么、该怎么用
     const quickstart = `# 艾哥 SaaS 工作台 · MCP 接入说明（复制即用）
@@ -213,7 +238,7 @@ ${groupListText()}
     return success(res, {
       enabled: true,
       // 界面上仍只显示掩码（防肩窥）；明文只在「复制配置」时随配置一起给出
-      tokenMasked: `${token.slice(0, 4)}${'*'.repeat(8)}${token.slice(-4)}`,
+      tokenMasked: maskToken(token),
       sseUrl: `${mcpUrl}/sse`,
       messageUrl: `${mcpUrl}/messages`,
       healthUrl: `${mcpUrl}/health`,
@@ -238,28 +263,84 @@ ${groupListText()}
         cursor: remoteConfig,
         claudeDesktop: remoteConfig,
       },
+      // ---------------- 只读令牌（D2） ----------------
+      readonly: {
+        configured: !!readonlyToken,
+        tokenMasked: maskToken(readonlyToken),
+        toolCount: READONLY_DEFINITIONS.length,
+        totalCount: TOOL_DEFINITIONS.length,
+        // 只读令牌能用的工具（前端用来把边界摊开给使用者看，而不是只写一句"只读"）
+        toolGroups: TOOL_GROUPS.map((g) => ({
+          group: g.group,
+          tools: g.tools
+            .filter((name) => READONLY_DEFINITIONS.some((d) => d.name === name))
+            .map((name) => TOOL_DEFINITIONS.find((t) => t.name === name))
+            .filter(Boolean)
+            .map((t) => ({ name: t.name, description: t.description })),
+        })).filter((g) => g.tools.length),
+        config: readonlyConfig,
+      },
     });
   })
 );
 
-/** 重新生成 MCP 令牌（返回明文一次，请立刻保存到 AI 工具配置里） */
+/**
+ * 生成 / 吊销 MCP 令牌
+ * ------------------------------------------------------------------
+ * body: { scope: 'full' | 'readonly'（默认 full）, revoke?: boolean }
+ *   full     —— 只能重新生成（它没有"不存在"这个状态：库里没有就回退 .env，清了也是回退）
+ *   readonly —— 可生成，也可吊销（吊销后那把只读令牌立即失效，全权令牌不受影响）
+ * 两者返回明文都仅此一次，请立刻复制到 AI 工具配置里。
+ */
 router.post(
   '/mcp/token',
   asyncHandler(async (req, res) => {
+    const { scope = 'full', revoke = false } = req.body || {};
+    const isReadonly = String(scope).toLowerCase() === 'readonly';
+    const key = isReadonly ? 'mcp_readonly_token' : 'mcp_auth_token';
+
+    if (revoke && !isReadonly) {
+      throw badRequest('全权令牌不支持吊销，只能重新生成');
+    }
+
+    if (revoke) {
+      settings.set(key, '__CLEAR__');
+      writeLog({
+        userId: req.user.id,
+        username: req.user.username,
+        module: 'settings',
+        action: 'revoke_mcp_readonly_token',
+        source: 'web',
+        status: 'success',
+        ip: clientIp(req),
+      });
+      return success(
+        res,
+        { scope: 'readonly', revoked: true },
+        '只读令牌已吊销，原令牌立即失效（全权令牌不受影响）'
+      );
+    }
+
     const token = crypto.randomBytes(24).toString('hex');
-    settings.set('mcp_auth_token', token);
+    settings.set(key, token);
 
     writeLog({
       userId: req.user.id,
       username: req.user.username,
       module: 'settings',
-      action: 'regenerate_mcp_token',
+      action: isReadonly ? 'regenerate_mcp_readonly_token' : 'regenerate_mcp_token',
       source: 'web',
       status: 'success',
       ip: clientIp(req),
     });
 
-    return success(res, { token }, 'MCP 令牌已重新生成，请立即复制保存（离开本页后不再显示）');
+    return success(
+      res,
+      { token, scope: isReadonly ? 'readonly' : 'full' },
+      isReadonly
+        ? '只读令牌已生成，请立即复制保存（离开本页后不再显示）'
+        : 'MCP 令牌已重新生成，请立即复制保存（离开本页后不再显示）'
+    );
   })
 );
 

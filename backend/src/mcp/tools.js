@@ -477,6 +477,85 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
+// ============================================================
+// 令牌作用域（D2）：哪些工具算「只读」
+// ============================================================
+/**
+ * 「只读令牌」可以调用的工具白名单。
+ *
+ * ⚠️ 刻意用**白名单**而不是黑名单：
+ *    新增工具时若忘了归类，白名单默认「不给只读令牌用」——错在保守的一边；
+ *    换成黑名单则会默认「给只读令牌用」，漏标一个就是一次线上误删。
+ *    两者必须恰好铺满全部工具、且互不重叠，由 scripts/selfcheck-mcp-scope.js
+ *    在 CI 里卡住（新增工具忘了归类会直接红），所以不存在「默认值」被误用的可能。
+ *
+ * 归入只读的三条标准：只查不改、不改服务器任何状态、不产生不可逆结果。
+ */
+const READONLY_TOOLS = new Set([
+  // 巡检与自愈
+  'get_server_status',
+  'list_ssl_certs',
+  // ⚠️ 取舍：run_health_checks 会写告警记录、可能外发通知（不碰服务器本身）。
+  //    它正是「用只读令牌的 AI 最该干的事」，且告警有 fingerprint 去重 + 30 分钟静默窗口，
+  //    被反复触发也刷不了屏，因此归入只读。真正会改服务器的是 apply_health_fix（写）。
+  'run_health_checks',
+
+  // 网站（宝塔）
+  'list_websites',
+  'get_site_logs',
+  'get_nginx_config',
+
+  // 文件与备份
+  'read_file',
+  'list_directory',
+  'list_backups',
+
+  // 域名与 DNS（Cloudflare）
+  'list_domains',
+  'list_dns_records',
+  'get_zone_info',
+
+  // Docker
+  'list_containers',
+  'get_container_logs',
+  'list_images',
+
+  // 应用部署
+  'list_app_templates',
+  'get_deploy_logs',
+]);
+
+/**
+ * 会改变服务器 / 线上状态的工具 —— 只读令牌调用一律拒绝。
+ * 与 READONLY_TOOLS 的并集必须是全部已注册工具（自检保证）。
+ */
+const WRITE_TOOLS = new Set([
+  // 网站（宝塔）
+  'create_website',
+  'delete_website',
+  'apply_ssl',
+  'save_nginx_config',
+
+  // 域名与 DNS
+  'add_dns_record',
+  'update_dns_record',
+  'delete_dns_record',
+  'purge_cloudflare_cache',
+
+  // Docker
+  'restart_container',
+  'manage_container',
+
+  // 应用部署
+  'deploy_app',
+
+  // 自愈修复
+  'apply_health_fix',
+
+  // 万能兜底：可以触达宝塔任意写接口，必须算写
+  'call_bt_api',
+]);
+
 /** 统一成功结果 */
 const ok = (data, message = '操作成功') => ({ success: true, data: data ?? null, message });
 
@@ -1140,4 +1219,11 @@ async function callTool(name, args = {}) {
 /** 工具名集合，供 server 校验 */
 const TOOL_NAMES = TOOL_DEFINITIONS.map((t) => t.name);
 
-module.exports = { TOOL_DEFINITIONS, TOOL_NAMES, TOOL_HANDLERS, callTool };
+module.exports = {
+  TOOL_DEFINITIONS,
+  TOOL_NAMES,
+  TOOL_HANDLERS,
+  READONLY_TOOLS,
+  WRITE_TOOLS,
+  callTool,
+};

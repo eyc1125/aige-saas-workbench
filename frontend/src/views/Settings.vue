@@ -230,6 +230,80 @@
           说明：远程连接请把上面的 JSON 填到 AI 工具的 MCP 配置里（已含真实令牌，复制即用）； 若 AI
           工具就在服务器本机，也可用 stdio 方式：<code>{{ mcp?.stdioCommand }}</code>
         </p>
+
+        <!-- 只读令牌（D2）：把「只需要查」的 AI 与全权 AI 分开 -->
+        <div class="ro-card">
+          <div class="ro-card__head">
+            <div class="ro-card__titles">
+              <span class="ro-card__badge">只读</span>
+              <span class="ro-card__title">只读令牌</span>
+              <span class="section__state" :class="mcp?.readonly?.configured ? 'is-on' : 'is-off'">
+                {{ mcp?.readonly?.configured ? '已生成' : '未生成' }}
+              </span>
+            </div>
+            <div class="ro-card__actions">
+              <el-button
+                v-if="mcp?.readonly?.configured"
+                type="primary"
+                @click="copyText(readonlyConfigText, '只读配置已复制，粘贴到 AI 工具即可用')"
+              >
+                <el-icon><DocumentCopy /></el-icon>复制只读配置
+              </el-button>
+              <el-button @click="generateReadonlyToken">
+                <el-icon><RefreshRight /></el-icon>
+                {{ mcp?.readonly?.configured ? '重新生成' : '生成只读令牌' }}
+              </el-button>
+              <el-button
+                v-if="mcp?.readonly?.configured"
+                type="danger"
+                plain
+                @click="revokeReadonlyToken"
+              >
+                吊销
+              </el-button>
+            </div>
+          </div>
+
+          <p class="ro-card__desc">
+            给「只需要查、不需要改」的 AI 用：只能调用其中
+            {{ mcp?.readonly?.toolCount || 0 }} 个只读工具。写操作（新建 / 删除站点、改 DNS、 改
+            Nginx 配置、重启容器、部署应用、自愈修复、call_bt_api 等）会被服务端直接拒绝 ——
+            工具清单里根本没有它们，AI 硬调也执行不了。全权令牌不受影响，两把可以同时用。
+          </p>
+
+          <div v-if="mcp?.readonly?.configured" class="ro-card__body">
+            <div class="kv">
+              <span class="kv__k">只读令牌</span>
+              <span class="kv__v mono">{{ mcp?.readonly?.tokenMasked }}</span>
+            </div>
+            <pre class="code-block code-block--soft">{{ readonlyConfigText }}</pre>
+            <el-collapse class="tools-collapse">
+              <el-collapse-item
+                :title="`只读令牌能用的工具（${mcp?.readonly?.toolCount || 0} / ${mcp?.readonly?.totalCount || 0}）`"
+                name="ro-tools"
+              >
+                <div
+                  v-for="group in mcp?.readonly?.toolGroups || []"
+                  :key="group.group"
+                  class="tool-group"
+                >
+                  <h4 class="tool-group__title">{{ group.group }}</h4>
+                  <ul class="tools">
+                    <li v-for="tool in group.tools" :key="tool.name">
+                      <code>{{ tool.name }}</code>
+                      <span>{{ tool.description }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+
+          <p v-else class="ro-card__desc">
+            还没生成。点「生成只读令牌」会创建一把只读凭据 —— 明文只显示这一次，请立即复制到 AI
+            工具的配置里。
+          </p>
+        </div>
       </div>
     </section>
 
@@ -490,7 +564,7 @@
     <!-- ==================== 新令牌弹窗 ==================== -->
     <el-dialog
       v-model="tokenVisible"
-      title="新的 MCP 令牌"
+      :title="tokenScope === 'readonly' ? '新的 MCP 只读令牌' : '新的 MCP 令牌'"
       width="520px"
       :close-on-click-modal="false"
     >
@@ -499,7 +573,11 @@
         :closable="false"
         show-icon
         title="请立即复制保存"
-        description="令牌只显示这一次，关闭后无法再查看。旧令牌已同时失效，请同步更新 AI 工具里的配置。"
+        :description="
+          tokenScope === 'readonly'
+            ? '只读令牌只显示这一次，关闭后无法再查看。旧的只读令牌已失效，全权令牌不受影响。'
+            : '令牌只显示这一次，关闭后无法再查看。旧令牌已同时失效，请同步更新 AI 工具里的配置。'
+        "
       />
       <div class="token-box mono">{{ newToken }}</div>
       <template #footer>
@@ -743,8 +821,14 @@ async function testConnection(group) {
 // ---------------- MCP ----------------
 const tokenVisible = ref(false);
 const newToken = ref('');
+// 弹窗是「刚生成了哪把令牌」——全权与只读共用同一个弹窗，靠它区分文案
+const tokenScope = ref('full');
 
 const mcpConfigText = computed(() => JSON.stringify(mcp.value?.templateUrl?.trae || {}, null, 2));
+// 只读令牌的现成配置（后端未生成只读令牌时为 null，此时不展示）
+const readonlyConfigText = computed(() =>
+  JSON.stringify(mcp.value?.readonly?.config || {}, null, 2)
+);
 
 async function regenerateToken() {
   try {
@@ -758,9 +842,55 @@ async function regenerateToken() {
   }
 
   try {
-    const data = await settingApi.regenerateMcpToken();
+    const data = await settingApi.mcpToken({ scope: 'full' });
     newToken.value = data.token;
+    tokenScope.value = 'full';
     tokenVisible.value = true;
+    loadMcp();
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
+async function generateReadonlyToken() {
+  const already = mcp.value?.readonly?.configured;
+  if (already) {
+    try {
+      await ElMessageBox.confirm(
+        '重新生成后，旧的只读令牌立即失效，已配好只读连接的 AI 工具需要更新配置。全权令牌不受影响。确定继续吗？',
+        '重新生成只读令牌',
+        { confirmButtonText: '继续生成', cancelButtonText: '取消', type: 'warning' }
+      );
+    } catch {
+      return;
+    }
+  }
+
+  try {
+    const data = await settingApi.mcpToken({ scope: 'readonly' });
+    newToken.value = data.token;
+    tokenScope.value = 'readonly';
+    tokenVisible.value = true;
+    loadMcp();
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
+async function revokeReadonlyToken() {
+  try {
+    await ElMessageBox.confirm(
+      '吊销后这把只读令牌立即失效，已用它连接的 AI 工具会连不上（全权令牌不受影响）。确定吊销吗？',
+      '吊销只读令牌',
+      { confirmButtonText: '确定吊销', cancelButtonText: '取消', type: 'warning' }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    const data = await settingApi.mcpToken({ scope: 'readonly', revoke: true });
+    ElMessage.success(data.message || '只读令牌已吊销');
     loadMcp();
   } catch {
     /* 拦截器已提示 */
@@ -1046,6 +1176,64 @@ onMounted(async () => {
 /* 「一个 MCP 就够」提示：插在配置与工具清单之间，做视觉分隔 */
 .mcp-note {
   margin-bottom: var(--sp-4);
+}
+
+/* ---------------- 只读令牌（D2） ----------------
+   视觉上刻意比上面的全权配置「轻一档」：虚线边 + 浅底，表示它是可选的第二把凭据，
+   而不是又一个主配置区。*/
+.ro-card {
+  margin-top: var(--sp-5);
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-hairline);
+}
+
+.ro-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.ro-card__titles {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.ro-card__badge {
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.ro-card__title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ro-card__actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.ro-card__desc {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.ro-card__body {
+  margin-top: var(--sp-3);
 }
 
 /* 能力清单按用途分组，长表单里靠小标题分段，避免一坨纯文字 */
