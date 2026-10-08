@@ -28,7 +28,12 @@
 - 令牌不用手填：界面上的「复制 MCP 配置」已经带上真实令牌，粘贴即可用。
 - 保存后**重启 AI 工具**，即可看到名为 `aige-workbench` 的 MCP 服务器。
 - 健康检查：`GET https://aige-saas-mcp.miaocaieyc.com.cn/health`（返回工具数与当前会话数）。
-- 传输协议：SSE。令牌支持三种传法，任选其一：`Authorization: Bearer <token>` / `x-mcp-token: <token>` / `?token=<token>`。
+- 传输协议：SSE。令牌放在**请求头**里，两种写法任选：`Authorization: Bearer <token>` / `x-mcp-token: <token>`。
+  ⛔ **不支持 `?token=`**（URL 查询参数）：SSE 客户端只在建连时用到 URL，之后每次调工具都是 POST 到服务端下发的
+  `/messages?sessionId=...`，**那个 URL 不带 token** —— 支持它就等于提供一个「能连上、一调就 401」的半坏路径。
+- **长连接保活**：服务每 **25 秒**发一次 SSE 心跳。这是必需的：服务经 Cloudflare 橙色云对外，
+  **CF 免费版对空闲连接约 100 秒就断**，而 SSE 只在调用工具时才发数据 —— 不心跳的话，AI 停一会儿连接就被掐掉。
+- **会话上限 20 个**，空闲 15 分钟的会话自动清理（客户端异常退出时 `close` 事件可能不来，靠这个兜底）。
 
 ---
 
