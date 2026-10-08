@@ -178,6 +178,16 @@ export const distributeApi = {
     }),
 };
 
+// ==================== 计划任务（C3 · 只读） ====================
+export const crontabApi = {
+  /**
+   * 服务器上的全部计划任务（含其他项目的，后端已标 owner）。
+   * ⚠️ 刻意只有这一个接口：启停/删除不做（那些任务基本都属于其他项目），
+   *    返回里也不含脚本正文（其他项目的脚本里有明文密钥）。
+   */
+  list: () => request.get('/crontab', { silent: true }),
+};
+
 // ==================== 系统设置 ====================
 export const settingApi = {
   get: () => request.get('/settings'),

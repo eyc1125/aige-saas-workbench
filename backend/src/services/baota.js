@@ -35,6 +35,71 @@ const LETSENCRYPT_DIR = '/www/server/panel/vhost/letsencrypt';
 /** 宝塔备份根目录 */
 const BACKUP_ROOT = '/www/backup';
 
+/**
+ * 计划任务归属判定：属于本项目自己的任务（与 health.js 的站点白名单同一套约定）
+ * ------------------------------------------------------------------
+ * 本项目自己的东西统一带 aige / workbench / 艾哥 这些字眼（二级域名是 aige-saas- 前缀、
+ * 容器是 aige-workbench-*、目录是 aige-saas-workbench）。这里沿用同一套，避免各判各的。
+ */
+const OWN_CRONTAB_KEYWORDS = ['aige', 'workbench', '艾哥'];
+function isOwnCrontab(name) {
+  const n = String(name || '').toLowerCase();
+  return OWN_CRONTAB_KEYWORDS.some((k) => n.includes(k));
+}
+
+/**
+ * 「疑似排障遗留」的名字特征
+ * ------------------------------------------------------------------
+ * 实测这台服务器上有 36 个任务，其中十几条长这样：
+ * 「修复Nginx静态文件拦截」「深度诊断静态文件问题」「最终重启NovaAI(3001端口)」——
+ * 都是当时排障临时加的，事后没人清理，**却还都挂在「每天」执行**。
+ * 这种任务既占资源又让「到底哪些任务该在」变得说不清，所以单独标出来提醒人确认。
+ */
+const LEGACY_TASK_HINTS = [/修复/, /诊断/, /重试/, /最终/, /测试/];
+
+/**
+ * 宝塔 `type` 字段的英文 slug → 人话
+ * ------------------------------------------------------------------
+ * ⚠️ 为什么需要这张表：宝塔**不一定**给中文描述。实测 36 条里有 3 条
+ *    `type_zh` 直接就是 `minute` / `to-shell` 这种原始 slug，
+ *    照搬会在界面上印出英文单词（实测截图里就出现过），既不专业也看不懂。
+ * 只映射**实际观察到的**取值，其余一律走「周期未说明」，不猜。
+ */
+const CRONTAB_TYPE_TEXT = {
+  day: '每天',
+  week: '每周',
+  month: '每月',
+  hour: '每小时',
+  minute: '每分钟',
+  'minute-n': '按分钟间隔重复',
+  'hour-n': '按小时间隔重复',
+  'day-n': '按天间隔重复',
+};
+
+/**
+ * 是不是「真的中文描述」—— 用来判断 type_zh 能不能直接展示
+ * 用码点判断而不是正则：正则可以写，但包含 ASCII 控制符范围的字符类会被 lint 拦
+ * （no-control-regex），而且这个意图用码点表达更直白。
+ */
+function hasChinese(text) {
+  return [...String(text || '')].some((ch) => ch.codePointAt(0) > 0x7f);
+}
+
+/**
+ * 「执行方式」白名单：只有这些 sType 才算「方式」
+ * ------------------------------------------------------------------
+ * 宝塔的 `sType` 把两类东西混在一起：
+ *   · 真·执行方式 —— toShell / shell（脚本）、url（访问网址）
+ *   · 调度间隔 —— minute-n / hour-n（那属于「周期」，不是「方式」）
+ * 混在一起展示会出现「周期写着 to-shell，方式写着每 N 分钟」这种自相矛盾的行
+ * （实测就有），所以这里只放行前者；不在表里的取值为空，界面直接不显示那个标签。
+ */
+const CRONTAB_EXEC_TYPES = {
+  toShell: 'Shell 脚本',
+  shell: 'Shell 脚本',
+  url: '访问 URL',
+};
+
 /** 人类可读的字节数（列表展示用） */
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
@@ -921,6 +986,99 @@ ${proxyBlock}
       expiring,
       expired,
       certs: out,
+    };
+  }
+
+  // ==================== 计划任务（只读） ====================
+
+  /**
+   * 计划任务列表（**只读**）
+   * ------------------------------------------------------------------
+   * ⛔ 两个必须守住的东西，改这里之前先读：
+   *
+   * 1. **字段用白名单挑，不是黑名单剔**。
+   *    宝塔返回的每条任务里带 `sBody` —— **脚本正文**。而服务器上其他项目的任务正文里
+   *    **躺着明文密钥**（实测：某项目的部署脚本里同时有数据库口令、微信商户 API v3 密钥、
+   *    GitHub client secret）。所以这里**只挑出明确要用的字段**：以后宝塔新增什么字段，
+   *    也不会顺势跟着漏出去。要看脚本正文请去宝塔面板 —— 那是宝塔对管理员的责任边界，
+   *    不该由本工作台的接口代为扩散。
+   *
+   * 2. **归属判定**。宝塔返回的是**全服务器**的任务，实测 36 条**全部属于其他项目**。
+   *    本项目自己的按名字关键字识别（与站点白名单同一套约定）；其余一律 `owner: 'foreign'`，
+   *    页面与 MCP 都只报告，**不提供任何启停/删除/新增动作**（那会动别的项目的资源）。
+   *
+   * ⚠️ 另外别把这个接口理解成「本站点的定时任务」：本工作台自己的定时清理
+   *    （指标采样、日志保留、告警清理）都在后端进程里用 setInterval 做，**不出现在这里**。
+   */
+  async listCrontabs() {
+    const res = await this.call('/crontab?action=GetCrontab', {}, 'POST');
+    const list = Array.isArray(res) ? res : [];
+
+    const tasks = list.map((t) => {
+      const name = String(t?.name || '').trim();
+      const typeZh = String(t?.type_zh || '').trim();
+      const typeRaw = String(t?.type || '').trim();
+      const cycleRaw = String(t?.cycle || '').trim();
+
+      /*
+       * 周期文案的取值链（照搬宝塔原值会在界面上印出英文 slug，实测踩过）：
+       *   ① cycle（宝塔给的人话，最准，如「每天的22:54执行一次」）
+       *   ② type_zh —— **但只在它真是中文时**才用（有时它就是 'minute' 本身）
+       *   ③ type 的 slug 映射表
+       *   ④ 兜底「周期未说明」，不硬猜
+       */
+      const typeText =
+        (hasChinese(typeZh) && typeZh) ||
+        CRONTAB_TYPE_TEXT[typeRaw] ||
+        (hasChinese(typeZh) ? typeZh : '');
+      const cycle = cycleRaw || typeText || '周期未说明';
+
+      return {
+        id: Number(t?.id) || 0,
+        name,
+        cycle,
+        typeText: typeText || '未说明',
+        // 执行方式：只认「真·执行方式」的取值。sType 有时是 'minute-n'（那其实是
+        // 调度间隔、不是方式），这种一律留空，由界面按需隐藏，免得把间隔说成方式。
+        execType: CRONTAB_EXEC_TYPES[t?.sType] ? t.sType : '',
+        // 1 = 启用，0 = 停用
+        enabled: Number(t?.status) === 1,
+        /**
+         * 宝塔给的上次执行标记，**只见过 0 / 1 两种取值，含义没有官方说明**。
+         * 所以这里原样透出、不硬翻译成「成功 / 失败」—— 界面把它当「值得看一眼」的信号，
+         * 真要确认请去面板看日志。
+         */
+        resultCode: t?.result === undefined || t?.result === null ? null : Number(t.result),
+        // 执行身份：root / www 等
+        runAs: String(t?.user || '').trim(),
+        category: String(t?.type_name || '').trim() || '默认分类',
+        owner: isOwnCrontab(name) ? 'own' : 'foreign',
+        // 疑似排障遗留：名字里带「修复 / 诊断 / 重试 / 最终 / 测试」这类字眼，多半是当时
+        // 临时排障留下的，事后没清理（实测 36 条里有十几条长这样，还都是「每天」在跑）
+        legacyHint: LEGACY_TASK_HINTS.some((re) => re.test(name))
+          ? '名字像是当时排障留下的，建议确认是否还需要（它还在按周期跑）'
+          : '',
+      };
+    });
+
+    const own = tasks.filter((t) => t.owner === 'own');
+
+    return {
+      total: tasks.length,
+      ownCount: own.length,
+      foreignCount: tasks.length - own.length,
+      enabledCount: tasks.filter((t) => t.enabled).length,
+      disabledCount: tasks.filter((t) => !t.enabled).length,
+      abnormalCount: tasks.filter((t) => t.resultCode === 0).length,
+      legacyCount: tasks.filter((t) => t.legacyHint).length,
+      tasks,
+      /**
+       * 归属说明。放在返回里而不是只写在文档里 —— 因为**界面与 AI 都要靠它决定能做什么**，
+       * 写在数据旁边才不会被忘掉。
+       */
+      scopeNote:
+        '这里是**整台服务器**的计划任务，不是本项目的。本工作台自己的定时清理在后端进程里跑，不在此列。' +
+        '其他项目的任务一律只报告、不提供启停或删除。',
     };
   }
 

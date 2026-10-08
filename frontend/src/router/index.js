@@ -95,6 +95,16 @@ const routes = [
         },
       },
       {
+        path: 'crontab',
+        name: 'crontab',
+        component: () => import('@/views/Crontab.vue'),
+        meta: {
+          title: '计划任务',
+          subtitle: '服务器上的定时任务（只读）',
+          icon: 'Timer',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/Settings.vue'),

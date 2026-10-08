@@ -528,6 +528,24 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'list_crontabs',
+    description:
+      '获取服务器上**全部**计划任务（cron）：名称、执行周期、是否启用、执行身份、分类，并标注哪些属于本项目（owner=own）、哪些属于其他项目（owner=foreign），以及疑似「排障时临时加的、事后没清理」的任务。用于回答「服务器上都有哪些定时任务在跑」「有没有遗留的临时任务」。⚠️ 这是整台机器的任务清单，多数属于其他项目；**只读，不提供启停或删除**，也**不返回脚本正文**（其他项目的脚本里有明文密钥）。注意：本工作台自己的定时清理在后端进程里跑，不在此列。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: {
+          type: 'string',
+          enum: ['all', 'own', 'foreign'],
+          description: '只看某一类：all（默认）/ own（本项目）/ foreign（其他项目）',
+        },
+        keyword: { type: 'string', description: '按名称关键字过滤，可省略' },
+        limit: { type: 'number', description: '返回最多几条，默认 50，最大 200' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ============================================================
@@ -584,6 +602,10 @@ const READONLY_TOOLS = new Set([
   // 应用分发（蒲公英）—— 纯只读：上传走官方工具链，这里只查版本与下载页/二维码
   'list_distributed_apps',
   'get_distributed_app',
+
+  // 计划任务（C3）—— 纯只读：只看服务器上有哪些定时任务，
+  // 不返回脚本正文（其他项目的脚本里有明文密钥），也不提供启停/删除
+  'list_crontabs',
 ]);
 
 /**
@@ -1256,6 +1278,52 @@ const TOOL_HANDLERS = {
     return ok(
       data,
       `${data.latest.name} 当前 v${data.latest.version}（${formatBytes(data.latest.fileSize)}），共 ${data.history.length} 个历史版本；下载页 ${data.latest.downloadPage || '未获取到'}`
+    );
+  },
+
+  /** 32. 计划任务清单（C3，只读） */
+  async list_crontabs({ owner, keyword, limit }) {
+    const count = clampLimit(limit, 50, 200);
+    const data = await baotaService.createClient().listCrontabs();
+
+    const which = owner === 'own' || owner === 'foreign' ? owner : 'all';
+    const kw = String(keyword || '')
+      .trim()
+      .toLowerCase();
+
+    let list = data.tasks;
+    if (which !== 'all') list = list.filter((t) => t.owner === which);
+    if (kw) list = list.filter((t) => t.name.toLowerCase().includes(kw));
+
+    const shown = list.slice(0, count);
+    const basis =
+      `${data.total} 个任务（本项目 ${data.ownCount} / 其他项目 ${data.foreignCount}；` +
+      `启用 ${data.enabledCount}、停用 ${data.disabledCount}；执行标记为 0 的 ${data.abnormalCount} 个）`;
+
+    if (!shown.length) {
+      return ok(
+        { ...data, tasks: [], filtered: list.length, scopeNote: data.scopeNote },
+        `按条件没筛到任务。全部：${basis}`
+      );
+    }
+
+    const lines = shown
+      .map((t) => {
+        const who = t.owner === 'own' ? '本项目' : '其他项目';
+        const flag = t.enabled ? '' : '（已停用）';
+        return `${t.name}${flag} · ${t.cycle} · ${who}${t.legacyHint ? ' · 疑似排障遗留' : ''}`;
+      })
+      .join('；');
+
+    return ok(
+      {
+        ...data,
+        tasks: shown,
+        filtered: list.length,
+        returned: shown.length,
+        truncated: list.length > shown.length,
+      },
+      `${basis}。${shown.length} 条：${lines}`
     );
   },
 };

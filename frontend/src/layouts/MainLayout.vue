@@ -236,6 +236,7 @@ const ALL_NAV = [
   { path: '/apps', title: '应用商店', icon: 'Grid' },
   { path: '/repos', title: '代码仓库', icon: 'FolderOpened' },
   { path: '/distribute', title: '应用分发', icon: 'Cellphone' },
+  { path: '/crontab', title: '计划任务', icon: 'Timer' },
   { path: '/settings', title: '系统设置', icon: 'Setting', adminOnly: true },
 ];
 

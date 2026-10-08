@@ -50,6 +50,7 @@ router.use('/docker', requireAuth, requirePermission, require('./docker'));
 router.use('/apps', requireAuth, requirePermission, require('./apps'));
 router.use('/repos', requireAuth, requirePermission, require('./repos'));
 router.use('/distribute', requireAuth, requirePermission, require('./distribute'));
+router.use('/crontab', requireAuth, requirePermission, require('./crontab'));
 router.use('/settings', requireAuth, requirePermission, require('./settings'));
 router.use('/logs', requireAuth, requirePermission, require('./logs'));
 router.use('/users', requireAuth, requirePermission, require('./users'));
