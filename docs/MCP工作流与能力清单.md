@@ -38,14 +38,14 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 32 个 | 默认就有；「重新生成令牌」可换一把 |
-| **只读令牌** | 19 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
+| **全权令牌** | 全部 34 个 | 默认就有；「重新生成令牌」可换一把 |
+| **只读令牌** | 21 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
-**只读令牌能用的 19 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
+**只读令牌能用的 21 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
 `list_websites`、`get_site_logs`、`get_nginx_config`、`read_file`、`list_directory`、
 `list_backups`、`list_domains`、`list_dns_records`、`get_zone_info`、`list_containers`、
 `get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`、
-`list_repo_commits`、`get_ci_status`。
+`list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`。
 
 **被挡在门外的 13 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
@@ -65,7 +65,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 
 ---
 
-## 二、能力清单（32 个工具 · 按用途分组）
+## 二、能力清单（34 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -138,7 +138,18 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 > 配额只有 **60 次/小时且按服务器出口 IP 算**（全服务器共用）—— 别拿它做轮询。
 > 配一个 Fine-grained 只读 PAT 可升到 5000 次/小时（见 README §16.3）。
 
-### ⑧ 万能兜底
+### ⑧ 应用分发（蒲公英 · **只读**）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
+| `get_distributed_app` | `appKey` | 某个应用的全部历史版本（appKey 从上面那个工具拿） |
+
+> ⚠️ 这一组**只能读**。**上传安装包不在本工作台的能力范围内** ——
+> 请引导用户用蒲公英官方工具链：官方 MCP（`npx -y pgyer-mcp-server`，**跑在本机、能读本地 APK**）
+> 或官方 CLI（`pgyer upload ./app-release.apk`）。原因见 README §16.4。
+
+### ⑨ 万能兜底
 
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |

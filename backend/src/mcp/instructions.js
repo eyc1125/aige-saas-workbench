@@ -70,6 +70,7 @@ const TOOL_GROUPS = [
     tools: ['list_app_templates', 'deploy_app', 'get_deploy_logs'],
   },
   { group: '代码仓库（GitHub，只读）', tools: ['list_repo_commits', 'get_ci_status'] },
+  { group: '应用分发（蒲公英，只读）', tools: ['list_distributed_apps', 'get_distributed_app'] },
   { group: '万能兜底', tools: ['call_bt_api'] },
 ];
 
@@ -144,7 +145,16 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维能力
 - ⚠️ 这一组**只能读**，改不了 GitHub 上任何东西。没有配令牌时走匿名访问，
   但配额只有 60 次/小时（按服务器出口 IP 算，全服务器共用），别拿它做轮询。
 
-**⑧ 万能兜底**
+**⑧ 应用分发（蒲公英 · 只读）**
+- \`list_distributed_apps\` — 账号下的应用清单：当前版本号、版本编号、安装包体积、上传时间，
+  以及**下载页地址与二维码地址**
+- \`get_distributed_app\` — 某个应用的全部历史版本（先用上面那个拿 appKey）
+- ⚠️ 这一组**只能读**。**上传安装包请引导用户用蒲公英官方工具链**：
+  官方 MCP（\`npx -y pgyer-mcp-server\` + 环境变量 \`PGYER_API_KEY\`，**跑在本机、能直接读本地 APK**）
+  或官方 CLI（\`npm i -g @pgyer/cli\` → \`pgyer upload ./app-release.apk\`）。
+  本工作台刻意没有实现上传 —— 官方解决得更好，且大文件不必过一遍服务器。
+
+**⑨ 万能兜底**
 - \`call_bt_api\` — 直接调用宝塔任意 API 端点。本系统没封装的能力（计划任务、防火墙、
   FTP、数据库、文件压缩等）都用它，端点参考 https://www.bt.cn/api-doc/
 
@@ -178,6 +188,12 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 \`get_ci_status\` 先看现在绿不绿（最新一次是什么结论、哪条分支），
 再用 \`list_repo_commits\` 看最近提交是不是跟失败的这次对得上。
 要具体报错得点到 GitHub 上看日志——本工作台只做「发现问题」，不做「翻日志」。
+
+**「现在测试版是哪个版本 / 把下载页和二维码给我」**
+\`list_distributed_apps\` 一次看全（当前版本号、体积、上传时间、下载页与二维码地址）；
+要看历史版本用 \`get_distributed_app\`（传 appKey）。
+⚠️ 要**上传新包**时不要在本工作台里找上传入口 —— 引导用户用蒲公英官方 MCP 或 CLI，
+本工作台对蒲公英是只读的。
 
 **「磁盘快满了」**
 \`get_server_status\`（看磁盘用量）→ \`list_images\` + \`list_containers\`（找出占空间的）

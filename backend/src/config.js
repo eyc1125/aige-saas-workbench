@@ -82,6 +82,14 @@ const config = {
     apiBase: str('GITHUB_API_BASE', 'https://api.github.com').replace(/\/+$/, ''),
   },
 
+  // ---------------- 蒲公英（B7 应用分发 · 只读看板） ----------------
+  // ⚠️ 这里只做**读**：列应用、看版本、取二维码/下载页。
+  //    上传交给蒲公英官方工具链（官方 MCP / CLI / CI 插件），不在本工作台里重复实现 ——
+  //    官方 MCP 跑在本机、能直接读本地 APK，比"把大文件过一遍这台 2GB 的服务器"更好。
+  pgyer: {
+    apiBase: str('PGYER_API_BASE', 'https://www.pgyer.com').replace(/\/+$/, ''),
+  },
+
   // ---------------- Docker ----------------
   docker: {
     host: str('DOCKER_HOST', 'unix:///var/run/docker.sock'),

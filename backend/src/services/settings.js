@@ -77,6 +77,14 @@ const SCHEMA = {
   github_token: { secret: true, label: 'GitHub 令牌', def: () => config.github.token },
   // 关注的仓库，逗号分隔的 owner/repo；留空则页面上没有仓库可看
   github_repos: { secret: false, label: '关注的仓库', def: () => config.github.repos.join(',') },
+
+  // ---------------- 蒲公英（B7 应用分发） ----------------
+  // ⚠️ 这两把 Key 都**有写权限**（能上传、也能删应用），所以按敏感项加密存储。
+  //    本工作台只调用读接口（listMy / view），上传走蒲公英官方工具链。
+  pgyer_api_key: { secret: true, label: '蒲公英 API Key', def: () => '' },
+  // 用户 KEY：蒲公英「API 信息」页给的第二把。当前调的读接口只需要上面那把，
+  // 这把先存着备用（官方部分接口会报 1012「User key 不能为空」）。
+  pgyer_user_key: { secret: true, label: '蒲公英用户 KEY', def: () => '' },
 };
 
 const selectStmt = db.prepare('SELECT key, value, is_secret FROM settings WHERE key = ?');

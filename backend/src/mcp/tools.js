@@ -20,6 +20,7 @@ const dockerService = require('../services/docker');
 const deployService = require('../services/deploy');
 const healthService = require('../services/health');
 const githubService = require('../services/github');
+const pgyerService = require('../services/pgyer');
 const { listTemplates } = require('../services/apps');
 const { writeLog } = require('../utils/logger');
 
@@ -502,6 +503,31 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'list_distributed_apps',
+    description:
+      '获取蒲公英（内测分发平台）账号下的应用清单：每个应用的当前版本号、版本编号、安装包大小、上传时间，以及**下载页地址与二维码地址**。用于回答「现在测试版是哪个版本」「最新包什么时候传的」「把下载页给我」。注意：这里只读；要上传安装包请让用户用蒲公英官方 MCP 或 CLI。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: '返回最多几个应用，默认 20，最大 50' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_distributed_app',
+    description:
+      '获取蒲公英上某个应用的详情与全部历史版本（版本号、版本编号、体积、上传时间），并带上当前版本的下载页与二维码地址。需要先用 list_distributed_apps 拿到 appKey。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appKey: { type: 'string', description: '应用标识，从 list_distributed_apps 的结果里取' },
+      },
+      required: ['appKey'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ============================================================
@@ -554,6 +580,10 @@ const READONLY_TOOLS = new Set([
   // 代码仓库（GitHub）—— 纯只读：不碰服务器，也不改 GitHub 上任何东西
   'list_repo_commits',
   'get_ci_status',
+
+  // 应用分发（蒲公英）—— 纯只读：上传走官方工具链，这里只查版本与下载页/二维码
+  'list_distributed_apps',
+  'get_distributed_app',
 ]);
 
 /**
@@ -1190,6 +1220,44 @@ const TOOL_HANDLERS = {
           : `⚠️ 最新一次是 ${latest.conclusion || '未知结果'}（${latest.name} · ${latest.branch}）`;
     return ok(data, `${data.repo}：${verdict}`);
   },
+
+  /** 30. 蒲公英应用清单（B7） */
+  async list_distributed_apps({ limit }) {
+    const count = clampLimit(limit, 20, 50);
+    const { items, totalApps, totalBuilds } = await pgyerService.listApps();
+    const list = items.slice(0, count);
+    if (!list.length) {
+      return ok(
+        { apps: [], totalApps: 0, totalBuilds: 0 },
+        '蒲公英账号下还没有任何应用（安装包要用蒲公英官方 MCP 或 CLI 上传）'
+      );
+    }
+    const lines = list
+      .map(
+        (a) =>
+          `${a.name} v${a.latest.version}（${formatBytes(a.latest.fileSize)}，${a.latest.createdAt}）`
+      )
+      .join('；');
+    return ok(
+      { apps: list, totalApps, totalBuilds },
+      `共 ${totalApps} 个应用 / ${totalBuilds} 个版本：${lines}`
+    );
+  },
+
+  /** 31. 蒲公英应用详情（B7） */
+  async get_distributed_app({ appKey }) {
+    if (!appKey) {
+      throw Object.assign(new Error('需要提供 appKey（可先用 list_distributed_apps 获取）'), {
+        expected: true,
+        status: 400,
+      });
+    }
+    const data = await pgyerService.appDetail(appKey);
+    return ok(
+      data,
+      `${data.latest.name} 当前 v${data.latest.version}（${formatBytes(data.latest.fileSize)}），共 ${data.history.length} 个历史版本；下载页 ${data.latest.downloadPage || '未获取到'}`
+    );
+  },
 };
 
 /** 人类可读字节数（与 baota 服务里的实现保持一致） */
@@ -1245,11 +1313,11 @@ function resolveRepo(reference) {
   return configured[0];
 }
 
-/** 把 AI 传的条数夹在 1..30 —— 它经常会传 100 这种值 */
-function clampLimit(value, fallback) {
+/** 把 AI 传的条数夹在 1..max —— 它经常会传 100 这种值 */
+function clampLimit(value, fallback, max = 30) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.min(30, Math.max(1, Math.round(n)));
+  return Math.min(max, Math.max(1, Math.round(n)));
 }
 
 /**

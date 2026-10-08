@@ -58,6 +58,9 @@ const MODULE_RULES = [
   // ⚠️ 这个模块目前**没有写接口**；write 先按 operator 归类，
   //    将来真要加「建 Issue / 重跑 CI」这类写操作时，记得重新评估这一行。
   { path: '/repos', read: 'viewer', write: 'operator' },
+  // 应用分发（B7）：蒲公英只读看板，和代码仓库同理 —— 只读身份也该能看。
+  // ⚠️ 同样**没有写接口**（上传走蒲公英官方工具链）。将来真要加写操作，重新评估这一行。
+  { path: '/distribute', read: 'viewer', write: 'operator' },
   { path: '/logs', read: 'viewer', write: 'admin' },
   // 系统设置里躺着宝塔密钥 / Cloudflare Token / MCP 令牌 / 机器人 Webhook，
   // 「能看到」约等于「能拿到半台服务器」，所以整块（含读）都要求管理员。

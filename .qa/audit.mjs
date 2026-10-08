@@ -184,6 +184,7 @@ const PAGES = [
   { hash: '/docker', name: 'docker', title: 'Docker 管理', shot: true },
   { hash: '/apps', name: 'apps', title: '应用商店', shot: true },
   { hash: '/repos', name: 'repos', title: '代码仓库', shot: true },
+  { hash: '/distribute', name: 'distribute', title: '应用分发', shot: true },
   { hash: '/settings', name: 'settings', title: '系统设置', shot: true },
 ];
 

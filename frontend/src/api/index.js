@@ -148,6 +148,17 @@ export const repoApi = {
     }),
 };
 
+// ==================== 应用分发（B7 · 蒲公英只读） ====================
+export const distributeApi = {
+  /** 配置状态：有没有填蒲公英 API Key */
+  config: () => request.get('/distribute/config', { silent: true }),
+  /** 应用与当前版本（含下载页、二维码） */
+  apps: () => request.get('/distribute/apps', { silent: true }),
+  /** 单个应用详情与历史版本 */
+  detail: (appKey) =>
+    request.get(`/distribute/apps/${encodeURIComponent(appKey)}`, { silent: true }),
+};
+
 // ==================== 系统设置 ====================
 export const settingApi = {
   get: () => request.get('/settings'),

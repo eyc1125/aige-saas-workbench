@@ -25,6 +25,7 @@ const baotaService = require('../services/baota');
 const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
 const githubService = require('../services/github');
+const pgyerService = require('../services/pgyer');
 const { TOOL_DEFINITIONS } = require('../mcp/tools');
 // 只读工具清单由 mcp/server.js 推导（与真正生效的鉴权用同一份，避免两边不一致）
 const { READONLY_DEFINITIONS } = require('../mcp/server');
@@ -79,6 +80,8 @@ router.put(
     // 动了代码仓库的配置就清一次 GitHub 缓存：否则改完令牌/仓库名之后的 60 秒里，
     // 页面还是旧数据，用户会以为「改了没用」
     if (changes.some((c) => c.key.startsWith('github_'))) githubService.clearCache();
+    // 蒲公英同理：换了 API Key 之后必须立刻重新请求，否则旧 Key 的错误/结果会被缓存住
+    if (changes.some((c) => c.key.startsWith('pgyer_'))) pgyerService.clearCache();
 
     // 没有任何实际改动就不写日志 —— 「点了一次保存但什么都没改」不值得留痕，
     // 否则审计日志会被这种空记录刷满，真正要查的那条反而被埋掉。

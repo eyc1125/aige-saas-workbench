@@ -26,8 +26,9 @@
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
 | 代码仓库 | GitHub 只读看板：最近提交、**Actions 运行状态**（最新一次的结论放大展示，失败一眼看得出来）、开放中的 Issue 与 PR、多仓库切换；**60 秒缓存 + 配额可见**（匿名 60 次/小时 / 配只读令牌 5000 次/小时） |
-| 系统设置 | 宝塔 / Cloudflare / Docker / **GitHub** 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
-| MCP Server | **32 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检 + GitHub 仓库只读），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据；只读可见 19 个） |
+| 应用分发 | 蒲公英（内测分发）只读看板：每个应用的当前版本、版本编号、体积、上传时间、历史版本数，**二维码（扫码安装）与下载页链接 + 一键复制**。⚠️ 只读 —— 上传走蒲公英官方 MCP / CLI（见 §16.4） |
+| 系统设置 | 宝塔 / Cloudflare / Docker / **GitHub** / **蒲公英** 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
+| MCP Server | **34 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检 + GitHub 仓库只读 + 蒲公英分发只读），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据；只读可见 21 个） |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
 > 后续优化路线与优先级见 **[docs/全面优化方案.md](docs/全面优化方案.md)**。
@@ -100,15 +101,15 @@ aige-saas-workbench/
 │   │   ├── router/              # 路由 + 登录守卫 + 仅管理员页面的角色守卫
 │   │   ├── stores/              # Pinia：auth（含角色判定）/ theme
 │   │   ├── styles/              # 设计令牌 + 全局样式 + EP 主题桥接
-│   │   └── views/               # 9 个页面 + 登录页 + 404
+│   │   └── views/               # 10 个页面 + 登录页 + 404
 │   ├── nginx.conf               # 容器内站点配置（含 /api 反向代理）
 │   └── Dockerfile
 ├── backend/                     # Node.js 后端
 │   ├── src/
 │   │   ├── db/                  # SQLite 连接（driver.js 含驱动回退）、schema.sql、migrate()
 │   │   ├── middleware/          # auth（JWT + 角色现查）/ permissions（权限规则表）/ 错误处理 / 限流
-│   │   ├── routes/              # REST 路由（11 个模块，含 users 用户管理）
-│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics / github
+│   │   ├── routes/              # REST 路由（12 个模块，含 users 用户管理）
+│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics / github / pgyer
 │   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js / instructions.js
 │   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类 / TOTP
 │   │   ├── app.js               # Express 装配
@@ -167,8 +168,8 @@ docker compose logs -f backend
 ```
 [db] SQLite 就绪：/app/data/workbench.db（驱动：better-sqlite3）
 [api] REST 接口已启动：http://0.0.0.0:3000/api
-[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 32 个工具）
-[mcp] 已注册 32 个工具，分组一致
+[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 34 个工具）
+[mcp] 已注册 34 个工具，分组一致
 [health] 自动自愈当前关闭（可在「健康巡检」页开启）
 ```
 
@@ -409,7 +410,7 @@ stdio 模式由客户端自己拉起进程，天然可信，无需令牌。
 
 ### 9.5 工具清单
 
-> **完整清单（当前 32 个，分组 + 每条说明）见
+> **完整清单（当前 34 个，分组 + 每条说明）见
 > [docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)。**
 > 下表是其中最早落地的 14 个基础工具，保留在此便于快速对照。
 
@@ -480,6 +481,9 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | GET | `/api/repos/config` | 代码仓库配置状态（是否配了令牌、关注了哪些仓库、缓存时长） |
 | GET | `/api/repos` | 关注的仓库概览（含 GitHub 配额） |
 | GET | `/api/repos/:owner/:repo` | 单仓库完整数据（提交 / Actions / Issue / PR 一次取回） |
+| GET | `/api/distribute/config` | 蒲公英配置状态（是否填了 API Key、缓存时长） |
+| GET | `/api/distribute/apps` | 账号下的应用与当前版本（含下载页、二维码） |
+| GET | `/api/distribute/apps/:appKey` | 单个应用的详情与历史版本 |
 | GET/PUT | `/api/settings` | 读取（脱敏）/ 保存配置 |
 | POST | `/api/settings/test/:target` | 连通性测试（`baota`/`cloudflare`/`docker`） |
 | GET | `/api/settings/mcp` · POST `/api/settings/mcp/token` | MCP 信息 / 重置令牌 |
@@ -651,6 +655,47 @@ npm run dev                       # http://127.0.0.1:5173（已配 /api 代理�
    其中「令牌无效」和「配额用完」会让整页报错（而不是显示一个看似正常的空列表）。
 3. 国内服务器直连 `api.github.com` 偶尔不稳。真遇到超时频繁，
    可以给 `GITHUB_API_BASE` 换一个可达的入口。
+
+### 16.4 蒲公英（应用分发）—— 为什么这里只读
+
+「应用分发」页**只读**：看版本、取下载页与二维码，**没有上传入口**。
+
+这不是偷懒 —— 蒲公英官方已经给了完整的上传工具链，而且比"在工作台里再实现一遍"更好：
+
+| 官方提供 | 用法 | 关键点 |
+| --- | --- | --- |
+| **蒲公英 MCP** | `npx -y pgyer-mcp-server` + 环境变量 `PGYER_API_KEY` | **本地 stdio、跑在本机、能直接读本地 APK** |
+| **蒲公英 CLI** | `npm i -g @pgyer/cli` → `pgyer upload ./app-release.apk` | 不依赖 AI 也能用 |
+| **Agent Skill** | `npx skills add PGYER/pgyer-skill` | 指导 AI 走流程 |
+| **CI 插件** | Jenkins / Fastlane / GitHub Action | 以后自动化用得上 |
+
+**在工作台里实现上传的三个麻烦**（所以没做）：
+大文件要完整过一遍这台 2GB 内存的服务器；要为此新增 multipart 解析依赖；
+要验证腾讯云 COS（蒲公英的上传落点）的跨域能不能过。
+
+**官方 MCP 配置（贴到你的 AI 客户端里，Trae / Claude Desktop 同一套结构）**：
+
+```json
+{
+  "mcpServers": {
+    "pgyer": {
+      "command": "npx",
+      "args": ["-y", "pgyer-mcp-server"],
+      "env": { "PGYER_API_KEY": "<你的蒲公英 API Key>" }
+    }
+  }
+}
+```
+
+> ⚠️ 官方 MCP 要求 Key 以**明文**放在本机这份配置里（这是它的硬要求，绕不过去）。
+> 工作台侧的 Key 则是 AES 加密存在数据库里、界面只回显掩码。
+
+配好之后，直接说「把 `build/app-release.apk` 传到蒲公英，返回下载链接和二维码」即可。
+
+**关于本工作台侧的两把 Key**：`API Key` 与 `用户 KEY` 都按敏感项加密存储，
+而且**刻意不给 `.env` 兜底**（对比宝塔 / Cloudflare 是有兜底的）——
+它们**有写权限**（能上传、也能删应用），少一个存放位置就少一条泄漏路径。
+当前只读看板只需要 `API Key`，`用户 KEY` 先存着备用。
 
 ---
 

@@ -194,6 +194,77 @@
       </div>
     </section>
 
+    <!-- ==================== 应用分发（B7） ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--warning); background: var(--warning-soft)">
+          <el-icon><Cellphone /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">
+            应用分发（蒲公英）
+            <span class="section__state" :class="pgyerHasKey ? 'is-on' : 'is-off'">
+              {{ pgyerHasKey ? '已配置' : '未配置' }}
+            </span>
+          </h2>
+          <p class="section__sub">「应用分发」页要看的版本、下载页与二维码</p>
+        </div>
+      </header>
+
+      <div class="section__body">
+        <el-form label-position="top" class="form-grid">
+          <el-form-item label="API Key" class="span-2">
+            <el-input
+              v-model="form.pgyer_api_key"
+              type="password"
+              show-password
+              :placeholder="placeholderOf({ key: 'pgyer_api_key', secret: true })"
+              clearable
+            />
+            <p class="field-tip">
+              蒲公英后台 → 右上角账户菜单 →
+              <strong>API 信息</strong>。未实名认证的账号需要先完成认证。
+            </p>
+          </el-form-item>
+
+          <el-form-item label="用户 KEY（选填）" class="span-2">
+            <el-input
+              v-model="form.pgyer_user_key"
+              type="password"
+              show-password
+              :placeholder="placeholderOf({ key: 'pgyer_user_key', secret: true })"
+              clearable
+            />
+            <p class="field-tip">
+              与 API Key 同一个页面上的第二把。当前只读看板用不到它，先存着备用（蒲公英部分接口会报
+              「User key 不能为空」）。
+            </p>
+          </el-form-item>
+        </el-form>
+
+        <el-alert type="info" :closable="false" show-icon title="这里只读，上传走官方工具链">
+          <template #default>
+            本工作台只读蒲公英（列应用、看版本、取下载页与二维码）。
+            <strong>上传安装包请用蒲公英官方 MCP 或 CLI</strong> —— 它们跑在你本机、能直接读本地
+            APK，比把大文件过一遍这台服务器更合适：<br />
+            MCP：<code>npx -y pgyer-mcp-server</code>（环境变量 <code>PGYER_API_KEY</code>）；
+            CLI：<code>npm i -g @pgyer/cli</code> → <code>pgyer upload ./app-release.apk</code>
+          </template>
+        </el-alert>
+
+        <div class="section__actions">
+          <el-button
+            type="primary"
+            :loading="saving === 'pgyer'"
+            :disabled="!isDirty(PGYER_KEYS)"
+            @click="saveKeys(PGYER_KEYS, 'pgyer')"
+          >
+            保存
+          </el-button>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== MCP 连接 ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -1027,6 +1098,9 @@ const form = reactive({
   // 代码仓库（B4）：令牌是敏感项，仓库列表是普通项
   github_token: '',
   github_repos: '',
+  // 应用分发（B7）：两把都是敏感项
+  pgyer_api_key: '',
+  pgyer_user_key: '',
 });
 
 /** 保存时的初始快照，用于判断「是否有改动」 */
@@ -1058,6 +1132,10 @@ const isAlertOn = computed(() => ALERT_KEYS.some((key) => settingsMeta.value[key
 const GITHUB_KEYS = ['github_repos', 'github_token'];
 /** 有令牌 = 5000 次/小时；没有 = 匿名 60 次/小时。界面上的徽标用 */
 const githubHasToken = computed(() => !!settingsMeta.value.github_token?.hasValue);
+
+/** 应用分发（B7）：两把都是敏感项 */
+const PGYER_KEYS = ['pgyer_api_key', 'pgyer_user_key'];
+const pgyerHasKey = computed(() => !!settingsMeta.value.pgyer_api_key?.hasValue);
 
 // ---------------- 分组定义 ----------------
 const connectionGroups = computed(() => [

@@ -85,6 +85,16 @@ const routes = [
         },
       },
       {
+        path: 'distribute',
+        name: 'distribute',
+        component: () => import('@/views/Distribute.vue'),
+        meta: {
+          title: '应用分发',
+          subtitle: '内测包版本、下载页与二维码',
+          icon: 'Cellphone',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/Settings.vue'),
