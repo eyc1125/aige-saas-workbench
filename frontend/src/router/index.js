@@ -3,9 +3,14 @@
  * ------------------------------------------------------------------
  * 采用 hash 模式：宝塔 Nginx 反代时即使漏配 rewrite 也不会 404，
  * 部署最省心（登录失效后跳转也走 hash，见 api/request.js）。
+ *
+ * 权限（B5）：`meta.adminOnly` 的页面只有管理员能进。
+ * ⚠️ 这只是「别让他白跑一趟」，真正的拦截在后端（后端对非管理员直接 403）。
  */
 import { createRouter, createWebHashHistory } from 'vue-router';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { getToken } from '@/api/request';
+import { useAuthStore } from '@/stores/auth';
 
 const routes = [
   {
@@ -73,7 +78,13 @@ const routes = [
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/Settings.vue'),
-        meta: { title: '系统设置', subtitle: '面板对接、MCP 连接、管理员账号', icon: 'Setting' },
+        meta: {
+          title: '系统设置',
+          subtitle: '面板对接、MCP 连接、用户与账号',
+          icon: 'Setting',
+          // 里面有宝塔密钥 / Cloudflare Token / MCP 令牌 / 用户管理，只给管理员
+          adminOnly: true,
+        },
       },
     ],
   },
@@ -91,8 +102,8 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 });
 
-/** 全局前置守卫：未登录一律回登录页 */
-router.beforeEach((to) => {
+/** 全局前置守卫：未登录一律回登录页；仅管理员的页面再做一次角色判断 */
+router.beforeEach(async (to) => {
   document.title = to.meta?.title ? `${to.meta.title} · 艾哥SaaS工作台` : '艾哥SaaS工作台';
 
   if (to.meta?.public) return true;
@@ -100,6 +111,18 @@ router.beforeEach((to) => {
   if (!getToken()) {
     return { path: '/login', query: { redirect: to.fullPath } };
   }
+
+  if (to.meta?.adminOnly) {
+    const auth = useAuthStore();
+    // 刷新页面时 store 里还没有用户信息，先补一次再判角色 ——
+    // 否则管理员刷新一下就被自己的守卫踢走了
+    if (!auth.user) await auth.fetchProfile();
+    if (!auth.isAdmin) {
+      ElMessage.warning('该页面仅管理员可访问');
+      return { path: '/dashboard' };
+    }
+  }
+
   return true;
 });
 

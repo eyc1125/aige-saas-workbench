@@ -135,9 +135,16 @@ export const settingApi = {
   mcp: () => request.get('/settings/mcp'),
   // scope: 'full'（默认）| 'readonly'；revoke=true 时吊销只读令牌
   mcpToken: (payload) => request.post('/settings/mcp/token', payload || {}),
-  regenerateMcpToken: () => request.post('/settings/mcp/token'),
   updateAdmin: (data) => request.put('/settings/admin', data),
   system: () => request.get('/settings/system', { silent: true }),
+};
+
+/** 用户与角色管理（B5，仅管理员可用 —— 后端按角色拦截，前端只是配合隐藏入口） */
+export const userApi = {
+  list: () => request.get('/users'),
+  create: (data) => request.post('/users', data),
+  update: (id, data) => request.put(`/users/${id}`, data),
+  remove: (id) => request.delete(`/users/${id}`),
 };
 
 // ==================== 操作日志 ====================

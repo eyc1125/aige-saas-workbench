@@ -140,9 +140,9 @@ jobs:
           fi
           echo "✅ 未发现明文密钥"
 
-  # ---------------- 3. MCP 工具清单一致性 ----------------
+  # ---------------- 3. 后端自检（需要真实依赖与路由栈） ----------------
   mcp-tools:
-    name: MCP 工具分组自检
+    name: 后端自检
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -187,6 +187,13 @@ jobs:
         # 需要真实工具清单，所以放在这个装了依赖的 job 里，不放不装依赖的 backend-syntax。
         working-directory: backend
         run: node scripts/selfcheck-mcp-scope.js
+
+      - name: 权限覆盖自检（每个模块都必须挂 requirePermission）
+        # 权限体系最典型的失效方式是**漏判**：新加一个模块忘了挂权限中间件，
+        # 它的接口就退化成「只要登录就能用」——不报错、界面上也看不出来。
+        # 这一条遍历真实路由栈，把没挂中间件的模块、没在规则表里归类的模块直接点出来。
+        working-directory: backend
+        run: node scripts/selfcheck-permissions.js
 
   # ---------------- 4. 前端构建 ----------------
   frontend-build:

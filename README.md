@@ -25,7 +25,7 @@
 | 域名管理 | Cloudflare 域名区域、DNS 记录增删改、橙色云/灰色云一键切换 |
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
-| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境 |
+| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
 | MCP Server | **30 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据） |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
@@ -45,7 +45,7 @@
 | --- | --- |
 | **规范检查** | Prettier 格式 + ESLint + commitlint 提交信息规范 |
 | **后端语法** | `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描 |
-| **MCP 工具分组自检** | 工具数 / 分组 / 说明文字三者必须一致（防文档漂移）+ **只读/写归类必须铺满全部工具**（CI 会真跑 `selfcheck-mcp-scope.js`） |
+| **MCP 工具分组自检** | 工具数 / 分组 / 说明文字三者必须一致（防文档漂移）+ **只读/写归类必须铺满全部工具**（CI 会真跑 `selfcheck-mcp-scope.js`）+ **每个模块必须挂权限中间件**（遍历真实路由栈，漏一个直接红） |
 | **前端构建** | 真跑 `vite build` + 报告产物体积 + **首屏预算看门狗**（>220KB gzip 直接失败） |
 
 > 首屏预算这条是硬闸门：本项目就是从 427KB 压到 154KB 才解决「打开就卡一下」的，
@@ -94,20 +94,20 @@ aige-saas-workbench/
 ├── frontend/                    # Vue3 前端
 │   ├── src/
 │   │   ├── api/                 # 接口封装（request.js 统一解包与错误提示）
-│   │   ├── components/          # 公共组件（StatCard / StateBlock）
+│   │   ├── components/          # 公共组件（StatCard / StateBlock / CopyBtn / ReadOnlyNotice）
 │   │   ├── layouts/             # MainLayout（侧边导航 + 顶栏）
-│   │   ├── router/              # 路由 + 登录守卫
-│   │   ├── stores/              # Pinia：auth / theme
+│   │   ├── router/              # 路由 + 登录守卫 + 仅管理员页面的角色守卫
+│   │   ├── stores/              # Pinia：auth（含角色判定）/ theme
 │   │   ├── styles/              # 设计令牌 + 全局样式 + EP 主题桥接
-│   │   └── views/               # 6 个页面 + 登录页 + 404
+│   │   └── views/               # 8 个页面 + 登录页 + 404
 │   ├── nginx.conf               # 容器内站点配置（含 /api 反向代理）
 │   └── Dockerfile
 ├── backend/                     # Node.js 后端
 │   ├── src/
-│   │   ├── db/                  # SQLite 连接（driver.js 含驱动回退）、schema.sql
-│   │   ├── middleware/          # auth（JWT）/ 错误处理 / 限流
-│   │   ├── routes/              # REST 路由（8 个模块）
-│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings
+│   │   ├── db/                  # SQLite 连接（driver.js 含驱动回退）、schema.sql、migrate()
+│   │   ├── middleware/          # auth（JWT + 角色现查）/ permissions（权限规则表）/ 错误处理 / 限流
+│   │   ├── routes/              # REST 路由（10 个模块，含 users 用户管理）
+│   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics
 │   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js
 │   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类
 │   │   ├── app.js               # Express 装配
@@ -479,6 +479,8 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | GET | `/api/settings/mcp` · POST `/api/settings/mcp/token` | MCP 信息 / 重置令牌 |
 | PUT | `/api/settings/admin` | 修改管理员账号 |
 | GET | `/api/settings/system` | 运行环境信息 |
+| GET/POST | `/api/users` | 用户列表 / 新建（仅管理员） |
+| PUT/DELETE | `/api/users/:id` | 改角色·重置密码 / 删除（仅管理员） |
 | GET | `/api/logs` | 操作日志（分页 + 过滤；含 `before_value` / `after_value` 字段级改动对照） |
 
 ---
@@ -577,6 +579,29 @@ npm run dev                       # http://127.0.0.1:5173（已配 /api 代理�
   配置类改动还记录**字段级的「旧值 → 新值」**（`before_value` / `after_value`），
   但**敏感项只记「已设置 / 未设置」**——脱敏发生在 `settings.applyPatch()` 里，
   调用方拿不到明文，也就无从写进日志
+
+### 16.1 角色与权限
+
+三个角色，**按「能做什么」划分**：
+
+| 角色 | 能做什么 | 典型用途 |
+| --- | --- | --- |
+| `admin` 管理员 | 全部，含系统设置、MCP 令牌、用户管理 | 你自己 |
+| `operator` 运维 | 网站 / DNS / 容器 / 部署 / 巡检修复；**改不了系统设置、管不了账号** | 帮你干活的同事 |
+| `viewer` 只读 | 看全部运维数据；**任何写操作被服务端拒绝** | 只想看状态的人 |
+
+三条实现上的硬约束（改这块前必读）：
+
+1. **规则只有一份**：`backend/src/middleware/permissions.js` 里按「模块路径 + 方法」
+   声明，挂在 `routes/index.js` 的每行挂载上。**不要在各自的路由文件里手写角色判断** ——
+   那样一定有漏的，而漏掉的那一个接口就是「所有登录用户都能全权操作」。
+2. **CI 兜底**：`npm run check:perm` 会遍历**真实路由栈**，断言每个业务模块都挂了
+   `requirePermission`，且挂载的模块与规则表里的模块完全一致。漏挂 / 忘归类 → 直接失败。
+3. **角色从数据库现查，不信 JWT 里那份**。令牌是自包含的：把某人降级之后，如果还信
+   令牌里写死的角色，他手上的旧令牌会一直是管理员，直到令牌过期才生效 ——
+   「以为锁了、其实没锁」比没有权限体系更危险。
+
+前端只是配合（侧边栏过滤、隐藏按钮、`adminOnly` 页面跳转），**真正的拦截全在后端**。
 
 ---
 

@@ -483,6 +483,101 @@
       </div>
     </section>
 
+    <!-- ==================== 用户与角色（B5） ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--brand); background: var(--brand-soft)">
+          <el-icon><UserFilled /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">
+            用户与角色
+            <span class="section__state" :class="users.length ? 'is-on' : 'is-off'">
+              {{ users.length }} 个账号
+            </span>
+          </h2>
+          <p class="section__sub">给同事开号并分配角色 · 只有管理员能进这一页</p>
+        </div>
+      </header>
+
+      <div class="section__body">
+        <el-alert
+          class="role-note"
+          type="info"
+          :closable="false"
+          show-icon
+          title="三种角色能做什么"
+          description="管理员：全部功能，含本页与系统设置；运维：能操作网站 / DNS / 容器 / 部署 / 巡检修复，但改不了系统配置、也管不了账号；只读：只能看，任何写操作都会被服务端直接拒绝（不只是按钮藏起来）。"
+        />
+
+        <!-- 窄屏用卡片：Element Plus 表格在手机上会出现"横向滚动条地狱"，
+             而且它的表头是靠 JS 跟着表体滚的，没法用 overflow 兜住。
+             项目其它列表页也都是"窄屏换卡片"，这里保持一致。 -->
+        <ul v-if="isNarrow" class="u-cards">
+          <li v-for="u in users" :key="u.id" class="u-card">
+            <div class="u-card__head">
+              <strong>{{ u.nickname }}</strong>
+              <el-tag :type="roleTag(u.role)" effect="light" size="small">{{ u.roleText }}</el-tag>
+            </div>
+            <div class="u-card__meta mono">@{{ u.username }}</div>
+            <div class="u-card__meta">最近登录：{{ u.lastLoginAt || '—' }}</div>
+            <div class="u-card__actions">
+              <el-button size="small" @click="openUserDialog(u)">编辑</el-button>
+              <el-button size="small" @click="resetPassword(u)">重置密码</el-button>
+              <el-button
+                size="small"
+                type="danger"
+                plain
+                :disabled="u.id === auth.user?.id"
+                @click="removeUser(u)"
+              >
+                删除
+              </el-button>
+            </div>
+          </li>
+        </ul>
+
+        <!-- 宽屏用表格 -->
+        <div v-else class="user-table__wrap">
+          <el-table v-loading="loadingUsers" :data="users" size="small" class="user-table">
+            <el-table-column prop="username" label="用户名" min-width="120" />
+            <el-table-column prop="nickname" label="显示名" min-width="110" />
+            <el-table-column label="角色" width="120">
+              <template #default="{ row }">
+                <el-tag :type="roleTag(row.role)" effect="light" size="small">
+                  {{ row.roleText }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近登录" min-width="150">
+              <template #default="{ row }">{{ row.lastLoginAt || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220" align="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openUserDialog(row)">编辑</el-button>
+                <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :disabled="row.id === auth.user?.id"
+                  :title="row.id === auth.user?.id ? '不能删除自己的账号' : ''"
+                  @click="removeUser(row)"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div class="section__actions">
+          <el-button type="primary" @click="openUserDialog(null)">
+            <el-icon><Plus /></el-icon>新建用户
+          </el-button>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== 外观 ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -561,6 +656,64 @@
       </div>
     </section>
 
+    <!-- ==================== 用户编辑弹窗 ==================== -->
+    <el-dialog
+      v-model="userDialogVisible"
+      :title="userForm.id ? '编辑用户' : '新建用户'"
+      width="480px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-width="86px">
+        <el-form-item label="用户名" prop="username">
+          <el-input
+            v-model="userForm.username"
+            :disabled="!!userForm.id"
+            placeholder="登录用的用户名，至少 3 位"
+            clearable
+          />
+          <p v-if="userForm.id" class="field-tip">用户名创建后不可修改。</p>
+        </el-form-item>
+
+        <el-form-item label="显示名" prop="nickname">
+          <el-input
+            v-model="userForm.nickname"
+            placeholder="比如：小王（可留空，默认用用户名）"
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item v-if="!userForm.id" label="初始密码" prop="password">
+          <el-input
+            v-model="userForm.password"
+            type="password"
+            show-password
+            placeholder="至少 6 位"
+          />
+        </el-form-item>
+
+        <el-form-item label="角色" prop="role">
+          <el-select
+            v-model="userForm.role"
+            :disabled="userForm.id === auth.user?.id"
+            style="width: 100%"
+          >
+            <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value">
+              <span>{{ r.label }}</span>
+              <span class="role-opt__hint">{{ r.hint }}</span>
+            </el-option>
+          </el-select>
+          <p v-if="userForm.id === auth.user?.id" class="field-tip">
+            不能修改自己的角色 —— 防止把自己降级后再也进不来。
+          </p>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="userDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingUser" @click="saveUser">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ==================== 新令牌弹窗 ==================== -->
     <el-dialog
       v-model="tokenVisible"
@@ -591,18 +744,22 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 // 两级降级的复制实现（https 剪贴板 API → execCommand 兜底），避免 http 访问时点了没反应
 import { copyText } from '@/composables/useCopy';
-import { settingApi, alertApi } from '@/api';
+import { useNarrow } from '@/composables/useNarrow';
+import { settingApi, alertApi, userApi } from '@/api';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 
 const auth = useAuthStore();
 const theme = useThemeStore();
+
+/** 窄屏下用户列表改用卡片（与项目其它列表页一致），断点与侧栏收起点保持一致 */
+const isNarrow = useNarrow(900);
 
 /** 明暗模式选项（图标走 main.js 里的全局注册） */
 const MODES = [
@@ -954,6 +1111,133 @@ async function saveAdmin() {
   }
 }
 
+// ---------------- 用户与角色（B5 · 仅管理员） ----------------
+const users = ref([]);
+const loadingUsers = ref(false);
+const userDialogVisible = ref(false);
+const savingUser = ref(false);
+const userFormRef = ref(null);
+const userForm = reactive({ id: null, username: '', nickname: '', password: '', role: 'viewer' });
+
+/** 角色说明：写清「能不能改系统设置」，比只给个名字有用得多 */
+const roleOptions = [
+  { value: 'viewer', label: '只读', hint: '只能看，写操作会被拒' },
+  { value: 'operator', label: '运维', hint: '能操作，改不了系统设置' },
+  { value: 'admin', label: '管理员', hint: '全部权限' },
+];
+
+const roleTag = (role) => ({ admin: 'success', operator: 'warning' })[role] || 'info';
+
+const userRules = {
+  username: [
+    { required: true, message: '用户名不能为空', trigger: 'blur' },
+    { min: 3, message: '用户名至少 3 位', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '初始密码不能为空', trigger: 'blur' },
+    { min: 6, message: '密码至少 6 位', trigger: 'blur' },
+  ],
+};
+
+async function loadUsers() {
+  loadingUsers.value = true;
+  try {
+    const data = await userApi.list();
+    users.value = data.list || [];
+  } catch {
+    users.value = [];
+  } finally {
+    loadingUsers.value = false;
+  }
+}
+
+function openUserDialog(row) {
+  Object.assign(userForm, {
+    id: row?.id || null,
+    username: row?.username || '',
+    nickname: row?.nickname || '',
+    password: '',
+    role: row?.role || 'viewer',
+  });
+  userDialogVisible.value = true;
+  // 清掉上一次留下的校验红字，否则「新建」会带着上次的报错打开
+  nextTick(() => userFormRef.value?.clearValidate());
+}
+
+async function saveUser() {
+  try {
+    await userFormRef.value.validate();
+  } catch {
+    return;
+  }
+
+  savingUser.value = true;
+  try {
+    const data = userForm.id
+      ? await userApi.update(userForm.id, { nickname: userForm.nickname, role: userForm.role })
+      : await userApi.create({
+          username: userForm.username,
+          nickname: userForm.nickname,
+          password: userForm.password,
+          role: userForm.role,
+        });
+    ElMessage.success(data.message || '已保存');
+    userDialogVisible.value = false;
+    await loadUsers();
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    savingUser.value = false;
+  }
+}
+
+async function resetPassword(row) {
+  let value;
+  try {
+    const r = await ElMessageBox.prompt(
+      `给「${row.username}」设置新密码（至少 6 位）`,
+      '重置密码',
+      {
+        confirmButtonText: '确定重置',
+        cancelButtonText: '取消',
+        inputType: 'password',
+        inputPattern: /.{6,}/,
+        inputErrorMessage: '密码至少 6 位',
+      }
+    );
+    value = r.value;
+  } catch {
+    return; // 用户取消
+  }
+
+  try {
+    const data = await userApi.update(row.id, { password: value });
+    ElMessage.success(data.message || '密码已重置');
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
+async function removeUser(row) {
+  try {
+    await ElMessageBox.confirm(
+      `删除后「${row.username}」将立即无法登录（他手上的登录令牌也会马上失效）。确定删除吗？`,
+      '删除用户',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    const data = await userApi.remove(row.id);
+    ElMessage.success(data.message || '已删除');
+    await loadUsers();
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
 // ---------------- 运行环境 ----------------
 const systemInfo = ref({});
 const runtimeRows = computed(() => [
@@ -982,6 +1266,8 @@ function formatUptime(seconds) {
 onMounted(async () => {
   await loadSettings();
   loadMcp();
+  // 用户列表只有管理员能取（后端会 403），这一页本身也只有管理员能进
+  loadUsers();
   try {
     systemInfo.value = await settingApi.system();
   } catch {
@@ -1234,6 +1520,73 @@ onMounted(async () => {
 
 .ro-card__body {
   margin-top: var(--sp-3);
+}
+
+/* ---------------- 用户与角色（B5） ---------------- */
+.role-note {
+  margin-bottom: var(--sp-4);
+}
+
+.user-table {
+  margin-bottom: var(--sp-4);
+}
+
+/* 表格比屏幕宽时自己滚，不要把整页带出横向滚动条
+   （用 clip 会连带干掉 el-table 自己的滚动，所以这里只能是 auto） */
+.user-table__wrap {
+  overflow-x: auto;
+}
+
+/* 窄屏的用户卡片（替代表格） */
+.u-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.u-card {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+}
+
+.u-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: 4px;
+}
+
+.u-card__head strong {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.u-card__meta {
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.u-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* 角色下拉里跟在名称后面的小字说明 */
+.role-opt__hint {
+  margin-left: var(--sp-2);
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
 }
 
 /* 能力清单按用途分组，长表单里靠小标题分段，避免一坨纯文字 */

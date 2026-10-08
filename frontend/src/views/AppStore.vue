@@ -1,5 +1,7 @@
 <template>
   <div class="page">
+    <ReadOnlyNotice what="一键部署应用（会真实创建容器、加解析、配反向代理）" />
+
     <!-- ==================== 部署运行面板（有任务时才出现） ==================== -->
     <transition name="rise">
       <section v-if="activeTask" class="surface run">
@@ -168,7 +170,7 @@
 
           <div class="tpl__foot">
             <a :href="tpl.docsUrl" target="_blank" rel="noopener" class="tpl__doc">官方文档</a>
-            <el-button type="primary" @click="openDeploy(tpl)">
+            <el-button v-if="auth.canWrite" type="primary" @click="openDeploy(tpl)">
               <el-icon><Upload /></el-icon>部署
             </el-button>
           </div>
@@ -270,10 +272,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
 import CopyBtn from '@/components/CopyBtn.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import StateBlock from '@/components/StateBlock.vue';
 import { appApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const DOMAIN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+// 只读身份下隐藏「部署」入口（后端也会拦）
+const auth = useAuthStore();
 
 // ---------------- 模板 ----------------
 const templates = ref([]);

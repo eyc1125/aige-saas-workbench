@@ -14,7 +14,8 @@
     "check:guards": "node backend/scripts/selfcheck-path-guards.js",
     "check:sign": "node backend/scripts/selfcheck-feishu-sign.js",
     "check:scope": "node backend/scripts/selfcheck-mcp-scope.js",
-    "check": "npm run format:check && npm run lint && npm run check:guards && npm run check:sign && npm run check:scope"
+    "check:perm": "node backend/scripts/selfcheck-permissions.js",
+    "check": "npm run format:check && npm run lint && npm run check:guards && npm run check:sign && npm run check:scope && npm run check:perm"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",

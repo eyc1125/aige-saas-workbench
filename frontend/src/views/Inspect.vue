@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <ReadOnlyNotice what="一键修复、开关自动自愈、调整巡检间隔" />
     <!-- ==================== 巡检结论 ==================== -->
     <!-- 加载 / 失败中不显示结论：此时 summary 全是 0，会误报成「尚未巡检」 -->
     <section v-if="state === 'ready'" class="verdict" :class="`verdict--${verdict.tone}`">
@@ -44,7 +45,12 @@
           <span class="auto__state" :class="autoHeal.enabled ? 'is-on' : 'is-off'">
             {{ autoHeal.enabled ? '已开启' : '已关闭' }}
           </span>
-          <el-switch v-model="autoHeal.enabled" :loading="autoSaving" @change="toggleAuto" />
+          <el-switch
+            v-model="autoHeal.enabled"
+            :loading="autoSaving"
+            :disabled="!auth.canWrite"
+            @change="toggleAuto"
+          />
         </div>
       </header>
 
@@ -54,7 +60,7 @@
           <el-select
             v-model="autoHeal.intervalMin"
             class="auto__select"
-            :disabled="autoSaving"
+            :disabled="autoSaving || !auth.canWrite"
             @change="saveAuto"
           >
             <el-option :value="10" label="每 10 分钟" />
@@ -63,7 +69,7 @@
             <el-option :value="180" label="每 3 小时" />
             <el-option :value="360" label="每 6 小时" />
           </el-select>
-          <el-button :loading="autoRunning" @click="runAutoNow">
+          <el-button v-if="auth.canWrite" :loading="autoRunning" @click="runAutoNow">
             <el-icon><RefreshRight /></el-icon>立即执行一次
           </el-button>
         </div>
@@ -148,13 +154,14 @@
 
               <div class="check__action">
                 <el-button
-                  v-if="c.fix"
+                  v-if="c.fix && auth.canWrite"
                   type="primary"
                   :loading="fixingId === c.id"
                   @click="applyFix(c)"
                 >
                   {{ c.fix.label }}
                 </el-button>
+                <span v-else-if="c.fix" class="check__manual">只读身份不可修复</span>
                 <span v-else-if="c.severity !== 'ok'" class="check__manual">需人工处理</span>
               </div>
             </div>
@@ -198,9 +205,14 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import StateBlock from '@/components/StateBlock.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import { inspectApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const loading = ref(true);
+
+// 只读身份下：修复按钮 / 立即执行 / 自动自愈开关全部不可用（后端也会拦）
+const auth = useAuthStore();
 const state = ref('loading'); // loading | error | empty | ready
 const errorMessage = ref('');
 

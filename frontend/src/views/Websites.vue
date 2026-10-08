@@ -24,11 +24,13 @@
         <span class="toolbar__count tnum">
           共 <strong>{{ total }}</strong> 个站点
         </span>
-        <el-button type="primary" @click="openCreate">
+        <el-button v-if="auth.canWrite" type="primary" @click="openCreate">
           <el-icon><Plus /></el-icon>新建网站
         </el-button>
       </div>
     </section>
+
+    <ReadOnlyNotice what="新建 / 删除站点、申请证书、修改 Nginx 配置" />
 
     <!-- ==================== 列表 ==================== -->
     <section class="surface">
@@ -99,8 +101,12 @@
 
             <div class="card__actions">
               <el-button @click="openDetail(row)">详情</el-button>
-              <el-button type="primary" @click="openSsl(row)">申请证书</el-button>
-              <el-button type="danger" plain @click="confirmRemove(row)">删除</el-button>
+              <el-button v-if="auth.canWrite" type="primary" @click="openSsl(row)"
+                >申请证书</el-button
+              >
+              <el-button v-if="auth.canWrite" type="danger" plain @click="confirmRemove(row)"
+                >删除</el-button
+              >
             </div>
           </li>
         </ul>
@@ -158,8 +164,12 @@
             <el-table-column label="操作" width="210" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-                <el-button link type="primary" @click="openSsl(row)">申请证书</el-button>
-                <el-button link type="danger" @click="confirmRemove(row)">删除</el-button>
+                <el-button v-if="auth.canWrite" link type="primary" @click="openSsl(row)"
+                  >申请证书</el-button
+                >
+                <el-button v-if="auth.canWrite" link type="danger" @click="confirmRemove(row)"
+                  >删除</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -425,6 +435,7 @@
                         查看差异
                       </el-button>
                       <el-button
+                        v-if="auth.canWrite"
                         size="small"
                         type="warning"
                         :loading="snapshotPanel.restoring === item.file"
@@ -534,15 +545,20 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import CopyBtn from '@/components/CopyBtn.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import StateBlock from '@/components/StateBlock.vue';
 import { useNarrow } from '@/composables/useNarrow';
 import { websiteApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const loading = ref(false);
 const state = ref('loading'); // loading | error | empty | ready
 const errorMessage = ref('');
 const rows = ref([]);
 const total = ref(0);
+
+// 只读身份下隐藏所有写操作入口（后端也会拦，这里只是别让人白点）
+const auth = useAuthStore();
 
 /** 窄屏用卡片视图替代表格（断点与主布局的侧栏收起点保持一致） */
 const isNarrow = useNarrow(900);

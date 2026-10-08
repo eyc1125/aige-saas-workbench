@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS users (
   username      TEXT    NOT NULL UNIQUE,
   password      TEXT    NOT NULL,                 -- bcrypt 哈希，绝不存明文
   nickname      TEXT,
-  role          TEXT    NOT NULL DEFAULT 'admin', -- admin / viewer（预留只读角色）
+  role          TEXT    NOT NULL DEFAULT 'viewer', -- admin 管理员 / operator 运维 / viewer 只读
+                                                    -- ⚠️ 默认给最小权限：建用户时忘了指定角色，
+                                                    --    应当是「什么都干不了」，而不是「什么都能干」
   last_login_at TEXT,
   created_at    TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at    TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))

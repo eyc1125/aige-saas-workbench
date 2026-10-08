@@ -1,5 +1,7 @@
 <template>
   <div class="page">
+    <ReadOnlyNotice what="启动 / 停止 / 重启 / 删除容器" />
+
     <!-- ==================== 工具条 ==================== -->
     <section class="surface toolbar">
       <div class="toolbar__left">
@@ -124,7 +126,7 @@
             <div class="card__actions">
               <el-button @click="openLogs(row)">日志</el-button>
               <el-button
-                v-if="row.running"
+                v-if="auth.canWrite && row.running"
                 type="primary"
                 :loading="actingId === row.id"
                 @click="doAction(row, 'restart')"
@@ -132,7 +134,7 @@
                 重启
               </el-button>
               <el-button
-                v-if="row.running"
+                v-if="auth.canWrite && row.running"
                 type="warning"
                 plain
                 :loading="actingId === row.id"
@@ -140,15 +142,19 @@
               >
                 停止
               </el-button>
+              <!-- 这里原来是与上一个按钮配对的 v-else；加了权限判断之后必须写成独立条件，
+                   否则「只读 + 容器未运行」会错误地显示出「启动」按钮 -->
               <el-button
-                v-else
+                v-if="auth.canWrite && !row.running"
                 type="success"
                 :loading="actingId === row.id"
                 @click="doAction(row, 'start')"
               >
                 启动
               </el-button>
-              <el-button type="danger" plain @click="confirmRemove(row)">删除</el-button>
+              <el-button v-if="auth.canWrite" type="danger" plain @click="confirmRemove(row)"
+                >删除</el-button
+              >
             </div>
           </li>
         </ul>
@@ -209,7 +215,7 @@
               <template #default="{ row }">
                 <el-button link type="primary" @click="openLogs(row)">日志</el-button>
                 <el-button
-                  v-if="row.running"
+                  v-if="auth.canWrite && row.running"
                   link
                   type="primary"
                   :loading="actingId === row.id"
@@ -218,7 +224,7 @@
                   重启
                 </el-button>
                 <el-button
-                  v-if="row.running"
+                  v-if="auth.canWrite && row.running"
                   link
                   type="warning"
                   :loading="actingId === row.id"
@@ -227,7 +233,7 @@
                   停止
                 </el-button>
                 <el-button
-                  v-else
+                  v-if="auth.canWrite && !row.running"
                   link
                   type="success"
                   :loading="actingId === row.id"
@@ -235,7 +241,10 @@
                 >
                   启动
                 </el-button>
-                <el-button link type="danger" @click="confirmRemove(row)">删除</el-button>
+                <el-button v-if="auth.canWrite" link type="danger" @click="confirmRemove(row)"
+                  >删除</el-button
+                >
+                <span v-if="!auth.canWrite" class="muted-xs">只读</span>
               </template>
             </el-table-column>
           </el-table>
@@ -361,11 +370,16 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import CopyBtn from '@/components/CopyBtn.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import StateBlock from '@/components/StateBlock.vue';
 import { useNarrow } from '@/composables/useNarrow';
 import { dockerApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const tab = ref('containers');
+
+// 只读身份下隐藏启停 / 重启 / 删除入口（后端也会拦）
+const auth = useAuthStore();
 
 /** 窄屏用卡片视图替代表格（断点与主布局的侧栏收起点保持一致） */
 const isNarrow = useNarrow(900);

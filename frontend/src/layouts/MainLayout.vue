@@ -221,7 +221,12 @@ const router = useRouter();
 const auth = useAuthStore();
 const theme = useThemeStore();
 
-const navItems = [
+/**
+ * 导航项（B5）：adminOnly 的项只对管理员显示。
+ * ⚠️ 隐藏菜单只是体验 —— 非管理员直接敲 URL 也会被路由守卫弹回来，
+ *    就算绕过了守卫，后端接口也会 403。
+ */
+const ALL_NAV = [
   { path: '/dashboard', title: '仪表盘', icon: 'Odometer' },
   { path: '/websites', title: '网站管理', icon: 'Monitor' },
   { path: '/certificates', title: '证书与安全', icon: 'Medal' },
@@ -229,8 +234,10 @@ const navItems = [
   { path: '/domains', title: '域名管理', icon: 'Connection' },
   { path: '/docker', title: 'Docker 管理', icon: 'Box' },
   { path: '/apps', title: '应用商店', icon: 'Grid' },
-  { path: '/settings', title: '系统设置', icon: 'Setting' },
+  { path: '/settings', title: '系统设置', icon: 'Setting', adminOnly: true },
 ];
+
+const navItems = computed(() => ALL_NAV.filter((item) => !item.adminOnly || auth.isAdmin));
 
 const COLLAPSE_KEY = 'aige-sidebar-collapsed';
 const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1');

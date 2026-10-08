@@ -1,5 +1,7 @@
 <template>
   <div class="page">
+    <ReadOnlyNotice what="添加 / 修改 / 删除 DNS 解析、切换代理开关" />
+
     <section class="split">
       <!-- ==================== 左：域名区域 ==================== -->
       <aside class="surface zones">
@@ -88,7 +90,7 @@
             <el-button :disabled="!activeZone" :loading="recordsLoading" @click="loadRecords">
               <el-icon><Refresh /></el-icon>刷新
             </el-button>
-            <el-button type="primary" :disabled="!activeZone" @click="openAdd">
+            <el-button v-if="auth.canWrite" type="primary" :disabled="!activeZone" @click="openAdd">
               <el-icon><Plus /></el-icon>添加解析
             </el-button>
           </div>
@@ -151,6 +153,7 @@
                     <el-switch
                       :model-value="row.proxied"
                       :loading="row.__switching"
+                      :disabled="!auth.canWrite"
                       @change="(val) => toggleProxy(row, val)"
                     />
                   </dd>
@@ -158,7 +161,9 @@
               </dl>
 
               <div class="card__actions">
-                <el-button type="danger" plain @click="confirmRemove(row)">删除</el-button>
+                <el-button v-if="auth.canWrite" type="danger" plain @click="confirmRemove(row)"
+                  >删除</el-button
+                >
               </div>
             </li>
           </ul>
@@ -196,6 +201,7 @@
                     v-if="row.proxiable"
                     :model-value="row.proxied"
                     :loading="row.__switching"
+                    :disabled="!auth.canWrite"
                     @change="(val) => toggleProxy(row, val)"
                   />
                   <span v-else class="muted-xs">—</span>
@@ -210,7 +216,10 @@
 
               <el-table-column label="操作" width="90" fixed="right">
                 <template #default="{ row }">
-                  <el-button link type="danger" @click="confirmRemove(row)">删除</el-button>
+                  <el-button v-if="auth.canWrite" link type="danger" @click="confirmRemove(row)"
+                    >删除</el-button
+                  >
+                  <span v-else class="muted-xs">—</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -274,12 +283,17 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import CopyBtn from '@/components/CopyBtn.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import StateBlock from '@/components/StateBlock.vue';
 import { useNarrow } from '@/composables/useNarrow';
 import { domainApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const TYPES = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'SRV', 'CAA'];
 const ADD_TYPES = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS'];
+
+// 只读身份下隐藏写操作入口（代理开关用 disabled，删除/添加用 v-if）
+const auth = useAuthStore();
 
 // ---------------- 区域列表 ----------------
 const zones = ref([]);

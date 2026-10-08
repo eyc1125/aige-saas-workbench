@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <ReadOnlyNotice what="申请 / 续签证书" />
     <!-- ==================== 巡检结论 ==================== -->
     <section
       v-if="!loading && state !== 'error'"
@@ -13,7 +14,12 @@
         <strong>{{ verdict.title }}</strong>
         <p>{{ verdict.desc }}</p>
       </div>
-      <el-button v-if="renewable.length" type="primary" :loading="renewing" @click="renewAll">
+      <el-button
+        v-if="renewable.length && auth.canWrite"
+        type="primary"
+        :loading="renewing"
+        @click="renewAll"
+      >
         {{ renewing ? '正在续签…' : `一键续签 ${renewable.length} 个` }}
       </el-button>
     </section>
@@ -166,6 +172,7 @@
             <div class="card__actions">
               <el-button @click="openDetail(row)">详情</el-button>
               <el-button
+                v-if="auth.canWrite"
                 type="primary"
                 :loading="renewingSite === row.siteName"
                 @click="renewOne(row)"
@@ -233,6 +240,7 @@
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDetail(row)">详情</el-button>
                 <el-button
+                  v-if="auth.canWrite"
                   link
                   type="primary"
                   :loading="renewingSite === row.siteName"
@@ -294,11 +302,16 @@ import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import StatCard from '@/components/StatCard.vue';
 import StateBlock from '@/components/StateBlock.vue';
+import ReadOnlyNotice from '@/components/ReadOnlyNotice.vue';
 import CopyBtn from '@/components/CopyBtn.vue';
 import { useNarrow } from '@/composables/useNarrow';
 import { websiteApi } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
 const loading = ref(true);
+
+// 只读身份下隐藏续签入口（后端也会拦）
+const auth = useAuthStore();
 const state = ref('loading'); // loading | error | empty | ready
 const errorMessage = ref('');
 const certs = ref([]);
