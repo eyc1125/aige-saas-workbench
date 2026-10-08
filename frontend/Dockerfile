@@ -4,7 +4,7 @@
 # ============================================================
 
 # ---------------- 阶段一：构建 ----------------
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 # Vite 构建 Element Plus + ECharts 这类大依赖时内存峰值较高。
 # 小内存服务器（2GB）上不设上限可能触发 OOM，这里给 Node 堆设一个安全上限，
