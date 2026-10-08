@@ -74,7 +74,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 | --- | --- | --- |
 | `get_server_status` | — | CPU / 内存 / 磁盘 / 负载 + 网站、域名、容器数量，一句话体检 |
 | `list_ssl_certs` | — | 全站证书台账：签发者、生效/到期时间、**剩余天数**、状态（ok / expiring / expired） |
-| `run_health_checks` | — | **跑一遍自愈巡检**（8 项），每项返回结论 + 是否可一键修复 + 该项的熔断预算 |
+| `run_health_checks` | — | **跑一遍自愈巡检**（13 项），每项返回结论 + 是否可一键修复 + 该项的熔断预算 |
 | `apply_health_fix` | `checkId` | **执行某项修复**（如 `ssl_expiring` / `container_down` / `disk_watermark`），受熔断约束 |
 
 ### ② 网站（宝塔）
@@ -190,7 +190,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 ### 0. 先体检，有问题顺手修掉（推荐每次运维前先做）
 
 ```
-run_health_checks                    ← 8 项体检：证书到期 / HTTPS 覆盖 / CF SSL 模式 / 容器状态 / 磁盘水位 / 内存水位 / 容器重启循环 / 口令自查
+run_health_checks                    ← 13 项体检：证书到期 / 未部署证书 / 证书链 / 站点 HTTPS 配置 / CF SSL 模式 / DNS 解析 / CF 缓存漂移 / 容器状态 / 重启循环 / 磁盘 / 内存 / 日志膨胀 / 口令自查
 apply_health_fix  checkId=ssl_expiring    ← 证书临期批量续签（已过期 + 7 天内到期）
 apply_health_fix  checkId=container_down  ← 启动本项目停掉的容器（其他项目容器不会被碰）
 apply_health_fix  checkId=disk_watermark  ← 清理 dangling 镜像释放空间
@@ -297,22 +297,28 @@ call_bt_api           ← 走宝塔的清理接口做进一步处理
 
 ## 六、巡检与自愈的设计说明
 
-### 6.1 八个检查项
+### 6.1 十三个检查项
 
 | checkId | 检查什么 | 严重度依据 | 可否自动修 | 修法 |
 | --- | --- | --- | --- | --- |
 | `ssl_expiring` | 证书到期风险 | 已过期 / ≤7 天 = critical | ✅ 可自动 | 重新签发 Let's Encrypt（单批 ≤10 个，串行） |
-| `ssl_missing` | 站点未启用 HTTPS | info | ✖ 需确认 | 申请证书（可能因域名未解析失败） |
+| `ssl_missing` | 站点未部署证书 | info | ⚠️ 需确认 | 申请证书（可能因域名未解析失败） |
+| `ssl_chain` | 证书链完整性（证书文件里有几张证书） | 证书文件读不到 = critical / 只有 1 张 = warning | ✅ 可自动 | 重新签发（LE 下发的 fullchain 自带中间证书） |
+| `site_https_config` | 站点签了证书但 Nginx 没配 443 | warning | ✖ 仅报告 | 不提供 —— 重放证书要读私钥内容且会改站点行为，去宝塔点「部署」更稳妥 |
 | `cf_ssl_mode` | CF SSL 模式与源站是否一致 | 回源明文 / 会 526 = critical | ✖ 仅报告 | 不提供 —— zone 级改动会影响其他项目 |
+| `dns_drift` | 站点域名在本项目区域内没有解析记录 | warning | ⚠️ 需确认 | 补一条指向本机公网 IP 的 A 记录（**有按钮但不参与自动自愈**，改 DNS 直接影响可达性） |
+| `cf_cache_drift` | 首页引用的 js/css 被当成 HTML 返回或 404 | critical | ✅ 可自动 | **按 URL 精确清**这几个资源（不做全量清，避免波及同区域其他项目） |
 | `container_down` | 本项目容器是否在跑 | 停着 = critical | ✅ 可自动 | 启动容器（只动本项目 + 应用商店部署的） |
-| `disk_watermark` | 磁盘水位 | ≥85% warning / ≥92% critical | ✅ 可自动 | 清理 dangling 镜像（不承载容器，零风险） |
-| `memory_watermark` | 内存水位（近 5 分钟可用内存最低值） | 可用 <10% critical / <15% warning | ✖ 仅报告 | 不提供 —— 真能立刻释放内存的是重启吃内存的容器，那会让站点短暂下线；告急时列出占用 Top 的容器供人判断 |
 | `container_restart_loop` | 容器重启循环 | 正在重启中 critical / 疑似 warning | ✖ 仅报告 | 不提供 —— 能做的只有停容器或改重启策略，前者让站点下线、后者要重建容器 |
+| `disk_watermark` | 磁盘水位 | ≥85% warning / ≥92% critical | ✅ 可自动 | 清理 dangling 镜像（不承载容器，零风险） |
+| `memory_watermark` | 内存水位（近 5 分钟最低可用内存） | 可用 <10% critical / <15% warning | ✖ 仅报告 | 不提供 —— 真能释放内存的是重启吃内存的容器；告急时列出占用 Top 的容器供人判断 |
+| `log_bloat` | 站点日志体积 | ≥500MB warning / ≥2GB critical | ✖ 仅报告 | 不提供 —— 只有「读/写整文件」能力，重写几 GB 日志会拖垮 2GB 的机器；去宝塔做日志切割 |
 | `weak_credentials` | 口令与令牌自查 | 默认口令 / 无 MCP 令牌 = critical | ✖ 仅报告 | 不提供 —— 改密码人立刻登不上，必须由人做 |
 
-> ⚠️ 后三项（`memory_watermark` / `container_restart_loop` / `weak_credentials`）**刻意不给一键修复**。
-> 方案文档早期给前两项写过「清 dangling 镜像」「停止重试」——那两条都被推翻了：
-> 清镜像释放的是**磁盘**不是内存；改重启策略没有「不动容器」的 API。宁可只报告，也不做一个不对症的动作。
+> ⚠️ **多数项刻意不给一键修复**。给按钮之前先问一句「点下去真的能解决吗」：
+> 「清 dangling 镜像」释放的是磁盘不是内存、「停止重试」没有不动容器的 API、
+> 重写几 GB 日志会把这台 2GB 的机器拖垮 —— 这些都是写方案时想当然、实现时被推翻的动作。
+> **宁可不给按钮，也不给一个点下去没用的按钮。**
 
 ### 6.2 五条安全护栏（「自愈别变自毁」）
 
