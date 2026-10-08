@@ -137,6 +137,76 @@ function memoized(key, fn) {
 const listSslCertsShared = () =>
   memoized('sslCerts', () => baotaService.createClient().listSslCerts());
 
+// ---------------- 「内存水位」用到的阈值与取数 ----------------
+
+/** 判断内存水位持续多久：5 分钟（采样 2 分钟一条，够算出「最坏时刻」） */
+const MEMORY_WINDOW_MIN = 5;
+
+/**
+ * 近 N 分钟的样本统计（复用 metrics_samples，2 分钟一条）
+ * @returns {{ samples:number, maxUsed:number, avgUsed:number }}
+ *          maxUsed / avgUsed 都是「已用百分比」，可用内存 = 100 - 它
+ */
+function memoryWindow(minutes) {
+  const since = Math.floor(Date.now() / 1000) - minutes * 60;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n,
+              MAX(mem_percent) AS maxUsed,
+              ROUND(AVG(mem_percent), 1) AS avgUsed
+         FROM metrics_samples
+        WHERE ts >= ?`
+    )
+    .get(since);
+  return {
+    samples: row?.n || 0,
+    maxUsed: Number(row?.maxUsed) || 0,
+    avgUsed: Number(row?.avgUsed) || 0,
+  };
+}
+
+/**
+ * 内存占用 Top 的容器（只在水位告急时调用）
+ * ------------------------------------------------------------------
+ * ⚠️ 这里**故意把其他项目的容器也列出来**：内存是被整台机器共用的，
+ *    真凶很可能是别的项目的容器。列出来是为了让人**看得见**，
+ *    但其他项目的容器只标 `FOREIGN_TAG`、不提供任何动作（同 container_down 的口径）。
+ */
+async function topMemoryContainers(limit = 6) {
+  const docker = dockerService.createClient();
+  const all = await docker.listContainers(true);
+  const rows = [];
+
+  for (const c of all.filter((x) => x.running)) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const stats = await docker.containerStats(c.id);
+      rows.push({ container: c, ...stats });
+    } catch {
+      /* 个别容器取不到（刚重启 / 权限）不影响整体结论，跳过 */
+    }
+  }
+
+  rows.sort((a, b) => b.memUsedMb - a.memUsedMb);
+  return rows.slice(0, limit).map((r) => {
+    const own = isOwnContainer(r.container);
+    return {
+      name: r.container.name,
+      tag: `占用 ${r.memUsedMb} MB · 上限的 ${r.memPercent}%${
+        r.cpuPercent ? ` · CPU ${r.cpuPercent}%` : ''
+      }${own ? '' : ` · ${FOREIGN_TAG}`}`,
+      level: own && r.memUsedMb >= 300 ? 'warning' : 'info',
+    };
+  });
+}
+
+// ---------------- 「容器重启循环」用到的阈值 ----------------
+
+/** 累计重启次数下限 */
+const RESTART_LOOP_MIN_COUNT = 3;
+/** 「最近启动过」的时间窗：1 小时 */
+const RESTART_LOOP_WINDOW_MS = 60 * 60 * 1000;
+
 // ============================================================
 // 检查项注册表
 // ============================================================
@@ -464,7 +534,111 @@ const CHECKS = [
     },
   },
 
-  // ---------------- 6. 账号与令牌弱口令自查（仅报告） ----------------
+  // ---------------- 7. 内存水位（仅报告） ----------------
+  {
+    id: 'memory_watermark',
+    title: '内存水位',
+    group: '服务',
+    scope: 'server',
+    why: '机器内存打满时，最先被 OOM Killer 干掉的是 Docker / 数据库，表现是「站点突然没了」而 CPU 看着一切正常。',
+    async inspect() {
+      // 复用 2 分钟一条的采样表：这项要回答的是「水位低了多久」，单次快照说明不了
+      const win = memoryWindow(MEMORY_WINDOW_MIN);
+      const items = [];
+      let severity;
+      let summary;
+
+      if (win.samples < 2) {
+        // 刚部署 / 采样还没攒够：只用当前快照，并如实说明「暂时判断不了持续性」
+        const cur = require('./metrics').snapshot();
+        const avail = 100 - (Number(cur.memUsage) || 0);
+        severity = avail < 10 ? 'warning' : 'ok';
+        summary =
+          avail < 10
+            ? `可用内存仅剩 ${avail.toFixed(1)}%（采样 ${win.samples} 条，还判断不了是否持续，暂按警告提示）`
+            : `可用内存 ${avail.toFixed(1)}%，采样数据还不足 ${MEMORY_WINDOW_MIN} 分钟`;
+      } else {
+        const avail = 100 - win.maxUsed; // 用窗口内「最坏时刻」判断，而不是平均值
+        severity = avail < 10 ? 'critical' : avail < 15 ? 'warning' : 'ok';
+        summary =
+          severity === 'ok'
+            ? `近 ${MEMORY_WINDOW_MIN} 分钟可用内存最低 ${avail.toFixed(1)}%，处于安全水位`
+            : `近 ${MEMORY_WINDOW_MIN} 分钟可用内存最低 ${avail.toFixed(1)}%，建议先看是哪个容器在吃内存`;
+      }
+
+      // 只在告急时才逐个去问 Docker（这是个要按容器发请求的动作，平时不做）
+      if (severity !== 'ok') items.push(...(await topMemoryContainers()));
+
+      return {
+        severity,
+        summary,
+        items,
+        // ⚠️ 刻意不提供一键修复：真能立刻释放内存的动作是「重启吃内存的容器」，
+        //    那会让对应站点短暂下线，必须由人看着做。
+        //    （本项在方案文档里原本写的是「清 dangling 镜像」—— 那是释放磁盘、不是释放内存，已纠正。）
+        fix: null,
+      };
+    },
+  },
+
+  // ---------------- 8. 容器重启循环（仅报告） ----------------
+  {
+    id: 'container_restart_loop',
+    title: '容器重启循环',
+    group: '服务',
+    scope: 'project',
+    why: '容器反复「崩溃→重启」会持续吃掉 CPU 与磁盘，而且表现是「能打开一下又断」，比彻底挂掉更难查。',
+    async inspect() {
+      const docker = dockerService.createClient();
+      const all = await docker.listContainers(true);
+      const own = all.filter(isOwnContainer);
+
+      const looping = [];
+      for (const c of own) {
+        // eslint-disable-next-line no-await-in-loop
+        const info = await docker.inspectContainer(c.id).catch(() => null);
+        const count = Number(info?.RestartCount) || 0;
+        if (count < RESTART_LOOP_MIN_COUNT) continue;
+
+        const restarting = info?.State?.Restarting === true;
+        const startedAt = info?.State?.StartedAt ? Date.parse(info.State.StartedAt) : 0;
+        const startedRecently = startedAt > 0 && Date.now() - startedAt < RESTART_LOOP_WINDOW_MS;
+        if (!restarting && !startedRecently) continue;
+
+        // 正在重启中 = 铁证；「累计重启 ≥3 次且最近一小时内启动过」= 近似判断
+        looping.push({ name: c.name, count, restarting });
+      }
+
+      const critical = looping.filter((c) => c.restarting);
+      const severity = critical.length ? 'critical' : looping.length ? 'warning' : 'ok';
+
+      return {
+        severity,
+        summary: looping.length
+          ? `${looping.length} 个本项目容器疑似在重启循环（重启 ${looping
+              .map((c) => c.count)
+              .join('/')} 次）`
+          : `本项目 ${own.length} 个容器没有重启循环迹象`,
+        items: looping.map((c) => ({
+          name: c.name,
+          tag: c.restarting
+            ? `正在重启中 · 累计重启 ${c.count} 次`
+            : `累计重启 ${c.count} 次，且最近 ${RESTART_LOOP_WINDOW_MS / 60000} 分钟内启动过`,
+          level: c.restarting ? 'critical' : 'warning',
+        })),
+        // ⚠️ 刻意不提供一键修复：这里能做的「修复」只有停容器或改重启策略，
+        //    前者等于让站点下线、后者要重建容器 —— 两个都不该自动做。
+        //    （方案文档原写「停止重试 + 告警」，改重启策略没有不动容器的 API，已纠正为：只报告 + 进告警。）
+        //
+        // 关于「近似判断」的取舍：RestartCount 是累计值，用它 + RecentlyStarted 判定
+        // 存在一种误报 —— 历史上重启过多次、最近又被人为重启的容器会被提一次。
+        // 而漏报的代价是「容器崩到天亮没人知道」。监控里这个方向的取舍是明确的：宁可多一条提醒。
+        fix: null,
+      };
+    },
+  },
+
+  // ---------------- 9. 账号与令牌弱口令自查（仅报告） ----------------
   {
     id: 'weak_credentials',
     title: '登录口令与令牌',

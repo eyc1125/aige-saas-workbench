@@ -36,6 +36,28 @@ function demuxLogStream(buffer) {
   return lines.join('');
 }
 
+/**
+ * 按 Docker 自己的口径算容器 CPU 使用率
+ * = (容器 CPU 计数增量 / 系统 CPU 计数增量) × 核数 × 100
+ * 需要 cpu_stats 与 precpu_stats 两组计数；用 one-shot 取快照时后者可能为空，此时返回 null
+ * （宁可显示 0，也不要用一个看着像真的、其实是拍脑袋的百分比）。
+ */
+function cpuPercentOf(stats) {
+  const cpu = stats?.cpu_stats?.cpu_usage?.total_usage;
+  const pre = stats?.precpu_stats?.cpu_usage?.total_usage;
+  const sys = stats?.cpu_stats?.system_cpu_usage;
+  const preSys = stats?.precpu_stats?.system_cpu_usage;
+  if ([cpu, pre, sys, preSys].some((v) => typeof v !== 'number')) return null;
+
+  const cpuDelta = cpu - pre;
+  const sysDelta = sys - preSys;
+  if (cpuDelta <= 0 || sysDelta <= 0) return 0;
+
+  const cores =
+    stats?.cpu_stats?.online_cpus || stats?.cpu_stats?.cpu_usage?.percpu_usage?.length || 1;
+  return (cpuDelta / sysDelta) * cores * 100;
+}
+
 class DockerClient {
   /**
    * @param {object} options
@@ -214,6 +236,36 @@ class DockerClient {
     await this._ready();
     if (!id) throw badRequest('容器 ID 不能为空');
     return this._request(`/containers/${encodeURIComponent(id)}/json`);
+  }
+
+  /**
+   * 容器资源占用（一次性快照，不流式）
+   * ------------------------------------------------------------------
+   * 用于「内存水位」检查项找出到底是哪个容器在吃内存。
+   * ⚠️ `stream=false` 必给：不给的话 Docker 会一直推流，请求永远不结束。
+   * @returns {Promise<{ memUsedMb:number, memLimitMb:number, memPercent:number, cpuPercent:number }>}
+   */
+  async containerStats(id) {
+    await this._ready();
+    if (!id) throw badRequest('容器 ID 不能为空');
+    const raw = await this._request(
+      `/containers/${encodeURIComponent(id)}/stats?stream=false&one-shot=true`,
+      { timeout: 15000 }
+    );
+
+    const mem = raw?.memory_stats || {};
+    const used = Number(mem.usage) || 0;
+    const limit = Number(mem.limit) || 0;
+    // Docker 的 usage 含 page cache，减去 cache 才是「真实占用」（与 docker stats 口径一致）
+    const cache = Number(mem.stats?.inactive_file ?? mem.stats?.cache) || 0;
+    const realUsed = Math.max(0, used - cache);
+
+    return {
+      memUsedMb: Math.round(realUsed / 1024 / 1024),
+      memLimitMb: Math.round(limit / 1024 / 1024),
+      memPercent: limit ? Number(((realUsed / limit) * 100).toFixed(1)) : 0,
+      cpuPercent: Number(cpuPercentOf(raw)?.toFixed(1) ?? 0),
+    };
   }
 
   /** 启动容器 */
