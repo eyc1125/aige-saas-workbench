@@ -9,9 +9,17 @@ import request, { getToken } from './request';
 // ==================== 登录鉴权 ====================
 export const authApi = {
   login: (data) => request.post('/auth/login', data, { silent: true }),
+  // 二次验证（D1）：用密码换来的临时票据 + 6 位码（或恢复码）换正式令牌
+  loginTotp: (data) => request.post('/auth/login/totp', data, { silent: true }),
   profile: () => request.get('/auth/profile', { silent: true }),
   changePassword: (data) => request.put('/auth/password', data),
   logout: () => request.post('/auth/logout', {}, { silent: true }),
+  // 二次验证的绑定管理（都在「系统设置」里用）
+  totpStatus: () => request.get('/auth/totp', { silent: true }),
+  totpSetup: () => request.post('/auth/totp/setup'),
+  totpEnable: (code) => request.post('/auth/totp/enable', { code }),
+  totpDisable: (data) => request.post('/auth/totp/disable', data),
+  totpRecovery: (code) => request.post('/auth/totp/recovery', { code }),
 };
 
 // ==================== 仪表盘 ====================

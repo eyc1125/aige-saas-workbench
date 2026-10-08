@@ -125,6 +125,12 @@ jobs:
         # 同样零依赖，不装 node_modules 也能跑。
         run: node backend/scripts/selfcheck-feishu-sign.js
 
+      - name: TOTP 自检（与 RFC 6238 官方测试向量逐字节比对）
+        # 验证码算错的表现是「一直提示验证码不对」——人只会怀疑手机时间不准，
+        # 很难想到是自己实现错了。所以拿 RFC 附录 B 的六个时间点做固定值比对。
+        # 零依赖，同样可以放在这个不装 node_modules 的 job 里。
+        run: node backend/scripts/selfcheck-totp.js
+
       - name: 确保没有把真实密钥提交进来
         run: |
           set -e

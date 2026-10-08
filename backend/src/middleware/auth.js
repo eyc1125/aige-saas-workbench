@@ -27,11 +27,36 @@ const getUserRow = db.prepare('SELECT id, username, role FROM users WHERE id = ?
  * 生成令牌
  * 说明：payload 里只放「是谁」，**不放角色** —— 角色由 requireAuth 每次现查，
  *      免得将来有人顺手用了 payload.role，把上面那条保证悄悄破坏掉。
+ *      scope='session' 用来把「正式登录令牌」与「二次验证临时票据」区分开
+ *      （见下面的 TOTP 部分）。
  */
 function signToken(user) {
-  return jwt.sign({ uid: user.id, username: user.username }, config.jwtSecret, {
+  return jwt.sign({ uid: user.id, username: user.username, scope: 'session' }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
   });
+}
+
+/**
+ * 生成「二次验证临时票据」（D1）
+ * ------------------------------------------------------------------
+ * 密码正确但还需要验证码时用它：**它能且只能用来提交验证码**，不是登录态。
+ * 有效期只有几分钟 —— 它的作用是"证明刚刚密码是对的"，不是"放人进门"。
+ */
+function signTotpTicket(user) {
+  return jwt.sign({ uid: user.id, username: user.username, scope: 'totp' }, config.jwtSecret, {
+    expiresIn: '5m',
+  });
+}
+
+/** 校验二次验证票据（失败返回 null） */
+function verifyTotpTicket(ticket) {
+  try {
+    const payload = jwt.verify(String(ticket || ''), config.jwtSecret);
+    if (payload.scope !== 'totp') return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 /** 从请求头里取出令牌 */
@@ -61,6 +86,12 @@ function parseToken(req) {
 function resolveUser(req) {
   const payload = parseToken(req);
   if (!payload) return null;
+
+  // ⛔ 只认「正式登录令牌」。二次验证的临时票据（scope='totp'）绝不能当登录态用 ——
+  //    否则"密码对了但还没输验证码"这一步就已经拿到完整权限，二次验证等于白做。
+  //    升级前签发的旧令牌没有 scope 字段，一并放行，免得把所有人踢下线。
+  if (payload.scope && payload.scope !== 'session') return null;
+
   const row = getUserRow.get(payload.uid);
   if (!row) return null; // 账号被删了，旧令牌立即失效
   return { id: row.id, username: row.username, role: row.role };
@@ -100,6 +131,8 @@ function requireAdmin(req, _res, next) {
 
 module.exports = {
   signToken,
+  signTotpTicket,
+  verifyTotpTicket,
   requireAuth,
   optionalAuth,
   requireAdmin,

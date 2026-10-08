@@ -55,51 +55,106 @@
           size="large"
           @submit.prevent="onSubmit"
         >
-          <el-form-item label="用户名" prop="username">
-            <el-input
-              v-model="form.username"
-              placeholder="请输入用户名"
-              autocomplete="username"
-              clearable
+          <!-- ---------------- 第一步：账号密码 ---------------- -->
+          <template v-if="step === 'password'">
+            <el-form-item label="用户名" prop="username">
+              <el-input
+                v-model="form.username"
+                placeholder="请输入用户名"
+                autocomplete="username"
+                clearable
+              >
+                <template #prefix
+                  ><el-icon><User /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
+
+            <el-form-item label="密码" prop="password">
+              <el-input
+                v-model="form.password"
+                type="password"
+                placeholder="请输入密码"
+                autocomplete="current-password"
+                show-password
+                @keyup.enter="onSubmit"
+              >
+                <template #prefix
+                  ><el-icon><Lock /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
+
+            <div class="form-panel__row">
+              <el-checkbox v-model="remember">记住账号密码</el-checkbox>
+              <span class="form-panel__row-hint">仅保存在本机浏览器，换设备需重新输入</span>
+            </div>
+
+            <el-alert
+              v-if="errorMessage"
+              class="form-panel__alert"
+              type="error"
+              :title="errorMessage"
+              :closable="false"
+              show-icon
+            />
+
+            <el-button
+              type="primary"
+              class="form-panel__submit"
+              :loading="loading"
+              @click="onSubmit"
             >
-              <template #prefix
-                ><el-icon><User /></el-icon
-              ></template>
-            </el-input>
-          </el-form-item>
+              {{ loading ? '正在登录…' : '进入工作台' }}
+            </el-button>
+          </template>
 
-          <el-form-item label="密码" prop="password">
-            <el-input
-              v-model="form.password"
-              type="password"
-              placeholder="请输入密码"
-              autocomplete="current-password"
-              show-password
-              @keyup.enter="onSubmit"
+          <!-- ---------------- 第二步：二次验证 ---------------- -->
+          <template v-else>
+            <p class="totp-intro">
+              该账号已开启登录二次验证，请输入
+              <strong>{{ useRecovery ? '恢复码' : '验证器 App 上的 6 位动态码' }}</strong>
+            </p>
+
+            <el-form-item :label="useRecovery ? '恢复码' : '动态验证码'" prop="code">
+              <el-input
+                v-model="form.code"
+                :placeholder="useRecovery ? 'A3F9-K2MP' : '6 位数字'"
+                :maxlength="useRecovery ? 9 : 6"
+                class="totp-input"
+                @keyup.enter="onSubmit"
+              >
+                <template #prefix
+                  ><el-icon><Key /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
+
+            <el-alert
+              v-if="errorMessage"
+              class="form-panel__alert"
+              type="error"
+              :title="errorMessage"
+              :closable="false"
+              show-icon
+            />
+
+            <el-button
+              type="primary"
+              class="form-panel__submit"
+              :loading="loading"
+              @click="onSubmit"
             >
-              <template #prefix
-                ><el-icon><Lock /></el-icon
-              ></template>
-            </el-input>
-          </el-form-item>
+              {{ loading ? '正在验证…' : '验证并登录' }}
+            </el-button>
 
-          <div class="form-panel__row">
-            <el-checkbox v-model="remember">记住账号密码</el-checkbox>
-            <span class="form-panel__row-hint">仅保存在本机浏览器，换设备需重新输入</span>
-          </div>
-
-          <el-alert
-            v-if="errorMessage"
-            class="form-panel__alert"
-            type="error"
-            :title="errorMessage"
-            :closable="false"
-            show-icon
-          />
-
-          <el-button type="primary" class="form-panel__submit" :loading="loading" @click="onSubmit">
-            {{ loading ? '正在登录…' : '进入工作台' }}
-          </el-button>
+            <div class="totp-actions">
+              <el-button link @click="backToPassword">← 换个账号</el-button>
+              <el-button link @click="toggleRecovery">
+                {{ useRecovery ? '改用动态验证码' : '验证器不在身边？用恢复码' }}
+              </el-button>
+            </div>
+          </template>
         </el-form>
 
         <p v-if="isDev" class="form-panel__hint">
@@ -111,7 +166,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
@@ -126,8 +181,14 @@ const loading = ref(false);
 const errorMessage = ref('');
 const isDev = import.meta.env.DEV;
 
-const form = reactive({ username: '', password: '' });
+const form = reactive({ username: '', password: '', code: '' });
 const remember = ref(true);
+
+// ---------------- 二次验证（D1） ----------------
+// step：password（账号密码）→ totp（动态码/恢复码）
+const step = ref('password');
+const ticket = ref(''); // 密码校验通过后拿到的临时票据，只能用来提交验证码
+const useRecovery = ref(false);
 
 // ============================================================
 // 「记住账号密码」
@@ -188,13 +249,27 @@ function persistRemembered() {
 
 loadRemembered();
 
-const rules = {
+/** 校验规则跟着当前步骤走：第二步只校验验证码/恢复码 */
+const rules = computed(() => ({
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 4, message: '密码长度不正确', trigger: 'blur' },
   ],
-};
+  code: useRecovery.value
+    ? [
+        { required: true, message: '请输入恢复码', trigger: 'blur' },
+        {
+          pattern: /^[A-HJ-NP-Z2-9]{4}-?[A-HJ-NP-Z2-9]{4}$/i,
+          message: '恢复码形如 A3F9-K2MP',
+          trigger: 'blur',
+        },
+      ]
+    : [
+        { required: true, message: '请输入验证码', trigger: 'blur' },
+        { pattern: /^\d{6}$/, message: '验证码是 6 位数字', trigger: 'blur' },
+      ],
+}));
 
 const capabilities = [
   { label: '网站管理', desc: '宝塔站点一键创建、删除、申请证书' },
@@ -205,6 +280,7 @@ const capabilities = [
 async function onSubmit() {
   if (loading.value) return;
   errorMessage.value = '';
+  if (step.value === 'totp') return submitTotp();
 
   try {
     await formRef.value.validate();
@@ -215,16 +291,77 @@ async function onSubmit() {
 
   loading.value = true;
   try {
-    await auth.login(form.username.trim(), form.password);
-    persistRemembered();
-    ElMessage.success(`欢迎回来，${auth.displayName}`);
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard';
-    router.replace(redirect);
+    const data = await auth.login(form.username.trim(), form.password);
+
+    // 该账号启用了二次验证：这一步只拿到临时票据，还需要再输一次验证码
+    if (data?.needTotp) {
+      ticket.value = data.ticket;
+      step.value = 'totp';
+      useRecovery.value = false;
+      form.code = '';
+      formRef.value?.clearValidate();
+      return;
+    }
+
+    finishLogin();
   } catch (err) {
     errorMessage.value = err.message || '登录失败，请检查用户名与密码';
   } finally {
     loading.value = false;
   }
+}
+
+/** 第二步：提交动态验证码（或恢复码） */
+async function submitTotp() {
+  errorMessage.value = '';
+  try {
+    await formRef.value.validate();
+  } catch {
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const input = form.code.trim();
+    const data = await auth.completeTotp(
+      ticket.value,
+      useRecovery.value ? { recovery: input } : { code: input }
+    );
+    if (data.viaRecovery) {
+      ElMessage.warning('已使用恢复码登录 —— 该码已作废，建议尽快在「系统设置」重新获取恢复码');
+    }
+    finishLogin();
+  } catch (err) {
+    errorMessage.value = err.message || '验证失败，请重试';
+    form.code = '';
+  } finally {
+    loading.value = false;
+  }
+}
+
+/** 登录成功后的收尾（记住账号 + 跳转） */
+function finishLogin() {
+  persistRemembered();
+  ElMessage.success(`欢迎回来，${auth.displayName}`);
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard';
+  router.replace(redirect);
+}
+
+/** 回到第一步（票据作废，重新输账号） */
+function backToPassword() {
+  step.value = 'password';
+  ticket.value = '';
+  form.code = '';
+  errorMessage.value = '';
+  formRef.value?.clearValidate();
+}
+
+/** 动态码 / 恢复码切换（切换时清空输入，免得把上一轮的残留提交上去） */
+function toggleRecovery() {
+  useRecovery.value = !useRecovery.value;
+  form.code = '';
+  errorMessage.value = '';
+  formRef.value?.clearValidate();
 }
 </script>
 
@@ -437,6 +574,32 @@ async function onSubmit() {
   gap: var(--sp-3);
   flex-wrap: wrap;
   margin-bottom: var(--sp-4);
+}
+
+/* ---------------- 二次验证（D1） ---------------- */
+.totp-intro {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.totp-intro strong {
+  color: var(--text-primary);
+}
+
+/* 验证码用等宽 + 宽字距：6 个数字挤在一起最容易看错 */
+.totp-input :deep(.el-input__inner) {
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+  letter-spacing: 0.25em;
+}
+
+.totp-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-3);
 }
 
 .form-panel__row-hint {

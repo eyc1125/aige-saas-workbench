@@ -77,6 +77,10 @@ const ONLY = arg('only', '')
   .filter(Boolean);
 const PAGES_TO_RUN = ONLY.length ? PAGES.filter((p) => ONLY.includes(p.name)) : PAGES;
 
+/** --click=<选择器> + --click-on=<页面name>：进页面后先点一下再体检（用于弹窗/抽屉这类"打开才存在"的 UI） */
+const CLICK_SELECTOR = arg('click', '');
+const CLICK_PAGE = arg('click-on', 'settings');
+
 /** --full 截图包含视口以下的内容（用来核对「必须往下滚才看得到」的区块，如设置页的 MCP 段） */
 const FULL_PAGE = process.argv.includes('--full');
 
@@ -427,6 +431,26 @@ const AUDIT_FN = `(() => {
         continue;
       }
       await sleep((page.hash === '/login' ? 1800 : 3000) + SETTLE_MS);
+
+      // 可选：进页面后先点一下再体检。
+      // 用途：弹窗、抽屉这类"打开才存在"的东西平时根本进不了体检范围，
+      // 而它们恰恰最容易在窄屏上溢出（比如固定宽度的 el-dialog）。
+      // 用法：--click=.some-btn --click-on=settings
+      if (CLICK_SELECTOR && CLICK_PAGE === page.name) {
+        try {
+          await evaluate(`
+            (() => {
+              const el = document.querySelector(${JSON.stringify(CLICK_SELECTOR)});
+              if (!el) return 'not-found';
+              el.click();
+              return 'clicked';
+            })()
+          `);
+          await sleep(2200); // 等弹窗动画与内容渲染（二维码是异步生成的）
+        } catch (err) {
+          console.log(`  ⚠️  点击 ${CLICK_SELECTOR} 失败：${err.message}`);
+        }
+      }
 
       // 地基断言：页面必须先真的渲染出来，否则后面的「全绿」毫无意义
       try {

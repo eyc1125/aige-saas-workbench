@@ -483,6 +483,59 @@
       </div>
     </section>
 
+    <!-- ==================== 登录二次验证（D1） ==================== -->
+    <section class="surface section">
+      <header class="section__head">
+        <span class="section__glyph" style="color: var(--brand); background: var(--brand-soft)">
+          <el-icon><Key /></el-icon>
+        </span>
+        <div class="section__titles">
+          <h2 class="section__title">
+            登录二次验证
+            <span class="section__state" :class="totp.enabled ? 'is-on' : 'is-off'">
+              {{ totp.enabled ? '已启用' : '未启用' }}
+            </span>
+          </h2>
+          <p class="section__sub">登录时除了密码，再要一次验证器 App 上的动态码</p>
+        </div>
+      </header>
+
+      <div class="section__body">
+        <el-alert
+          class="role-note"
+          :type="totp.enabled ? 'success' : 'warning'"
+          :closable="false"
+          show-icon
+          :title="
+            totp.enabled ? '已开启 —— 密码泄露也进不来' : '面板暴露在公网，目前密码是唯一防线'
+          "
+          :description="
+            totp.enabled
+              ? `绑定于 ${totp.boundAt || '—'}，还有 ${totp.recoveryLeft} 个恢复码可用。`
+              : '开启后，即使密码泄露，对方没有你的手机也登不进来。支持 Google Authenticator、微软验证器、1Password 等任意 TOTP 应用。'
+          "
+        />
+
+        <div class="section__actions">
+          <el-button
+            v-if="!totp.enabled"
+            class="totp-bind-btn"
+            type="primary"
+            :loading="totpBusy"
+            @click="startTotpSetup"
+          >
+            <el-icon><Key /></el-icon>开始绑定
+          </el-button>
+          <template v-else>
+            <el-button :loading="totpBusy" @click="regenRecovery">重新获取恢复码</el-button>
+            <el-button type="danger" plain :loading="totpBusy" @click="disableVisible = true">
+              关闭二次验证
+            </el-button>
+          </template>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== 用户与角色（B5） ==================== -->
     <section class="surface section">
       <header class="section__head">
@@ -656,11 +709,127 @@
       </div>
     </section>
 
+    <!-- ==================== 绑定验证器弹窗（D1） ==================== -->
+    <el-dialog
+      v-model="totpDialogVisible"
+      :title="totpMode === 'bind' ? '绑定验证器' : '新的恢复码'"
+      width="min(540px, 92vw)"
+      :close-on-click-modal="false"
+      @closed="clearTotpSecrets"
+    >
+      <template v-if="totpMode === 'bind'">
+        <div class="totp-step">
+          <h4>1. 用验证器 App 扫码</h4>
+          <p>扫不了二维码，就在 App 里选「手动输入密钥」，把这串填进去。</p>
+          <div class="totp-qr">
+            <img v-if="totpQr" :src="totpQr" alt="TOTP 绑定二维码" />
+            <span v-else class="totp-qr__loading">正在生成二维码…</span>
+          </div>
+          <div class="totp-secret">
+            <span class="mono">{{ totpData.secretText }}</span>
+            <CopyBtn :text="totpData.secret" title="复制密钥" ok-message="密钥已复制" />
+          </div>
+        </div>
+
+        <div class="totp-step">
+          <h4>2. 把恢复码抄下来（这一步别跳过）</h4>
+          <p class="totp-tip">
+            手机丢了或验证器被卸载时，这些码是唯一的进路。每个只能用一次，
+            请存进密码管理器或写在纸上。
+          </p>
+          <ul class="totp-codes">
+            <li v-for="c in totpData.recoveryCodes" :key="c" class="mono">{{ c }}</li>
+          </ul>
+          <CopyBtn
+            :text="totpData.recoveryCodes.join('\n')"
+            title="复制全部恢复码"
+            ok-message="恢复码已复制"
+          />
+        </div>
+
+        <div class="totp-step">
+          <h4>3. 输入验证器上显示的 6 位码，完成绑定</h4>
+          <el-input
+            v-model="totpCode"
+            placeholder="6 位数字"
+            maxlength="6"
+            class="totp-code-input"
+            @keyup.enter="confirmTotpEnable"
+          />
+        </div>
+      </template>
+
+      <template v-else>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          title="旧恢复码已全部作废"
+          description="请立刻把下面这些抄到安全的地方 —— 关掉这个窗口就再也看不到了。"
+        />
+        <ul class="totp-codes totp-codes--wide">
+          <li v-for="c in totpData.recoveryCodes" :key="c" class="mono">{{ c }}</li>
+        </ul>
+        <CopyBtn
+          :text="totpData.recoveryCodes.join('\n')"
+          title="复制全部恢复码"
+          ok-message="恢复码已复制"
+        />
+      </template>
+
+      <template #footer>
+        <el-button @click="totpDialogVisible = false">
+          {{ totpMode === 'bind' ? '稍后再说' : '我已保存' }}
+        </el-button>
+        <el-button
+          v-if="totpMode === 'bind'"
+          type="primary"
+          :loading="totpBusy"
+          @click="confirmTotpEnable"
+        >
+          完成绑定
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ==================== 关闭二次验证弹窗 ==================== -->
+    <el-dialog
+      v-model="disableVisible"
+      title="关闭二次验证"
+      width="min(440px, 92vw)"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="关闭后只剩密码这一道防线"
+        description="需要同时提供密码与当前动态码 —— 避免登录会话被盗之后，被人一键关掉二次验证。"
+      />
+      <el-form label-position="top" class="disable-form">
+        <el-form-item label="当前密码">
+          <el-input
+            v-model="disableForm.password"
+            type="password"
+            show-password
+            placeholder="登录密码"
+          />
+        </el-form-item>
+        <el-form-item label="验证器上的 6 位码">
+          <el-input v-model="disableForm.code" maxlength="6" placeholder="6 位数字" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="disableVisible = false">取消</el-button>
+        <el-button type="danger" :loading="totpBusy" @click="confirmDisable">确认关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ==================== 用户编辑弹窗 ==================== -->
     <el-dialog
       v-model="userDialogVisible"
       :title="userForm.id ? '编辑用户' : '新建用户'"
-      width="480px"
+      width="min(480px, 92vw)"
       :close-on-click-modal="false"
     >
       <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-width="86px">
@@ -718,7 +887,7 @@
     <el-dialog
       v-model="tokenVisible"
       :title="tokenScope === 'readonly' ? '新的 MCP 只读令牌' : '新的 MCP 令牌'"
-      width="520px"
+      width="min(520px, 92vw)"
       :close-on-click-modal="false"
     >
       <el-alert
@@ -751,7 +920,7 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 // 两级降级的复制实现（https 剪贴板 API → execCommand 兜底），避免 http 访问时点了没反应
 import { copyText } from '@/composables/useCopy';
 import { useNarrow } from '@/composables/useNarrow';
-import { settingApi, alertApi, userApi } from '@/api';
+import { settingApi, alertApi, userApi, authApi } from '@/api';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 
@@ -1111,6 +1280,132 @@ async function saveAdmin() {
   }
 }
 
+// ---------------- 登录二次验证（D1） ----------------
+const totp = reactive({ enabled: false, boundAt: '', recoveryLeft: 0 });
+const totpBusy = ref(false);
+/** bind = 完整的绑定三步流程；recovery = 只展示新生成的恢复码 */
+const totpMode = ref('bind');
+const totpDialogVisible = ref(false);
+const totpData = reactive({ secret: '', secretText: '', otpauthUrl: '', recoveryCodes: [] });
+const totpQr = ref('');
+const totpCode = ref('');
+const disableVisible = ref(false);
+const disableForm = reactive({ password: '', code: '' });
+
+async function loadTotp() {
+  try {
+    Object.assign(totp, await authApi.totpStatus());
+  } catch {
+    /* 取不到就按未启用显示，不影响其它设置 */
+  }
+}
+
+async function startTotpSetup() {
+  totpBusy.value = true;
+  try {
+    const data = await authApi.totpSetup();
+    Object.assign(totpData, data);
+    totpMode.value = 'bind';
+    totpQr.value = '';
+    totpCode.value = '';
+    totpDialogVisible.value = true;
+
+    // 二维码按需加载：qrcode 库只在打开这个弹窗时才下载，不进首屏
+    const { default: QRCode } = await import('qrcode');
+    totpQr.value = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+async function confirmTotpEnable() {
+  if (!/^\d{6}$/.test(totpCode.value.trim())) {
+    ElMessage.warning('请输入验证器上显示的 6 位数字');
+    return;
+  }
+
+  totpBusy.value = true;
+  try {
+    const data = await authApi.totpEnable(totpCode.value.trim());
+    ElMessage.success(data.message || '已启用二次验证');
+    totpDialogVisible.value = false;
+    await loadTotp();
+  } catch {
+    /* 拦截器已提示（验证码不对、已启用等） */
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+async function regenRecovery() {
+  let code;
+  try {
+    const r = await ElMessageBox.prompt(
+      '重新生成后，旧的恢复码全部作废。请输入验证器上的 6 位码确认。',
+      '重新获取恢复码',
+      {
+        confirmButtonText: '生成',
+        cancelButtonText: '取消',
+        inputPattern: /^\d{6}$/,
+        inputErrorMessage: '请输入 6 位数字',
+      }
+    );
+    code = r.value;
+  } catch {
+    return; // 用户取消
+  }
+
+  totpBusy.value = true;
+  try {
+    const data = await authApi.totpRecovery(code);
+    totpData.recoveryCodes = data.recoveryCodes;
+    totpMode.value = 'recovery';
+    totpDialogVisible.value = true;
+    ElMessage.success('新的恢复码已生成 —— 旧的已作废');
+    await loadTotp();
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+async function confirmDisable() {
+  if (!disableForm.password || !/^\d{6}$/.test(disableForm.code.trim())) {
+    ElMessage.warning('请填写当前密码和 6 位动态码');
+    return;
+  }
+
+  totpBusy.value = true;
+  try {
+    const data = await authApi.totpDisable({
+      password: disableForm.password,
+      code: disableForm.code.trim(),
+    });
+    ElMessage.success(data.message || '已关闭二次验证');
+    disableVisible.value = false;
+    disableForm.password = '';
+    disableForm.code = '';
+    await loadTotp();
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+/** 弹窗关闭后立刻清掉密钥/恢复码 —— 别让它们一直留在内存里 */
+function clearTotpSecrets() {
+  totpData.secret = '';
+  totpData.secretText = '';
+  totpData.otpauthUrl = '';
+  totpData.recoveryCodes = [];
+  totpQr.value = '';
+  totpCode.value = '';
+}
+
 // ---------------- 用户与角色（B5 · 仅管理员） ----------------
 const users = ref([]);
 const loadingUsers = ref(false);
@@ -1268,6 +1563,7 @@ onMounted(async () => {
   loadMcp();
   // 用户列表只有管理员能取（后端会 403），这一页本身也只有管理员能进
   loadUsers();
+  loadTotp();
   try {
     systemInfo.value = await settingApi.system();
   } catch {
@@ -1520,6 +1816,110 @@ onMounted(async () => {
 
 .ro-card__body {
   margin-top: var(--sp-3);
+}
+
+/* ---------------- 登录二次验证（D1） ---------------- */
+.totp-step + .totp-step {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.totp-step h4 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.totp-step p {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.totp-tip {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.totp-qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+}
+
+.totp-qr img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-md);
+}
+
+.totp-qr__loading {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.totp-secret {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-hairline);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.totp-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+
+.totp-codes li {
+  padding: 4px var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  font-size: var(--fs-sm);
+  text-align: center;
+  color: var(--text-primary);
+  /* 恢复码是要手抄的，允许一键选中整串 */
+  user-select: all;
+}
+
+.totp-codes--wide {
+  margin-top: var(--sp-3);
+}
+
+.totp-code-input :deep(.el-input__inner) {
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+  letter-spacing: 0.25em;
+  text-align: center;
+}
+
+.disable-form {
+  margin-top: var(--sp-4);
+}
+
+/* 窄屏下恢复码改单列，免得两列挤成看不清 */
+@media (max-width: 480px) {
+  .totp-codes {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------------- 用户与角色（B5） ---------------- */

@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT    NOT NULL DEFAULT 'viewer', -- admin 管理员 / operator 运维 / viewer 只读
                                                     -- ⚠️ 默认给最小权限：建用户时忘了指定角色，
                                                     --    应当是「什么都干不了」，而不是「什么都能干」
+  totp_secret   TEXT,                               -- D1 二次验证密钥（AES 加密存储）
+  totp_enabled  INTEGER NOT NULL DEFAULT 0,         -- 是否已启用（=0 时登录只验密码）
+  totp_recovery TEXT,                               -- 恢复码的 sha256 列表（JSON 数组，每个只能用一次）
+  totp_bound_at TEXT,                               -- 绑定时间
   last_login_at TEXT,
   created_at    TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at    TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))

@@ -36,11 +36,19 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    /** 登录：成功后写入令牌并拉取用户信息 */
+    /**
+     * 登录
+     * ⚠️ 启用了二次验证的账号，这一步**拿不到令牌** ——
+     *    后端只返回 { needTotp, ticket }，要用 completeTotp() 再走一步。
+     *    绝不能在这里 setToken(undefined)：那会把本地令牌写坏，
+     *    下次进页面变成"看起来登录了但所有请求都 401"。
+     */
     async login(username, password) {
       this.loading = true;
       try {
         const data = await authApi.login({ username, password });
+        if (data?.needTotp) return data;
+
         this.token = data.token;
         this.user = data.user;
         setToken(data.token);
@@ -48,6 +56,15 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.loading = false;
       }
+    },
+
+    /** 二次验证：票据 + 6 位码（或恢复码）→ 正式登录 */
+    async completeTotp(ticket, payload) {
+      const data = await authApi.loginTotp({ ticket, ...payload });
+      this.token = data.token;
+      this.user = data.user;
+      setToken(data.token);
+      return data;
     },
 
     /** 拉取当前用户信息（页面刷新后调用） */

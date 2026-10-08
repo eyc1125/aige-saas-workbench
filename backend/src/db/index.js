@@ -43,6 +43,12 @@ function migrate() {
   // B6 审计 diff：记录「改之前是什么、改之后是什么」
   ensureColumn('operation_logs', 'before_value', 'TEXT');
   ensureColumn('operation_logs', 'after_value', 'TEXT');
+
+  // D1 登录二次验证（TOTP）
+  ensureColumn('users', 'totp_secret', 'TEXT');
+  ensureColumn('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'totp_recovery', 'TEXT');
+  ensureColumn('users', 'totp_bound_at', 'TEXT');
 }
 
 /**

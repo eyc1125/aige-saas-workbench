@@ -25,7 +25,7 @@
 | 域名管理 | Cloudflare 域名区域、DNS 记录增删改、橙色云/灰色云一键切换 |
 | Docker 管理 | 容器列表与筛选、启动/停止/重启/删除、**实时日志**（SSE 推送）、镜像列表 |
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
-| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
+| 系统设置 | 宝塔 / Cloudflare / Docker 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
 | MCP Server | **30 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据） |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
@@ -44,7 +44,7 @@
 | job | 查什么 |
 | --- | --- |
 | **规范检查** | Prettier 格式 + ESLint + commitlint 提交信息规范 |
-| **后端语法** | `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描 |
+| **后端语法** | `node --check` 全量源码 + 必需文件齐备 + 明文密钥扫描 + **飞书签名 / TOTP 与官方向量逐字节比对**（两个自检都零依赖） |
 | **MCP 工具分组自检** | 工具数 / 分组 / 说明文字三者必须一致（防文档漂移）+ **只读/写归类必须铺满全部工具**（CI 会真跑 `selfcheck-mcp-scope.js`）+ **每个模块必须挂权限中间件**（遍历真实路由栈，漏一个直接红） |
 | **前端构建** | 真跑 `vite build` + 报告产物体积 + **首屏预算看门狗**（>220KB gzip 直接失败） |
 
@@ -109,7 +109,7 @@ aige-saas-workbench/
 │   │   ├── routes/              # REST 路由（10 个模块，含 users 用户管理）
 │   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics
 │   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js
-│   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类
+│   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类 / TOTP
 │   │   ├── app.js               # Express 装配
 │   │   ├── config.js            # 配置中心（含生产环境安全自检）
 │   │   └── index.js             # 入口（同时起 3000 API 与 3001 MCP）
@@ -448,9 +448,11 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/health` | 健康检查（无需鉴权） |
-| POST | `/api/auth/login` | 登录换 JWT |
+| POST | `/api/auth/login` | 登录换 JWT（**启用二次验证时只返回 `{needTotp, ticket}`**，不发令牌） |
+| POST | `/api/auth/login/totp` | 二次验证：票据 + 6 位码（或恢复码）→ 正式令牌 |
 | GET | `/api/auth/profile` | 当前登录信息 |
 | PUT | `/api/auth/password` | 修改自己的密码 |
+| GET/POST | `/api/auth/totp` · `/totp/setup` · `/totp/enable` · `/totp/disable` · `/totp/recovery` | 二次验证的绑定 / 启用 / 关闭 / 重取恢复码 |
 | GET | `/api/dashboard/overview` | 仪表盘总览 |
 | GET | `/api/dashboard/server` | 服务器实时指标（前端 10 秒轮询） |
 | GET/POST | `/api/websites` | 网站列表 / 新建 |
@@ -602,6 +604,21 @@ npm run dev                       # http://127.0.0.1:5173（已配 /api 代理�
    「以为锁了、其实没锁」比没有权限体系更危险。
 
 前端只是配合（侧边栏过滤、隐藏按钮、`adminOnly` 页面跳转），**真正的拦截全在后端**。
+
+### 16.2 登录二次验证（TOTP）
+
+面板暴露在公网，**只用密码是不够的**。绑定入口：**系统设置 → 登录二次验证**，
+支持 Google Authenticator / 微软验证器 / 1Password / Authy 等任意 TOTP 应用。
+
+| 做法 | 为什么这么做 |
+| --- | --- |
+| **先给恢复码，再让用户输码启用** | 顺序反过来（先启用、再给恢复码）的话，手机一丢就彻底进不来，只能上服务器改数据库 |
+| 密码只换 **5 分钟临时票据**，不发登录令牌 | 票据是 `scope='totp'` 的 JWT，`requireAuth` 只认 `scope='session'` —— 否则"输完密码"这一步就已经有完整权限，二次验证等于白做 |
+| 恢复码**一次性**、只存 sha256、忽略大小写与连字符 | 用掉即废；用户从纸上抄回来写成 `a3f9 k2mp` 也能用 |
+| 关闭要**密码 + 动态码** | 否则登录会话被盗之后，可以一键把这道防线关掉 |
+| 算法自己实现（`utils/totp.js`），不引 otplib | 安全功能少一个供应链面；而且零依赖才能拿 RFC 6238 附录 B 的官方时间点做逐字节自检（`npm run check:totp`） |
+
+> ⚠️ 绑定成功后**请立刻把恢复码抄到密码管理器或纸上** —— 它是手机丢失时唯一的退路。
 
 ---
 
