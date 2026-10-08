@@ -27,8 +27,9 @@
 | 应用商店 | 5 个预置应用一键部署（Uptime Kuma / n8n / NocoDB / WordPress / Dify），自动配域名 + 反向代理 + HTTPS，带实时部署日志 |
 | 代码仓库 | GitHub 只读看板：最近提交、**Actions 运行状态**（最新一次的结论放大展示，失败一眼看得出来）、开放中的 Issue 与 PR、多仓库切换；**60 秒缓存 + 配额可见**（匿名 60 次/小时 / 配只读令牌 5000 次/小时） |
 | 应用分发 | 蒲公英（内测分发）：每个应用的当前版本、版本编号、体积、上传时间、历史版本数，**二维码（扫码安装）与下载页链接 + 一键复制**；**可直接上传安装包**（`.apk / .ipa / .hap`，单包 ≤ 100MB）——文件只在内存过一遍、**不落服务器磁盘**，上传完即交给蒲公英托管 |
+| 计划任务 | 服务器上的定时任务清单：周期、启用状态、执行身份、分类，并**标出哪些属于本项目**、哪些是「排障时临时加的却还在跑」。⚠️ **只读** —— 实测这些任务基本都属于服务器上其他项目，所以不提供启停/删除；也**不返回脚本正文**（别人的脚本里有明文密钥） |
 | 系统设置 | 宝塔 / Cloudflare / Docker / **GitHub** / **蒲公英** 对接与连通性测试、**MCP 一键复制配置与接入说明**（含只读令牌）、**登录二次验证（TOTP + 恢复码）**、**用户与角色管理**、管理员账号、**外观（6 套主题色 + 明暗模式）**、运行环境（整页仅管理员可进） |
-| MCP Server | **34 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检 + GitHub 仓库只读 + 蒲公英分发），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据；只读可见 21 个）。**一个 MCP 就够了** —— 宝塔 / Cloudflare / 蒲公英都不用再单独挂 |
+| MCP Server | **35 个工具**（覆盖宝塔 + Cloudflare + Docker + 应用部署 + 自愈巡检 + GitHub 仓库只读 + 蒲公英分发 + 计划任务只读），stdio 与 SSE 双传输，**支持只读令牌分级**（给只需要查的 AI 一把不能改的凭据；只读可见 22 个）。**一个 MCP 就够了** —— 宝塔 / Cloudflare / 蒲公英都不用再单独挂 |
 
 > MCP 的完整能力清单与工作流见 **[docs/MCP工作流与能力清单.md](docs/MCP工作流与能力清单.md)**。
 > 后续优化路线与优先级见 **[docs/全面优化方案.md](docs/全面优化方案.md)**。
@@ -101,14 +102,14 @@ aige-saas-workbench/
 │   │   ├── router/              # 路由 + 登录守卫 + 仅管理员页面的角色守卫
 │   │   ├── stores/              # Pinia：auth（含角色判定）/ theme
 │   │   ├── styles/              # 设计令牌 + 全局样式 + EP 主题桥接
-│   │   └── views/               # 10 个页面 + 登录页 + 404
+│   │   └── views/               # 11 个页面 + 登录页 + 404
 │   ├── nginx.conf               # 容器内站点配置（含 /api 反向代理）
 │   └── Dockerfile
 ├── backend/                     # Node.js 后端
 │   ├── src/
 │   │   ├── db/                  # SQLite 连接（driver.js 含驱动回退）、schema.sql、migrate()
 │   │   ├── middleware/          # auth（JWT + 角色现查）/ permissions（权限规则表）/ 错误处理 / 限流
-│   │   ├── routes/              # REST 路由（12 个模块，含 users 用户管理）
+│   │   ├── routes/              # REST 路由（13 个模块，含 users 用户管理）
 │   │   ├── services/            # baota / cloudflare / docker / deploy / apps / settings / metrics / github / pgyer
 │   │   ├── mcp/                 # MCP Server：server.js（SSE）/ stdio.js / tools.js / instructions.js
 │   │   ├── utils/               # 加密 / 统一响应 / 日志 / HTTP / 错误类 / TOTP

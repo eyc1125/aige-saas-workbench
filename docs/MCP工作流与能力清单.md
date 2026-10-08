@@ -38,14 +38,15 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 34 个 | 默认就有；「重新生成令牌」可换一把 |
-| **只读令牌** | 21 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
+| **全权令牌** | 全部 35 个 | 默认就有；「重新生成令牌」可换一把 |
+| **只读令牌** | 22 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
-**只读令牌能用的 21 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
+**只读令牌能用的 22 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
 `list_websites`、`get_site_logs`、`get_nginx_config`、`read_file`、`list_directory`、
 `list_backups`、`list_domains`、`list_dns_records`、`get_zone_info`、`list_containers`、
 `get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`、
-`list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`。
+`list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`、
+`list_crontabs`。
 
 **被挡在门外的 13 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
@@ -65,7 +66,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 
 ---
 
-## 二、能力清单（34 个工具 · 按用途分组）
+## 二、能力清单（35 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -159,7 +160,22 @@ AI 在只读连接下看到的工具清单里**根本没有这 13 个**（不会
 > · 后端只在内存过一遍就转给蒲公英，**不落服务器磁盘**
 > · 没有终端时，在「应用分发」页用拖拽上传区传也一样
 
-### ⑨ 万能兜底
+### ⑨ 计划任务（宝塔 · **只读**）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `list_crontabs` | `owner?` / `keyword?` / `limit?` | 服务器上的**全部**定时任务：名称、周期、启用状态、执行身份、分类，并标 `owner`（own=本项目 / foreign=其他项目）与「疑似排障遗留」 |
+
+> ⚠️ 三条边界，回答「服务器上有什么定时任务在跑」时必须守住：
+> 1. 这是**整台机器**的清单，不是本项目的 —— 实测 36 条**全部属于其他项目**；
+> 2. **只读**：没有启停 / 删除 / 新增（动任何一个都是动别人的资源）；
+> 3. **不含脚本正文**（宝塔返回里那个 `sBody`）：其他项目的脚本里有**明文密钥**，
+>    所以字段用白名单挑出来，不是把整条任务丢出去。要看正文请让用户去宝塔面板。
+>
+> ⚠️ 别答错一件事：**本工作台自己的定时清理不在这个清单里**（它在后端进程里用 `setInterval` 跑），
+> 所以「清单里没有 aige 的任务」不代表「工作台什么都没在清理」。
+
+### ⑩ 万能兜底
 
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |
@@ -254,6 +270,7 @@ call_bt_api           ← 走宝塔的清理接口做进一步处理
 | 容器启停 / 日志 | ✖ | ✖ | ✅ |
 | **一键部署应用（含自动配 HTTPS）** | ✖ | ✖ | ✅ |
 | **自愈巡检 + 一键修复（带熔断）** | ✖ | ✖ | ✅ |
+| **计划任务清单（只读，不含脚本正文）** | ✖ | ✖ | ✅ |
 
 结论：**只需要接这一个 MCP**。
 
