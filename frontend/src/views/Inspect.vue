@@ -76,11 +76,12 @@
 
         <div class="auto__rules">
           <span class="auto__rule">
-            <strong>会</strong>自动执行：证书续签、启动本项目停掉的容器、清理无用镜像
+            <strong>会</strong
+            >自动执行：证书续签、缺链证书重新签发、启动本项目停掉的容器、清理无用镜像、清漂移的静态资源缓存
           </span>
           <span class="auto__rule">
-            <strong>不会</strong>自动执行：改 Cloudflare zone 级 SSL
-            模式、改密码、补站点证书（风险较高，需你确认）
+            <strong>不会</strong>自动执行：改 Cloudflare zone 级 SSL 模式、补 DNS 解析记录、改站点
+            HTTPS 配置、切割日志、改密码（风险较高，需你确认）
           </span>
           <span class="auto__rule auto__rule--warn">
             熔断：同一修复 30 分钟内最多 3 次 —— 反复失败说明问题没解决，应该去看日志而不是继续重试

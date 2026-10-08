@@ -207,6 +207,169 @@ const RESTART_LOOP_MIN_COUNT = 3;
 /** 「最近启动过」的时间窗：1 小时 */
 const RESTART_LOOP_WINDOW_MS = 60 * 60 * 1000;
 
+// ---------------- 「站点配置 / 证书链 / 日志」共用的台账 ----------------
+
+/** 访问日志告警线：500MB；严重线：2GB */
+const LOG_BLOAT_WARN_BYTES = 500 * 1024 * 1024;
+const LOG_BLOAT_CRITICAL_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** 站点日志目录（与 baota.js 的 WWWLOGS_DIR 保持一致） */
+const WWWLOGS_DIR = '/www/wwwlogs';
+
+/**
+ * 日志目录索引：文件名 → 字节数（一次 listDir，所有站点共用）
+ * 取不到时返回空 Map —— 日志大小只是增值信息，不该让整项巡检失败。
+ */
+const logsIndex = () =>
+  memoized('logsIndex', async () => {
+    const res = await baotaService
+      .createClient()
+      .listDir(WWWLOGS_DIR, 500)
+      .catch(() => null);
+    const map = new Map();
+    (res?.entries || []).forEach((e) => {
+      if (!e.isDir) map.set(e.name, Number(e.size) || 0);
+    });
+    return map;
+  });
+
+/**
+ * 本项目站点的「配置 + 证书链」台账（一次巡检只算一遍）
+ * ------------------------------------------------------------------
+ * 为什么要做成台账而不是各检查项各读一遍：`getNginxConfig` 是按站点发请求的，
+ * 本项目站点有好几个，三个检查项各读一次就是三倍的等待 —— 而它们要的是同一份数据。
+ *
+ * 每条的字段都是「探测结论」而不是原始配置（原始配置可能几十 KB，
+ * 没必要在巡检结果里传一遍）：
+ *   has443 / certPaths / chainCount / configEmpty / logBytes
+ */
+const ownSiteFacts = () =>
+  memoized('ownSiteFacts', async () => {
+    const baota = baotaService.createClient();
+    const [{ list }, certData, logs] = await Promise.all([
+      baota.getSiteList({ page: 1, limit: 500 }),
+      listSslCertsShared(),
+      logsIndex(),
+    ]);
+
+    const own = list.filter((s) => isOwnSite(s.name));
+    const out = [];
+
+    for (const site of own) {
+      // eslint-disable-next-line no-await-in-loop -- 逐站读配置，一次一个，别把面板打满
+      const conf = await baota.getNginxConfig(site.name).catch(() => null);
+      const content = String(conf?.content || '');
+
+      // 配置里 ssl_certificate 指向的证书文件（宝塔通常指 fullchain.pem）
+      const certPaths = [...content.matchAll(/ssl_certificate\s+([^;]+);/g)].map((m) =>
+        m[1].trim()
+      );
+      const mainCert = certPaths.find((p) => !/\.key$/i.test(p));
+
+      let chainCount = null;
+      let certFileMissing = false;
+      if (mainCert) {
+        // eslint-disable-next-line no-await-in-loop
+        const pem = await baota.readFile(mainCert).catch(() => null);
+        if (pem) chainCount = (String(pem).match(/BEGIN CERTIFICATE/g) || []).length;
+        else certFileMissing = true;
+      }
+
+      const cert = certData.certs.find((c) => c.siteName === site.name);
+      out.push({
+        siteName: site.name,
+        domains: site.domains.length ? site.domains : [site.name],
+        hasCert: !!cert?.hasCert,
+        daysLeft: cert?.daysLeft ?? null,
+        configEmpty: !content,
+        has443: /listen\s+[^;]*443/.test(content) || /ssl_certificate/.test(content),
+        certPaths,
+        mainCert: mainCert || '',
+        chainCount,
+        certFileMissing,
+        logBytes: (logs.get(`${site.name}.log`) || 0) + (logs.get(`${site.name}.error.log`) || 0),
+      });
+    }
+    return out;
+  });
+
+/** 本项目站点台账里的 domain → siteName 反查（DNS / 缓存漂移要用域名） */
+async function ownDomainsToSites() {
+  const facts = await ownSiteFacts();
+  const pairs = [];
+  facts.forEach((f) => f.domains.forEach((d) => pairs.push({ domain: d, siteName: f.siteName })));
+  return pairs;
+}
+
+/**
+ * 本项目自己的 Cloudflare 区域（一次巡检只列一遍）
+ * 与 OWN_ZONE_SUFFIXES 白名单同一口径 —— 无关区域（别的项目 / 别的域名）连读都不读。
+ */
+const listOwnZones = () =>
+  memoized('ownZones', async () => {
+    const zones = await cloudflareService.createClient().listZones();
+    return zones.filter((z) =>
+      OWN_ZONE_SUFFIXES.some((suffix) => z.name === suffix || z.name.endsWith(`.${suffix}`))
+    );
+  });
+
+/** 字节数 → 人话（只在巡检结论里用，保留一位小数） */
+function formatMb(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+// ---------------- 「CF 缓存漂移」用到的探测 ----------------
+
+/** 检查一个页面上引用的第一个 js/css 资源是否被边缘缓存成了 HTML（或直接 404） */
+async function probeStaticAsset(domain) {
+  const base = `https://${domain}`;
+  const withTimeout = async (url, asText) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+      return {
+        status: res.status,
+        type: String(res.headers.get('content-type') || ''),
+        cache: String(res.headers.get('cf-cache-status') || ''),
+        body: asText ? (await res.text()).slice(0, 200000) : '',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const home = await withTimeout(`${base}/`, true);
+  if (home.status >= 400 || !home.body) return { domain, skipped: '首页取不到，跳过' };
+
+  const m =
+    home.body.match(/(?:src|href)=["']([^"']+\.(?:js|css)(?:\?[^"']*)?)["']/i) ||
+    home.body.match(/["']([^"']+\/assets\/[^"']+\.(?:js|css))["']/i);
+  if (!m) return { domain, skipped: '首页里没找到 js/css 引用，跳过' };
+
+  const raw = m[1];
+  const assetUrl = /^https?:/i.test(raw) ? raw : `${base}${raw.startsWith('/') ? '' : '/'}${raw}`;
+  const asset = await withTimeout(assetUrl, false);
+
+  // 「资源被返回成 HTML」是很强的信号：正常 js/css 绝不会是 text/html
+  const servedAsHtml = asset.type.includes('text/html');
+  const missing = asset.status >= 400;
+  return {
+    domain,
+    assetUrl,
+    status: asset.status,
+    contentType: asset.type,
+    cfCacheStatus: asset.cache,
+    servedAsHtml,
+    missing,
+    drift: servedAsHtml || missing,
+  };
+}
+
 // ============================================================
 // 检查项注册表
 // ============================================================
@@ -363,15 +526,12 @@ const CHECKS = [
     why: '源站有证书却用 flexible = 回源走明文（等于白装证书）；源站没证书却用 full/strict = 访客报 526。',
     async inspect() {
       const cf = cloudflareService.createClient();
-      const zones = await cf.listZones();
+      // 只看与本站点相关的 zone（白名单在 listOwnZones 里）；无关 zone 连读都不读
+      const zones = await listOwnZones();
       const certData = await listSslCertsShared();
 
       const items = [];
       for (const z of zones) {
-        // 只看与本站点相关的 zone；无关 zone（别的项目/别的域名）连读都不读
-        if (!OWN_ZONE_SUFFIXES.some((suffix) => z.name === suffix || z.name.endsWith(`.${suffix}`)))
-          continue;
-
         // eslint-disable-next-line no-await-in-loop
         const mode = await cf.getSslMode(z.id).catch(() => null);
         if (!mode) continue;
@@ -638,7 +798,315 @@ const CHECKS = [
     },
   },
 
-  // ---------------- 9. 账号与令牌弱口令自查（仅报告） ----------------
+  // ---------------- 9. 证书链完整性 ----------------
+  {
+    id: 'ssl_chain',
+    title: '证书链完整性',
+    group: '安全',
+    scope: 'project',
+    why: '证书缺中间证书时，桌面 Chrome 能自己补链、看着是好的，但 Android / 小程序 / 老设备会直接报「证书无效」—— 这类问题最容易被拖到最后才发现。',
+    async inspect() {
+      const facts = (await ownSiteFacts()).filter((f) => f.hasCert);
+      const items = [];
+      const broken = [];
+
+      for (const f of facts) {
+        if (f.certFileMissing) {
+          items.push({
+            name: f.siteName,
+            tag: `配置指向的证书文件读不到：${f.mainCert || '（配置里没有 ssl_certificate）'}`,
+            level: 'critical',
+          });
+          broken.push(f);
+        } else if (f.chainCount !== null && f.chainCount < 2) {
+          items.push({
+            name: f.siteName,
+            tag: `证书文件里只有 ${f.chainCount} 张证书，缺中间证书`,
+            level: 'warning',
+          });
+          broken.push(f);
+        }
+      }
+
+      return {
+        severity: items.some((i) => i.level === 'critical')
+          ? 'critical'
+          : items.length
+            ? 'warning'
+            : 'ok',
+        summary: items.length
+          ? `${items.length} 个本项目站点证书链不完整，部分客户端会报证书无效`
+          : `本项目 ${facts.length} 个有证书的站点，证书链都完整`,
+        items,
+        fix: broken.length
+          ? {
+              label: `重新签发 ${Math.min(broken.length, 10)} 个`,
+              description:
+                '走 Let’s Encrypt 重新签发（LE 下发的 fullchain 自带中间证书）。只处理本项目自己的站点。',
+              risk: 'low',
+              auto: true,
+              payload: { sites: broken.slice(0, 10).map((f) => f.siteName) },
+            }
+          : null,
+      };
+    },
+    async apply(payload) {
+      const baota = baotaService.createClient();
+      const results = [];
+      for (const siteName of payload.sites) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const r = await baota.applyLetsEncrypt({ siteName });
+          results.push({ siteName, ok: true, message: r.message || '已重新签发' });
+        } catch (err) {
+          results.push({ siteName, ok: false, message: err.message });
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length;
+      return {
+        message: `重新签发完成：成功 ${okCount} 个，失败 ${results.length - okCount} 个`,
+        results,
+      };
+    },
+  },
+
+  // ---------------- 10. 站点 HTTPS 配置（仅报告） ----------------
+  {
+    id: 'site_https_config',
+    title: '站点 HTTPS 配置',
+    group: '安全',
+    scope: 'project',
+    why: '在宝塔里「证书签好了」和「Nginx 真的挂了证书」是两件事：证书签发完但没点「部署」，站点仍然只监听 80 端口。',
+    async inspect() {
+      const facts = await ownSiteFacts();
+      const items = facts
+        .filter((f) => f.hasCert && !f.has443)
+        .map((f) => ({
+          name: f.siteName,
+          tag: '证书已签发，但 Nginx 配置里没有 443 / ssl_certificate 段',
+          level: 'warning',
+        }));
+
+      return {
+        severity: items.length ? 'warning' : 'ok',
+        summary: items.length
+          ? `${items.length} 个本项目站点签了证书却没配到 Nginx`
+          : '本项目站点的 HTTPS 配置与证书状态一致',
+        items,
+        // ⚠️ 刻意不给一键修复：把证书重新写进 nginx 要读私钥内容再重放、并且会改动站点行为；
+        //    宝塔面板里点一下「部署」更稳妥，也更符合「改线上配置先说明」的约定。
+        fix: null,
+      };
+    },
+  },
+
+  // ---------------- 11. 站点日志膨胀（仅报告） ----------------
+  {
+    id: 'log_bloat',
+    title: '站点日志膨胀',
+    group: '服务',
+    scope: 'project',
+    why: '访问日志不切割会一直涨，最后把 40G 的盘吃满；而盘满的故障表现千奇百怪，是最难排查的一类。',
+    async inspect() {
+      const facts = await ownSiteFacts();
+      const items = facts
+        .filter((f) => f.logBytes >= LOG_BLOAT_WARN_BYTES)
+        .sort((a, b) => b.logBytes - a.logBytes)
+        .map((f) => ({
+          name: f.siteName,
+          tag: `日志合计 ${formatMb(f.logBytes)}`,
+          level: f.logBytes >= LOG_BLOAT_CRITICAL_BYTES ? 'critical' : 'warning',
+        }));
+
+      return {
+        severity: items.some((i) => i.level === 'critical')
+          ? 'critical'
+          : items.length
+            ? 'warning'
+            : 'ok',
+        summary: items.length
+          ? `${items.length} 个本项目站点的日志超过 ${LOG_BLOAT_WARN_BYTES / 1024 / 1024}MB`
+          : '本项目站点日志体积正常',
+        items,
+        // ⚠️ 刻意不给一键修复：现在的能力只有「读/写整个文件」，没有安全的 rename / truncate 封装。
+        //    硬做等于把几 GB 的日志读进内存再重写 —— 会把这台 2GB 的机器直接拖垮。
+        //    正确做法是去宝塔「网站 → 日志」做日志切割。
+        fix: null,
+      };
+    },
+  },
+
+  // ---------------- 12. DNS 解析缺失 ----------------
+  {
+    id: 'dns_drift',
+    title: 'DNS 解析缺失',
+    group: '安全',
+    scope: 'project',
+    why: '站点域名在本项目的 Cloudflare 区域里没有解析记录时，一个原因会表现成两个故障：域名失效 + 证书签发失败（LE 要靠解析校验）。',
+    async inspect() {
+      const pairs = await ownDomainsToSites();
+      const zones = await listOwnZones();
+      const missing = [];
+
+      for (const z of zones) {
+        // eslint-disable-next-line no-await-in-loop -- 逐区域取记录，本项目区域只有个位数
+        const recs = await cloudflareService
+          .createClient()
+          .listDnsRecords(z.id)
+          .catch(() => []);
+        const names = new Set(
+          recs
+            .filter((r) => ['A', 'AAAA', 'CNAME'].includes(String(r.type).toUpperCase()))
+            .map((r) => String(r.name).toLowerCase())
+        );
+        pairs.forEach(({ domain, siteName }) => {
+          const inZone = z.name === domain || domain.endsWith(`.${z.name}`);
+          if (inZone && !names.has(domain.toLowerCase()))
+            missing.push({ domain, siteName, zoneId: z.id });
+        });
+      }
+
+      const publicIp = settings.get('server_public_ip');
+      return {
+        severity: missing.length ? 'warning' : 'ok',
+        summary: missing.length
+          ? `${missing.length} 个本项目站点域名在本项目的 Cloudflare 区域里没有解析记录`
+          : `本项目 ${pairs.length} 个站点域名解析都在`,
+        items: missing.map((m) => ({
+          name: m.domain,
+          tag: `区域里没有 A / AAAA / CNAME 记录（站点 ${m.siteName}）`,
+          level: 'warning',
+        })),
+        fix:
+          missing.length && publicIp
+            ? {
+                label: `补 ${missing.length} 条 A 记录`,
+                description: `把这些域名解析到本机公网 IP ${publicIp} 并开启橙色云代理。只在本项目的区域里新增，不动其他记录。`,
+                risk: 'medium',
+                // 改 DNS 会直接影响可达性，属于「先说明再动手」的动作，所以不参与自动自愈
+                auto: false,
+                payload: { records: missing.map((m) => ({ zoneId: m.zoneId, domain: m.domain })) },
+              }
+            : null,
+      };
+    },
+    async apply(payload) {
+      const cf = cloudflareService.createClient();
+      const ip = settings.get('server_public_ip');
+      const results = [];
+      for (const r of payload.records) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await cf.createDnsRecord(r.zoneId, {
+            type: 'A',
+            name: r.domain,
+            content: ip,
+            proxied: true,
+            comment: '由艾哥SaaS工作台自愈补建',
+          });
+          results.push({ siteName: r.domain, ok: true, message: `已解析到 ${ip}` });
+        } catch (err) {
+          results.push({ siteName: r.domain, ok: false, message: err.message });
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length;
+      return {
+        message: `补记录完成：成功 ${okCount} 条，失败 ${results.length - okCount} 条`,
+        results,
+      };
+    },
+  },
+
+  // ---------------- 13. CF 缓存漂移 ----------------
+  {
+    id: 'cf_cache_drift',
+    title: 'Cloudflare 缓存漂移',
+    group: '安全',
+    scope: 'project',
+    why: '站点改版后，如果发布前没刷新边缘缓存，就会「本地好好的、线上白屏」—— 因为浏览器拿到的是旧 HTML 配新文件名，或者干脆把 HTML 当成 js 返回。',
+    async inspect() {
+      // 站点多的时候逐个探测会很慢，这里最多看 3 个（够发现系统性问题了）
+      const facts = (await ownSiteFacts()).filter((f) => f.hasCert && f.has443).slice(0, 3);
+      if (!facts.length) {
+        return {
+          severity: 'ok',
+          summary: '没有可探测的 HTTPS 站点（无证书或未配 443）',
+          items: [],
+          fix: null,
+        };
+      }
+
+      const probes = await Promise.all(
+        facts.map((f) => probeStaticAsset(f.domains[0]).catch(() => null))
+      );
+      const drifted = probes.filter((p) => p && p.drift);
+
+      return {
+        severity: drifted.length ? 'critical' : 'ok',
+        summary: drifted.length
+          ? `${drifted.length} 个站点引用的静态资源取回来不是 JS/CSS（很可能是把 HTML 当资源返回，页面会白屏）`
+          : `探测了 ${probes.filter(Boolean).length} 个站点，静态资源类型都正常`,
+        items: drifted.map((p) => ({
+          name: p.domain,
+          tag: p.missing
+            ? `资源 ${p.assetUrl} 返回 ${p.status}`
+            : `资源被当成 ${p.contentType} 返回（CF 缓存：${p.cfCacheStatus || '未知'}）`,
+          level: 'critical',
+        })),
+        fix: drifted.length
+          ? {
+              label: `清 ${drifted.length} 个漂移资源`,
+              description:
+                '只清这几个具体的资源 URL（Cloudflare 按 URL 精确清理），**不做全量清理** —— 全量会波及该区域下其他项目的缓存。',
+              risk: 'low',
+              auto: true,
+              payload: { urls: drifted.map((p) => p.assetUrl) },
+            }
+          : null,
+      };
+    },
+    async apply(payload) {
+      const cf = cloudflareService.createClient();
+      const zones = await listOwnZones();
+      const results = [];
+      for (const url of payload.urls) {
+        // 找到这个 URL 所属的区域（本项目区域里最长匹配那个）
+        const host = (() => {
+          try {
+            return new URL(url).hostname.toLowerCase();
+          } catch {
+            return '';
+          }
+        })();
+        const zone = zones
+          .filter((z) => host === z.name || host.endsWith(`.${z.name}`))
+          .sort((a, b) => b.name.length - a.name.length)[0];
+
+        if (!zone) {
+          results.push({
+            siteName: url,
+            ok: false,
+            message: '该 URL 不在本项目的 Cloudflare 区域里，已跳过（不越界操作）',
+          });
+          continue;
+        }
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await cf.purgeCache(zone.id, { urls: [url] });
+          results.push({ siteName: url, ok: true, message: `已提交清理（区域 ${zone.name}）` });
+        } catch (err) {
+          results.push({ siteName: url, ok: false, message: err.message });
+        }
+      }
+      const okCount = results.filter((r) => r.ok).length;
+      return {
+        message: `缓存清理：成功 ${okCount} 个，失败 ${results.length - okCount} 个`,
+        results,
+      };
+    },
+  },
+
+  // ---------------- 14. 账号与令牌弱口令自查（仅报告） ----------------
   {
     id: 'weak_credentials',
     title: '登录口令与令牌',
