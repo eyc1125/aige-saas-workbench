@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS operation_logs (
   action      TEXT,                                  -- 动作标识，如 create_website
   target      TEXT,                                  -- 操作对象，如域名 / 容器名
   detail      TEXT,                                  -- 详情 JSON 字符串
+  before_value TEXT,                                 -- B6 审计 diff：改动前的值（JSON，按字段）
+  after_value  TEXT,                                 -- B6 审计 diff：改动后的值（JSON，按字段）
   source      TEXT NOT NULL DEFAULT 'web',           -- web / mcp / system
   status      TEXT NOT NULL DEFAULT 'success',       -- success / failed
   message     TEXT,                                  -- 失败原因或结果说明

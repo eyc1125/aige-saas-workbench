@@ -54,6 +54,11 @@ router.get(
   })
 );
 
+/** 把改动明细压成 { 字段: 值 }，供审计日志的 before / after 两列存放（B6） */
+function changeValues(changes, side) {
+  return Object.fromEntries(changes.map((c) => [c.key, c[side]]));
+}
+
 /** 保存配置 */
 router.put(
   '/',
@@ -67,24 +72,31 @@ router.put(
     });
     if (!Object.keys(patch).length) throw badRequest('没有可保存的配置项');
 
-    const changed = settings.setMany(patch);
+    // applyPatch 返回字段级改动明细；敏感项在那一层就已脱敏成「已设置/未设置」
+    const changes = settings.applyPatch(patch);
 
-    writeLog({
-      userId: req.user.id,
-      username: req.user.username,
-      module: 'settings',
-      action: 'update_settings',
-      source: 'web',
-      status: 'success',
-      // 只记录改动的 key，不记录值（敏感值绝不进日志）
-      detail: { changedKeys: changed },
-      ip: clientIp(req),
-    });
+    // 没有任何实际改动就不写日志 —— 「点了一次保存但什么都没改」不值得留痕，
+    // 否则审计日志会被这种空记录刷满，真正要查的那条反而被埋掉。
+    if (changes.length) {
+      writeLog({
+        userId: req.user.id,
+        username: req.user.username,
+        module: 'settings',
+        action: 'update_settings',
+        source: 'web',
+        status: 'success',
+        // detail 只放改动的字段名；值走 before / after（B6 审计 diff）
+        detail: { changedKeys: changes.map((c) => c.key) },
+        before: changeValues(changes, 'before'),
+        after: changeValues(changes, 'after'),
+        ip: clientIp(req),
+      });
+    }
 
     return success(
       res,
-      { changed },
-      changed.length ? `已保存 ${changed.length} 项配置` : '配置未发生变化'
+      { changed: changes.map((c) => c.key) },
+      changes.length ? `已保存 ${changes.length} 项配置` : '配置未发生变化'
     );
   })
 );

@@ -263,10 +263,11 @@ class CloudflareClient {
     });
     return {
       id: res.result.id,
-      type: res.result.type,
-      name: res.result.name,
-      content: res.result.content,
-      proxied: !!res.result.proxied,
+      ...recordFields(res.result),
+      // B6 审计用：改动**前**的值。
+      // 本次更新本来就为了合并字段而读过原记录（见上面的 GET），所以不额外发请求。
+      // 调用方写操作日志时用它做 before，业务侧可忽略。
+      before: recordFields(r),
     };
   }
 
@@ -382,4 +383,18 @@ function createClient() {
   return new CloudflareClient(cfg);
 }
 
-module.exports = { CloudflareClient, createClient, API_BASE };
+/**
+ * 取 DNS 记录里「会被改动」的那几个字段
+ * 用于返回体与 B6 审计 diff 的 before / after（只挑有意义的字段，别把整个 API 响应塞进日志）
+ */
+function recordFields(r) {
+  const src = r || {};
+  return {
+    type: src.type,
+    name: src.name,
+    content: src.content,
+    proxied: !!src.proxied,
+  };
+}
+
+module.exports = { CloudflareClient, createClient, recordFields, API_BASE };

@@ -199,7 +199,7 @@
           description="做过一次操作后，这里会显示最近 12 条记录"
         />
         <ul v-else class="logs">
-          <li v-for="log in recentLogs" :key="log.id" class="logs__item">
+          <li v-for="log in recentLogsView" :key="log.id" class="logs__item">
             <span
               class="logs__badge"
               :class="`logs__badge--${log.status === 'success' ? 'ok' : 'fail'}`"
@@ -210,6 +210,23 @@
               <strong>{{ actionText(log.action) }}</strong>
               <em v-if="log.target">{{ log.target }}</em>
               <em v-if="log.message" class="logs__msg">{{ log.message }}</em>
+              <!-- 审计 diff（B6）：这条操作把哪些字段从什么改成了什么 -->
+              <span v-if="log.audit.length" class="audit">
+                <span
+                  v-for="row in log.audit.slice(0, 3)"
+                  :key="row.key"
+                  class="audit__row"
+                  :title="`${row.key}：${row.from} → ${row.to}`"
+                >
+                  <code class="audit__key">{{ row.key }}</code>
+                  <span class="audit__from">{{ row.from }}</span>
+                  <span class="audit__arrow" aria-hidden="true">→</span>
+                  <span class="audit__to">{{ row.to }}</span>
+                </span>
+                <span v-if="log.audit.length > 3" class="audit__more">
+                  还有 {{ log.audit.length - 3 }} 项
+                </span>
+              </span>
             </span>
             <span class="logs__side">
               <span class="logs__from">{{ log.source === 'mcp' ? 'MCP' : '网页' }}</span>
@@ -325,7 +342,31 @@ const counts = ref({});
 const network = ref({});
 const recentLogs = ref([]);
 const updatedAt = ref('');
-// 供「资源趋势」卡片旁显示最近一次刷新时间用
+
+// ---------------- 审计 diff（B6） ----------------
+// 后端把 operation_logs 的 before_value / after_value 还原成了对象，这里拉平成「字段：旧 → 新」。
+// 之所以在前端算而不是后端算：后端只存事实（改前/改后各是什么），展示需要几行、怎么截断
+// 是界面的事；而且列表接口以后换地方用（比如全量日志页）也还是同一份数据。
+
+/** 值可能是 ''/null/数字/布尔，统一转成能看的文本 */
+const auditText = (v) => (v === undefined || v === null || v === '' ? '（空）' : String(v));
+/** 统一按字符串比：JSON 里 0 与 "0" 是同一次改动，不该显示成两行 */
+const sameAuditValue = (a, b) => String(a ?? '') === String(b ?? '');
+
+/** 把一条日志的 before / after 拉平；没有 diff 的日志返回空数组 */
+function auditRows(log) {
+  const after = log?.after_value;
+  if (!after || typeof after !== 'object') return [];
+  const before = log?.before_value && typeof log.before_value === 'object' ? log.before_value : {};
+  return Object.keys(after)
+    .filter((key) => !sameAuditValue(before[key], after[key]))
+    .map((key) => ({ key, from: auditText(before[key]), to: auditText(after[key]) }));
+}
+
+/** 模板里用的日志列表（带上算好的 diff） */
+const recentLogsView = computed(() =>
+  recentLogs.value.map((log) => ({ ...log, audit: auditRows(log) }))
+);
 
 // 证书巡检（独立加载：它要逐站读证书文件，比服务器指标慢，不该拖住首屏）
 const certLoading = ref(true);
@@ -1205,6 +1246,51 @@ watch(
 
 .logs__msg {
   color: var(--text-tertiary) !important;
+}
+
+/* 审计 diff（B6）：字段级「旧 → 新」。
+   旧值划掉并变灰（一眼看出"已经不是它了"），新值用主文字色，避免需要读两遍才反应过来。 */
+.audit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.audit__row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.audit__key {
+  color: var(--text-tertiary);
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.audit__from {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  overflow-wrap: anywhere;
+}
+
+.audit__arrow {
+  color: var(--text-tertiary);
+}
+
+.audit__to {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.audit__more {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 .logs__side {

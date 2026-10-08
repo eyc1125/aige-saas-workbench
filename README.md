@@ -479,7 +479,7 @@ AI 会调用 `add_dns_record`，无需先查 zone_id —— 传完整域名它�
 | GET | `/api/settings/mcp` · POST `/api/settings/mcp/token` | MCP 信息 / 重置令牌 |
 | PUT | `/api/settings/admin` | 修改管理员账号 |
 | GET | `/api/settings/system` | 运行环境信息 |
-| GET | `/api/logs` | 操作日志（分页 + 过滤） |
+| GET | `/api/logs` | 操作日志（分页 + 过滤；含 `before_value` / `after_value` 字段级改动对照） |
 
 ---
 
@@ -573,7 +573,10 @@ npm run dev                       # http://127.0.0.1:5173（已配 /api 代理�
 - 全站 JWT 鉴权，登录接口单独限流（防爆破），全站接口限流兜底
 - CORS 默认只在配置白名单内放行；生产环境默认同源
 - 未捕获异常对外只返回通用提示，细节仅写服务端日志
-- 操作日志记录谁在什么时候对什么做了什么（含 MCP 调用），失败也留痕
+- 操作日志记录谁在什么时候对什么做了什么（含 MCP 调用），失败也留痕；
+  配置类改动还记录**字段级的「旧值 → 新值」**（`before_value` / `after_value`），
+  但**敏感项只记「已设置 / 未设置」**——脱敏发生在 `settings.applyPatch()` 里，
+  调用方拿不到明文，也就无从写进日志
 
 ---
 

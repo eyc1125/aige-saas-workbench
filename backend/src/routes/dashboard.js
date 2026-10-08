@@ -29,11 +29,14 @@ const cloudflareService = require('../services/cloudflare');
 const dockerService = require('../services/docker');
 const metrics = require('../services/metrics');
 const metricsStore = require('../services/metricsStore');
+// 最近日志里的 before_value / after_value 是 JSON 字符串，统一还原成对象再给前端
+const { parseAuditFields } = require('../utils/logger');
 
 const router = express.Router();
 
 const recentLogsStmt = db.prepare(`
-  SELECT id, username, module, action, target, status, message, source, created_at
+  SELECT id, username, module, action, target, status, message, source,
+         before_value, after_value, created_at
   FROM operation_logs ORDER BY id DESC LIMIT ?
 `);
 
@@ -196,7 +199,7 @@ router.get(
       })(),
     ]);
 
-    const logs = recentLogsStmt.all(12);
+    const logs = recentLogsStmt.all(12).map(parseAuditFields);
 
     return success(res, {
       server,

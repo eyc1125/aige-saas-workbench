@@ -19,6 +19,8 @@ const { success } = require('../utils/response');
 const { badRequest } = require('../utils/errors');
 const { writeLog, clientIp } = require('../utils/logger');
 const cloudflareService = require('../services/cloudflare');
+// recordFields 用来给审计日志构造「改成了什么」（与 service 返回的 before 字段对齐）
+const { recordFields } = cloudflareService;
 
 const router = express.Router();
 
@@ -109,7 +111,10 @@ router.put(
       target: record.name,
       source: 'web',
       status: 'success',
-      detail: { patch, record },
+      detail: { patch },
+      // B6 审计：记录这条解析改成了什么（before 由 service 返回，本次更新本来就读过原记录）
+      before: record.before,
+      after: recordFields(record),
       ip: clientIp(req),
     });
 

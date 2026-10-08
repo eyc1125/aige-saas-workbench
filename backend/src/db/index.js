@@ -22,6 +22,30 @@ function initSchema() {
 }
 
 /**
+ * 轻量迁移：给**已存在**的表补新列
+ * ------------------------------------------------------------------
+ * ⚠️ `CREATE TABLE IF NOT EXISTS` 对已存在的表**什么都不做** ——
+ *    新加的列只写进 schema.sql 的话，只有全新部署才拿得到，
+ *    已经在跑的那台库永远缺列（而且不报错，只是那几列读出来是 undefined）。
+ *    所以每加一列，schema.sql 与这里都要改，两处都要有。
+ */
+function migrate() {
+  const ensureColumn = (table, column, ddl) => {
+    const cols = db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .map((c) => c.name);
+    if (cols.includes(column)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    console.log(`[db] 迁移：${table} 新增列 ${column}`);
+  };
+
+  // B6 审计 diff：记录「改之前是什么、改之后是什么」
+  ensureColumn('operation_logs', 'before_value', 'TEXT');
+  ensureColumn('operation_logs', 'after_value', 'TEXT');
+}
+
+/**
  * 确保「配置里的管理员账号」存在
  * ------------------------------------------------------------------
  * 1) 用户表为空 → 直接创建配置中的管理员
@@ -106,6 +130,7 @@ function initSettings() {
 /** 一键初始化 */
 function init() {
   initSchema();
+  migrate();
   initAdmin();
   initSettings();
   console.log(`[db] SQLite 就绪：${config.dbPath}（驱动：${driver}）`);

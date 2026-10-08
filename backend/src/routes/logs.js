@@ -9,6 +9,8 @@ const express = require('express');
 const db = require('../db');
 const asyncHandler = require('../utils/asyncHandler');
 const { paginated } = require('../utils/response');
+// before_value / after_value 存的是 JSON 字符串，统一在查询侧还原成对象再给前端
+const { parseAuditFields } = require('../utils/logger');
 
 const router = express.Router();
 
@@ -48,11 +50,13 @@ router.get(
       .get(params).count;
     const list = db
       .prepare(
-        `SELECT id, username, module, action, target, detail, source, status, message, ip, duration_ms, created_at
+        `SELECT id, username, module, action, target, detail, before_value, after_value,
+                source, status, message, ip, duration_ms, created_at
          FROM operation_logs ${whereSql}
          ORDER BY id DESC LIMIT @limit OFFSET @offset`
       )
-      .all({ ...params, limit: pageSize, offset });
+      .all({ ...params, limit: pageSize, offset })
+      .map(parseAuditFields);
 
     return paginated(res, list, total, page, pageSize);
   })

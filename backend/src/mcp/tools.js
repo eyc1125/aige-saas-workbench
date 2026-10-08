@@ -1051,7 +1051,11 @@ const TOOL_HANDLERS = {
     if (proxied !== undefined) patch.proxied = proxied;
 
     const res = await cf.updateDnsRecord(zoneId, recordId, patch);
-    return ok(res, `已更新记录 ${res.name || name || recordId}`);
+    return {
+      ...ok(res, `已更新记录 ${res.name || name || recordId}`),
+      // B6 审计：这条解析从什么改成了什么（由 callTool 写进操作日志，不外传给 AI）
+      audit: { before: res.before, after: cloudflareService.recordFields(res) },
+    };
   },
 
   /** 23. 清理 Cloudflare 缓存 */
@@ -1171,6 +1175,10 @@ async function callTool(name, args = {}) {
   const start = Date.now();
   try {
     const result = await handler(args || {});
+    // B6 审计约定：工具可以额外返回 `audit: { before, after }`，由这里写进操作日志。
+    // 写完之后就剥掉不再外传 —— 工具对外的返回结构始终是 { success, data, message }，
+    // 免得 AI 客户端那边多出一个没人认识的字段。
+    const { audit, ...exposed } = result;
     writeLog({
       username: 'mcp',
       module: 'mcp',
@@ -1187,9 +1195,11 @@ async function callTool(name, args = {}) {
       status: result.success ? 'success' : 'failed',
       message: result.message,
       detail: result.success ? undefined : { args },
+      before: audit?.before,
+      after: audit?.after,
       durationMs: Date.now() - start,
     });
-    return result;
+    return exposed;
   } catch (err) {
     writeLog({
       username: 'mcp',

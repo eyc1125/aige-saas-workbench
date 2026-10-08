@@ -119,23 +119,44 @@ function set(key, value) {
 }
 
 /**
- * 批量写入
- * @param {object} patch  { key: value }
- * @returns {string[]} 实际发生变更的配置项
+ * 批量写入配置，并返回**字段级改动明细**（B6 审计日志用它记录 before / after）
+ * ------------------------------------------------------------------
+ * 与 set() 语义一致，但判定更精确：
+ *   · 传空串 = 保持原值（界面上的「留空表示不修改」），不算改动
+ *   · 值真的没变（after === before）也不算改动 —— 只判断「有没有传值」的话，
+ *     用户点一次保存但什么都没改也会记成一次变更，日志里全是噪音
+ *
+ * ⛔ 敏感项在这层就脱敏：**调用方拿不到密钥明文**，所以即使调用方忘了脱敏，
+ *    也不可能把它写进日志。防线放在源头，而不是指望每个调用方自觉。
+ *
+ * @returns {Array<{key:string,label:string,secret:boolean,before:any,after:any}>} 实际发生的改动
  */
-function setMany(patch = {}) {
-  const changed = [];
+function applyPatch(patch = {}) {
+  const changes = [];
   const tx = db.transaction(() => {
     Object.entries(patch).forEach(([key, value]) => {
-      if (!SCHEMA[key]) return; // 未知项直接忽略，防止乱写
+      const meta = SCHEMA[key];
+      if (!meta) return; // 未知项直接忽略，防止乱写
+
       const before = get(key);
-      const plain = value === undefined || value === null ? '' : String(value);
+      const raw = value === undefined || value === null ? '' : String(value).trim();
+      if (raw === '' && before !== '') return; // 空串 = 不修改
+      const after = raw === '__CLEAR__' ? '' : raw;
+      if (after === before) return; // 值没变，不算改动
+
       set(key, value);
-      if (plain !== '' || before === '') changed.push(key);
+      changes.push({
+        key,
+        label: meta.label,
+        secret: !!meta.secret,
+        // 敏感项只报告「有 / 无」，绝不把明文交出去
+        before: meta.secret ? (before ? '已设置' : '未设置') : before,
+        after: meta.secret ? (after ? '已设置' : '未设置') : after,
+      });
     });
   });
   tx();
-  return changed;
+  return changes;
 }
 
 /**
@@ -202,7 +223,7 @@ module.exports = {
   SCHEMA,
   get,
   set,
-  setMany,
+  applyPatch,
   getForDisplay,
   assertConfigured,
   getBaotaConfig,
