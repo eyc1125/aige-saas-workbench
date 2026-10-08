@@ -15,6 +15,15 @@
 
 const db = require('../db');
 
+/** 保留天数：超过这个时间的日志在每日清理时删掉 */
+const KEEP_DAYS = 90;
+/**
+ * 硬上限：无论多新，条数超过这个数就从最旧的开始删。
+ * 只靠时间不够 —— MCP 高频调用（如 AI 一轮连调几十个工具）能在几天内堆上万条，
+ * 这台服务器只剩十几 G，必须有个绝对上限兜底。
+ */
+const MAX_ROWS = 20000;
+
 const insertLog = db.prepare(`
   INSERT INTO operation_logs
     (user_id, username, module, action, target, detail, before_value, after_value,
@@ -130,4 +139,45 @@ async function withLog(ctx, fn) {
   }
 }
 
-module.exports = { writeLog, clientIp, withLog, parseAuditFields };
+/**
+ * 清理过期操作日志：时间 + 条数双保险
+ * ------------------------------------------------------------------
+ * 参照 metricsStore.prune() 的写法：删不掉也不要影响主流程，全部吞掉只打印。
+ * @returns {number} 删掉的条数
+ */
+function prune() {
+  let removed = 0;
+  try {
+    // ① 超过保留天数的
+    const cutoff = new Date(Date.now() - KEEP_DAYS * 86400 * 1000)
+      .toLocaleString('sv-SE') // 'YYYY-MM-DD HH:MM:SS'
+      .replace('T', ' ');
+    removed +=
+      db.prepare('DELETE FROM operation_logs WHERE created_at < ?').run(cutoff).changes || 0;
+
+    // ② 条数兜底：只留最新 MAX_ROWS 条
+    const total = db.prepare('SELECT COUNT(*) AS n FROM operation_logs').get().n || 0;
+    if (total > MAX_ROWS) {
+      removed +=
+        db
+          .prepare(
+            `DELETE FROM operation_logs
+             WHERE id <= (SELECT id FROM operation_logs ORDER BY id DESC LIMIT 1 OFFSET ?)`
+          )
+          .run(MAX_ROWS).changes || 0;
+    }
+  } catch (err) {
+    console.error('[logger] 清理操作日志失败：', err.message);
+  }
+  return removed;
+}
+
+module.exports = {
+  writeLog,
+  clientIp,
+  withLog,
+  parseAuditFields,
+  prune,
+  KEEP_DAYS,
+  MAX_ROWS,
+};

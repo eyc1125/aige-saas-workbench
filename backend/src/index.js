@@ -106,6 +106,20 @@ async function bootstrap() {
     console.error(`[alert] 告警清理失败：${err.message}`);
   }
 
+  // ---------------- 6.5 操作日志清理 ----------------
+  // 与指标、告警同一套模式：保留 90 天 + 20000 条硬上限。
+  // 之前这张表只写不清，MCP 高频调用几天就能堆上万行。
+  try {
+    // 懒加载：日志模块在 db 初始化后才可用
+    const logger = require('./utils/logger');
+    const removed = logger.prune();
+    if (removed) console.log(`[log] 启动清理：移除 ${removed} 条过期操作日志`);
+    setInterval(() => logger.prune(), 24 * 60 * 60 * 1000).unref();
+    console.log(`[log] 操作日志保留策略：${logger.KEEP_DAYS} 天 / 最多 ${logger.MAX_ROWS} 条`);
+  } catch (err) {
+    console.error(`[log] 操作日志清理失败：${err.message}`);
+  }
+
   // ---------------- 7. 优雅退出 ----------------
   const shutdown = (signal) => {
     console.log(`\n[app] 收到 ${signal}，正在关闭服务 …`);
