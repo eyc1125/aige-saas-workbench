@@ -768,6 +768,126 @@ async function runAutoHeal() {
   return lastAutoRun;
 }
 
+// ============================================================
+// 事件驱动自愈（C2 · 与自动自愈同生共死）
+// ------------------------------------------------------------------
+// 定时巡检最快也要等一个周期（默认 60 分钟）才发现容器崩了；实际应该「立刻」知道。
+// 这里订阅 Docker 事件的 container die：一收到就针对 container_down 跑一次修复。
+//
+// 三重防护，避免「崩溃 → 重启 → 再崩溃」把机器拖死：
+//   1. **沿用同一套熔断**：applyFix 内部 30 分钟最多 3 次，超限自动停手（并已告警）。
+//   2. **同容器冷却**：同一个容器 3 分钟内只触发一次（一次崩溃可能连发多条事件）。
+//   3. **全局防抖**：任意两次触发之间至少间隔 10 秒，事件风暴不会打满 CPU。
+// 白名单同样生效：只有本项目自己的容器才会被处理，其他项目容器一律不碰。
+// 这条链路只在「自动自愈」开关打开时才接上（默认关），关闭时立即断开。
+// ============================================================
+
+const EVENT_RECONNECT_MS = 15000; // 断线后多久重连
+const EVENT_DEBOUNCE_MS = 10 * 1000; // 全局两次触发最小间隔
+const EVENT_PER_CONTAINER_MS = 3 * 60 * 1000; // 同一容器的最小触发间隔
+
+let eventHandle = null;
+let eventReconnectTimer = null;
+let lastEventTriggerAt = 0;
+const eventCooldown = new Map(); // 容器名 → 上次触发时间
+const eventStatus = {
+  running: false,
+  lastEventAt: null,
+  lastEventName: null,
+  lastTriggerAt: null,
+  triggers: 0,
+  lastError: null,
+};
+
+/** 断开事件流（幂等） */
+function stopEventHealing() {
+  if (eventReconnectTimer) {
+    clearTimeout(eventReconnectTimer);
+    eventReconnectTimer = null;
+  }
+  if (eventHandle) {
+    try {
+      eventHandle.close();
+    } catch {
+      /* 已经断了，忽略 */
+    }
+    eventHandle = null;
+  }
+  eventStatus.running = false;
+}
+
+/** 安排一次重连（自动自愈关着的时候不重连） */
+function scheduleEventReconnect() {
+  if (eventReconnectTimer) return; // 已有重连计划
+  if (!getAutoHeal().enabled) return;
+  eventReconnectTimer = setTimeout(() => {
+    eventReconnectTimer = null;
+    connectEventStream().catch((err) => {
+      eventStatus.lastError = err.message;
+      console.error(`[health] 重连 Docker 事件流失败：${err.message}`);
+      scheduleEventReconnect();
+    });
+  }, EVENT_RECONNECT_MS);
+  eventReconnectTimer.unref?.();
+}
+
+/** 一个 die 事件的处理：过滤 → 防抖 → 冷却 → 交给 container_down 修复 */
+function onDockerEvent(evt) {
+  try {
+    if (evt?.Type !== 'container' || evt?.Action !== 'die') return;
+    const attrs = evt.Actor?.Attributes || {};
+    const name = String(attrs.name || '');
+
+    eventStatus.lastEventAt = new Date().toLocaleString('zh-CN');
+    eventStatus.lastEventName = name;
+
+    // 白名单：只有本项目自己的容器才处理（与 container_down 判定口径一致）
+    const own = OWN_CONTAINERS.includes(name) || attrs['aige.managed'] === 'true';
+    if (!own) return;
+
+    const now = Date.now();
+    if (now - lastEventTriggerAt < EVENT_DEBOUNCE_MS) return; // 全局防抖
+    if (now - (eventCooldown.get(name) || 0) < EVENT_PER_CONTAINER_MS) return; // 同容器冷却
+
+    lastEventTriggerAt = now;
+    eventStatus.lastTriggerAt = new Date().toLocaleString('zh-CN');
+    eventCooldown.set(name, now);
+    eventStatus.triggers += 1;
+
+    // 立刻针对「容器未运行」跑一次修复：内部有熔断，且修复前会重新探测 ——
+    // 若容器已被 restart 策略自动拉起，这里会以「无需修复」结束，不会多此一举。
+    applyFix('container_down', { source: 'system' })
+      .then((r) => console.log(`[health] 事件自愈：${name} → ${r.message}`))
+      .catch((err) => {
+        // 熔断 / 无需修复 / 修复失败都走这里：只记日志，绝不影响主流程
+        console.log(`[health] 事件自愈（${name}）未执行：${err.message}`);
+      });
+  } catch (err) {
+    console.error('[health] 处理 Docker 事件失败：', err.message);
+  }
+}
+
+/** 接入 Docker 事件流（单例：先断开旧的再连） */
+async function connectEventStream() {
+  stopEventHealing();
+  const handle = await dockerService.createClient().streamEvents(onDockerEvent, {
+    filters: { type: ['container'], event: ['die'] },
+    onError: (err) => {
+      eventStatus.running = false;
+      eventStatus.lastError = err.message;
+      scheduleEventReconnect();
+    },
+    onEnd: () => {
+      eventStatus.running = false;
+      scheduleEventReconnect();
+    },
+  });
+  eventHandle = handle;
+  eventStatus.running = true;
+  eventStatus.lastError = null;
+  console.log('[health] 已接入 Docker 事件流（事件驱动自愈已就绪）');
+}
+
 /** 定时器句柄（单例） */
 let timer = null;
 
@@ -778,7 +898,11 @@ function syncAutoHealTimer() {
     clearInterval(timer);
     timer = null;
   }
-  if (!enabled) return { running: false, ...getAutoHeal() };
+  if (!enabled) {
+    // 关掉定时自愈时，事件驱动自愈也一并断开（两者同生共死）
+    stopEventHealing();
+    return { running: false, ...getAutoHeal() };
+  }
 
   // 启动后先延迟一轮，避免和容器刚起来的自检动作挤在一起
   timer = setInterval(
@@ -788,6 +912,15 @@ function syncAutoHealTimer() {
     intervalMin * 60 * 1000
   );
   if (timer.unref) timer.unref();
+
+  // 接入事件流：容器 die 的瞬间就处理，不必等下一次巡检
+  if (!eventStatus.running) {
+    connectEventStream().catch((err) => {
+      eventStatus.lastError = err.message;
+      console.error(`[health] 接入 Docker 事件流失败：${err.message}`);
+      scheduleEventReconnect();
+    });
+  }
 
   return { running: true, ...getAutoHeal() };
 }
@@ -803,6 +936,8 @@ function getStatus() {
   const cfg = getAutoHeal();
   return {
     autoHeal: { ...cfg, running: !!timer },
+    // 事件驱动自愈的运行状态（与 autoHeal 开关联动）
+    eventHealing: { ...eventStatus },
     lastAutoRun,
     checkCatalog: CHECKS.map((c) => ({
       id: c.id,

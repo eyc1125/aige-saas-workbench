@@ -201,6 +201,13 @@ jobs:
         working-directory: backend
         run: node scripts/selfcheck-permissions.js
 
+      - name: 自动自愈开关自检（真的拨一次开关）
+        # health.js 写 auto_heal_enabled，但 settings.js 的白名单里一度没登记它 →
+        # set() 抛「未知配置项」，「健康巡检」页的开关**从来没生效过**，
+        # 而后端日志、启动日志全部正常。这条自检真的写一遍再读回来，对不上就红。
+        working-directory: backend
+        run: node scripts/selfcheck-autofix-settings.js
+
   # ---------------- 4. 前端构建 ----------------
   frontend-build:
     name: 前端构建

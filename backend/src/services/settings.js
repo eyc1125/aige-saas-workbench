@@ -85,6 +85,14 @@ const SCHEMA = {
   // 用户 KEY：蒲公英「API 信息」页给的第二把。当前调的读接口只需要上面那把，
   // 这把先存着备用（官方部分接口会报 1012「User key 不能为空」）。
   pgyer_user_key: { secret: true, label: '蒲公英用户 KEY', def: () => '' },
+
+  // ---------------- 自动自愈（健康巡检页的开关） ----------------
+  // ⛔ 这两个 key **必须登记在这里**，否则 settings.set() 会抛「未知配置项」。
+  //    踩过的坑：health.js 一直在写 auto_heal_enabled，但白名单里没有它 ——
+  //    表现是「页面上的开关拨不动」，而后端日志一切正常，属于零征兆的静默失效。
+  //    不加进「系统设置」页（前端只渲染显式分组），只在健康巡检页使用。
+  auto_heal_enabled: { secret: false, label: '自动自愈开关', def: () => 'false' },
+  auto_heal_interval_min: { secret: false, label: '自动自愈间隔（分钟）', def: () => '60' },
 };
 
 const selectStmt = db.prepare('SELECT key, value, is_secret FROM settings WHERE key = ?');

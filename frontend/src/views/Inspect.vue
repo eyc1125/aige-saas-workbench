@@ -87,6 +87,22 @@
           </span>
         </div>
 
+        <div class="auto__event">
+          <span class="auto__label">事件驱动</span>
+          <span class="auto__state" :class="eventHealing.running ? 'is-on' : 'is-off'">
+            {{ eventHealing.running ? '已接入 Docker 事件流' : '未接入' }}
+          </span>
+          <span class="auto__event-hint">
+            容器一退出就立刻处理，不必等下一次巡检
+            <template v-if="eventHealing.triggers"
+              >· 本次运行已触发 {{ eventHealing.triggers }} 次</template
+            >
+            <template v-else-if="eventHealing.lastError"
+              >· 最近一次连接失败：{{ eventHealing.lastError }}</template
+            >
+          </span>
+        </div>
+
         <div v-if="lastAutoRun" class="auto__last">
           <span class="auto__last-title"
             >最近一次自动执行 · {{ lastAutoRun.at }}（耗时 {{ lastAutoRun.elapsedMs }} ms）</span
@@ -221,6 +237,8 @@ const summary = ref({ total: 0, critical: 0, warning: 0, info: 0, ok: 0, unknown
 const lastAutoRun = ref(null);
 
 const autoHeal = reactive({ enabled: false, intervalMin: 60, minIntervalMin: 10, running: false });
+// 事件驱动自愈的实时状态（由 /api/inspect 附带返回）
+const eventHealing = reactive({ running: false, triggers: 0, lastError: null, lastEventAt: null });
 const autoSaving = ref(false);
 const autoRunning = ref(false);
 const fixingId = ref('');
@@ -272,6 +290,12 @@ function applyPayload(data) {
     autoHeal.intervalMin = data.autoHeal.intervalMin || 60;
     autoHeal.minIntervalMin = data.autoHeal.minIntervalMin || 10;
     autoHeal.running = !!data.autoHeal.running;
+  }
+  if (data.eventHealing) {
+    eventHealing.running = !!data.eventHealing.running;
+    eventHealing.triggers = data.eventHealing.triggers || 0;
+    eventHealing.lastError = data.eventHealing.lastError || null;
+    eventHealing.lastEventAt = data.eventHealing.lastEventAt || null;
   }
 }
 
@@ -522,6 +546,21 @@ onMounted(load);
 
 .auto__rule--warn {
   color: var(--warning);
+}
+
+.auto__event {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+}
+
+.auto__event-hint {
+  color: var(--text-tertiary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .auto__last {

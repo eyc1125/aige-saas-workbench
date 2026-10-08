@@ -281,6 +281,82 @@ class DockerClient {
     return text.replace(/\u001b\[[0-9;]*m/g, '');
   }
 
+  // ==================== 事件流 ====================
+
+  /**
+   * 订阅 Docker 事件流（长连接，NDJSON：一行一个事件）
+   * ------------------------------------------------------------------
+   * 用于「事件驱动自愈」：容器 die 的瞬间就能知道，不必等下一次定时巡检。
+   *
+   * ⚠️ 这是**长连接**，自己不会结束：
+   *    · 连接中断时通过 onError / onEnd 通知调用方（由调用方决定何时重连）；
+   *    · 不再需要时**必须**调用返回句柄的 close()，否则 socket 会一直挂着。
+   * ⚠️ 不能用 `_request`：它会把响应体完整缓冲到结束才返回，而事件流永远不结束。
+   *
+   * @param {(evt: object) => void} onEvent 每收到一个事件回调一次
+   * @param {object} [opts]
+   * @param {object} [opts.filters] Docker 事件过滤，如 { type: ['container'], event: ['die'] }
+   * @param {(err: Error) => void} [opts.onError] 出错（调用方据此重连）
+   * @param {() => void} [opts.onEnd] 连接被对端正常关闭（同样应视为需要重连）
+   * @returns {Promise<{ close: () => void }>}
+   */
+  async streamEvents(onEvent, { filters, onError, onEnd } = {}) {
+    await this._ready();
+    const query = filters ? `?filters=${encodeURIComponent(JSON.stringify(filters))}` : '';
+    const base = this.socketPath
+      ? { socketPath: this.socketPath }
+      : { host: this.tcpHost, port: this.tcpPort };
+
+    let closed = false;
+    const req = http.request(
+      { ...base, path: `${this.apiPrefix}/events${query}`, method: 'GET' },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          if (!closed) onError?.(new Error(`Docker 事件流返回 HTTP ${res.statusCode}`));
+          return;
+        }
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (chunk) => {
+          buf += chunk;
+          let idx;
+          // 按换行切分：一行一个 JSON 事件
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).trim();
+            buf = buf.slice(idx + 1);
+            if (!line) continue;
+            try {
+              onEvent(JSON.parse(line));
+            } catch {
+              /* 半行 / 坏行直接丢，不影响后续事件 */
+            }
+          }
+        });
+        res.on('end', () => {
+          if (!closed) onEnd?.();
+        });
+        res.on('error', (err) => {
+          if (!closed) onError?.(err);
+        });
+      }
+    );
+
+    req.on('error', (err) => {
+      if (!closed) onError?.(err);
+    });
+    // 事件流是长连接：显式关掉请求超时，否则会被默认值掐断
+    req.setTimeout(0);
+    req.end();
+
+    return {
+      close: () => {
+        closed = true;
+        req.destroy();
+      },
+    };
+  }
+
   // ==================== 镜像 ====================
 
   /** 镜像列表 */
