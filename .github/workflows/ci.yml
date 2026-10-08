@@ -119,6 +119,12 @@ jobs:
         # 该脚本零依赖，所以在这个不装 node_modules 的 job 里也能跑。
         run: node backend/scripts/selfcheck-path-guards.js
 
+      - name: 飞书签名自检（与官方 Python 示例逐字节比对）
+        # 签名算错的表现是「推送一直失败」：不报错、不抛异常，对方静默拒收。
+        # 所以把官方示例算出的固定值写死成期望值，让 Node 实现对齐。
+        # 同样零依赖，不装 node_modules 也能跑。
+        run: node backend/scripts/selfcheck-feishu-sign.js
+
       - name: 确保没有把真实密钥提交进来
         run: |
           set -e

@@ -61,6 +61,8 @@ const SCHEMA = {
   // ⚠️ 飞书与企业微信是**两种不同协议**，地址不能混填（格式差异见 services/notify.js 顶部）
   alert_webhook_url: { secret: true, label: '告警 Webhook 地址', def: () => '' },
   alert_feishu_webhook: { secret: true, label: '飞书机器人 Webhook', def: () => '' },
+  // 飞书机器人开启「签名校验」时需要的密钥；留空=按未开启签名校验发送
+  alert_feishu_secret: { secret: true, label: '飞书机器人签名密钥', def: () => '' },
   alert_wecom_webhook: { secret: true, label: '企业微信群机器人 Webhook', def: () => '' },
 };
 

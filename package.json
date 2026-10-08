@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:guards": "node backend/scripts/selfcheck-path-guards.js",
-    "check": "npm run format:check && npm run lint && npm run check:guards"
+    "check:sign": "node backend/scripts/selfcheck-feishu-sign.js",
+    "check": "npm run format:check && npm run lint && npm run check:guards && npm run check:sign"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",

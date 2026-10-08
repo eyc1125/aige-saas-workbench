@@ -263,7 +263,40 @@
         />
 
         <el-form label-position="top">
-          <el-form-item label="企业微信群机器人（可选，推荐）">
+          <el-form-item label="飞书机器人 Webhook（可选，推荐）">
+            <el-input
+              v-model="form.alert_feishu_webhook"
+              :placeholder="
+                settingsMeta.alert_feishu_webhook?.hasValue
+                  ? `已保存（${settingsMeta.alert_feishu_webhook.value}），留空表示不修改`
+                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'
+              "
+              clearable
+            />
+            <p class="field-tip">
+              飞书群里「设置 → 群机器人 → 添加机器人 → 自定义机器人」，建好后复制它的 Webhook
+              地址（形如 <code>https://open.feishu.cn/open-apis/bot/v2/hook/</code>
+              后面跟一串字符）。
+            </p>
+          </el-form-item>
+
+          <el-form-item label="飞书签名密钥（可选，仅当机器人开了「签名校验」才需要）">
+            <el-input
+              v-model="form.alert_feishu_secret"
+              :placeholder="
+                settingsMeta.alert_feishu_secret?.hasValue
+                  ? `已保存（${settingsMeta.alert_feishu_secret.value}），留空表示不修改`
+                  : '机器人开着签名校验时，把那里的「密钥」粘到这里'
+              "
+              clearable
+            />
+            <p class="field-tip">
+              两边的开关必须一致：机器人开了签名校验 → 这里必须填密钥；机器人没开 → 这里留空。
+              不一致的话飞书会拒收，并回 <code>errcode 19021</code>。
+            </p>
+          </el-form-item>
+
+          <el-form-item label="企业微信群机器人（可选）">
             <el-input
               v-model="form.alert_wecom_webhook"
               :placeholder="
@@ -276,22 +309,6 @@
             <p class="field-tip">
               企业微信里打开任意「群聊」→「群设置 → 群机器人 → 添加机器人」，复制它的 Webhook
               地址即可。推的是 markdown 卡片，紧急/警告会标成橙色。
-            </p>
-          </el-form-item>
-
-          <el-form-item label="飞书机器人 Webhook（可选）">
-            <el-input
-              v-model="form.alert_feishu_webhook"
-              :placeholder="
-                settingsMeta.alert_feishu_webhook?.hasValue
-                  ? `已保存（${settingsMeta.alert_feishu_webhook.value}），留空表示不修改`
-                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx'
-              "
-              clearable
-            />
-            <p class="field-tip">
-              在飞书群里「设置 → 群机器人 → 添加自定义机器人」即可拿到地址。 ⚠️
-              若机器人开启了「签名校验」，这里会推送失败 —— 请关闭签名或改用通用 Webhook。
             </p>
           </el-form-item>
 
@@ -541,6 +558,7 @@ const form = reactive({
   // 告警外部通道（敏感项，留空=不修改）
   alert_webhook_url: '',
   alert_feishu_webhook: '',
+  alert_feishu_secret: '',
   alert_wecom_webhook: '',
 });
 
@@ -558,8 +576,13 @@ const DEPLOY_KEYS = [
   'host_data_dir',
   'registry_mirror',
 ];
-/** 告警外部通道（三个都是敏感项，留空表示不修改） */
-const ALERT_KEYS = ['alert_webhook_url', 'alert_feishu_webhook', 'alert_wecom_webhook'];
+/** 告警外部通道（四个都是敏感项，留空表示不修改） */
+const ALERT_KEYS = [
+  'alert_webhook_url',
+  'alert_feishu_webhook',
+  'alert_feishu_secret',
+  'alert_wecom_webhook',
+];
 
 /** 是否已配置任一外部通道（只用于界面上的状态徽标） */
 const isAlertOn = computed(() => ALERT_KEYS.some((key) => settingsMeta.value[key]?.hasValue));

@@ -300,7 +300,10 @@ const sourceText = (s) => SOURCE_TEXT[s] || s || '系统';
 const channelText = computed(() => {
   const on = [];
   if (alertChannels.value.webhook?.enabled) on.push('Webhook 已配');
-  if (alertChannels.value.feishu?.enabled) on.push('飞书已配');
+  if (alertChannels.value.feishu?.enabled) {
+    // 带上签名状态：这是排查「推送失败」时第一个要看的信息
+    on.push(alertChannels.value.feishu.signed ? '飞书已配（含签名）' : '飞书已配');
+  }
   if (alertChannels.value.wecom?.enabled) on.push('企业微信已配');
   return on.length ? on.join('、') : '仅站内（未配外部通道）';
 });

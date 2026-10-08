@@ -28,6 +28,8 @@
 const db = require('../db');
 const settings = require('./settings');
 const { request } = require('../utils/http');
+// 签名算法在零依赖的 utils/sign.js 里单独实现，便于独立交叉验证
+const { feishuSign } = require('../utils/sign');
 
 /** 同一告警的外发静默窗口 */
 const QUIET_WINDOW_MS = 30 * 60 * 1000;
@@ -35,6 +37,7 @@ const QUIET_WINDOW_MS = 30 * 60 * 1000;
 /** 设置表里的键名 */
 const KEY_WEBHOOK = 'alert_webhook_url';
 const KEY_FEISHU = 'alert_feishu_webhook';
+const KEY_FEISHU_SECRET = 'alert_feishu_secret';
 const KEY_WECOM = 'alert_wecom_webhook';
 
 const LEVEL_ORDER = { critical: 0, warning: 1, info: 2 };
@@ -242,10 +245,16 @@ function prune() {
 function getChannels() {
   const webhook = settings.get(KEY_WEBHOOK) || '';
   const feishu = settings.get(KEY_FEISHU) || '';
+  const feishuSecret = settings.get(KEY_FEISHU_SECRET) || '';
   const wecom = settings.get(KEY_WECOM) || '';
   return {
     webhook: { enabled: !!webhook, urlHint: webhook ? maskUrl(webhook) : '' },
-    feishu: { enabled: !!feishu, urlHint: feishu ? maskUrl(feishu) : '' },
+    feishu: {
+      enabled: !!feishu,
+      urlHint: feishu ? maskUrl(feishu) : '',
+      // 填了签名密钥才算开启签名校验（飞书机器人自己也有这个开关，两边要一致）
+      signed: !!feishuSecret,
+    },
     wecom: { enabled: !!wecom, urlHint: wecom ? maskUrl(wecom) : '' },
     // 只要有任意一个通道启用，外部通知就算「已开启」
     anyEnabled: !!(webhook || feishu || wecom),
@@ -331,6 +340,7 @@ function webhookBody(payload) {
 async function dispatch(payload) {
   const webhook = settings.get(KEY_WEBHOOK) || '';
   const feishu = settings.get(KEY_FEISHU) || '';
+  const feishuSecret = settings.get(KEY_FEISHU_SECRET) || '';
   const wecom = settings.get(KEY_WECOM) || '';
   if (!webhook && !feishu && !wecom) return false;
 
@@ -351,11 +361,18 @@ async function dispatch(payload) {
   }
 
   if (feishu) {
+    // 填了签名密钥就带上 timestamp + sign；没填就裸发（机器人那边关着签名校验时才对）
+    let body = feishuBody(payload);
+    if (feishuSecret) {
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      body = { timestamp, sign: feishuSign(timestamp, feishuSecret), ...body };
+    }
+
     tasks.push(
       request(feishu, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: feishuBody(payload),
+        body,
         timeout: 10000,
         serviceName: '飞书机器人',
       })
@@ -363,11 +380,7 @@ async function dispatch(payload) {
           // 飞书成功返回 {code:0}；开了签名校验时会返回非 0
           const code = res && typeof res === 'object' ? res.code : undefined;
           if (code !== undefined && code !== 0) {
-            return {
-              channel: 'feishu',
-              ok: false,
-              message: `飞书返回 code=${code}（若机器人开了签名校验，需关闭或改用 Webhook）`,
-            };
+            return { channel: 'feishu', ok: false, message: feishuErrorHint(code, feishuSecret) };
           }
           return { channel: 'feishu', ok: true };
         })
@@ -401,6 +414,22 @@ async function dispatch(payload) {
     if (!r.ok) console.warn(`[notify] ${r.channel} 推送失败：${r.message}`);
   }
   return results.some((r) => r.ok);
+}
+
+/**
+ * 飞书机器人常见错误码 → 人话
+ * ------------------------------------------------------------------
+ * 只列**有把握**的那一个（19021），其余给通用排查方向。
+ * 飞书没有公开完整的机器人错误码表，硬凑一条错误的"解释"比不给解释更误导 ——
+ * 用户会照着一个假的结论去改配置。
+ */
+function feishuErrorHint(code, signed) {
+  if (code === 19021) {
+    return signed
+      ? '飞书 errcode=19021：签名校验失败（签名密钥填错了，或服务器时间与飞书相差超过 1 小时）'
+      : '飞书 errcode=19021：机器人开启了「签名校验」，但这里没填签名密钥 —— 要么把密钥填上，要么回机器人设置里关掉签名校验';
+  }
+  return `飞书 errcode=${code}（常见原因：webhook 地址复制不完整、机器人已被移出群、或签名校验配置两边不一致）`;
 }
 
 /**
@@ -456,7 +485,10 @@ module.exports = {
   prune,
   getChannels,
   sendTest,
+  // 导出给自检脚本做交叉比对（见 backend/scripts/selfcheck-feishu-sign.js）
+  feishuSign,
   KEY_WEBHOOK,
   KEY_FEISHU,
+  KEY_FEISHU_SECRET,
   KEY_WECOM,
 };
