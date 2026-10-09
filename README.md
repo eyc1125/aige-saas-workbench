@@ -996,6 +996,37 @@ sign = base64( HMAC-SHA256( key = stringToSign, message = "" ) )
 > 后者对这类 bug 完全无效。此外还有个连带断言：**二维码地址必须真的是 `image/*`**
 > （蒲公英返回的 `buildQRCodeURL` 是图片；万一哪天变成 HTML 页面，页面就会显示破图）。
 
+### 17.21 CI 报了红，却看不到原因 —— Actions 日志未登录根本打不开
+
+**现象**：推上去后 CI 的「规范检查」job 红，但注解只有一句
+`Process completed with exit code 1.`；点进 run 页面显示 **"Sign in to view logs"**，
+拿不到任何细节。本地 `npx commitlint --last` 明明通过 —— 于是陷入「红着但查不到」的僵局。
+
+**根因**：
+1. commitlint 的 `body-max-line-length` 是 **120 字符/行**，提交信息正文**单行超了**
+   （中文按字符计数，顺手粘一段说明很容易超）。规则本身没错，是信息写太长。
+2. 更要命的是**反馈链路断了**：GitHub 默认只把「进程退出码」写进注解，而 Actions
+   运行日志对未登录访问者不可见 —— 等于报错了但查不到，排查成本被推给下一个人。
+
+**修法**（两层都补上）：
+- 提交信息正文每行 ≤ 120 字符（阈值在 `commitlint.config.mjs`，header ≤ 100）；
+- 把 CI 里这一步改成**失败时把 commitlint 的原话逐行写成 `::error::` 注解**：
+
+  ```yaml
+  if OUT=$(npx commitlint $ARGS --verbose 2>&1); then
+    echo "$OUT"
+  else
+    echo "$OUT" | tail -10 | while IFS= read -r line; do echo "::error::$line"; done
+    exit 1
+  fi
+  ```
+
+再红时，注解里会直接写着 `✖ body's lines must not be longer than 120 characters [body-max-line-length]`，一眼定位。
+
+> **规矩**：让失败自解释。一个只输出「退出码 1」的检查，等于把成本转嫁给下一个人。
+> 另外这条能顺手说明：**`git rev-parse` 判范围 + 退化到 `--last`** 的那套逻辑是对的，
+> 缺的从来不是逻辑，而是**出错时的可见性**。
+
 ---
 
 ## 十八、本次交付的部署实录
