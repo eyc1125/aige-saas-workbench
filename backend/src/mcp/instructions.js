@@ -75,6 +75,7 @@ const TOOL_GROUPS = [
     tools: [
       'list_distributed_apps',
       'get_distributed_app',
+      'get_upload_help',
       'upload_app_to_pgyer',
       'update_pgyer_build',
       'set_pgyer_newest_build',
@@ -113,8 +114,8 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - **宝塔面板** —— 站点、Nginx 配置、SSL 证书、文件与备份、**计划任务**（只读）、
   防火墙/FTP/数据库（用 \`call_bt_api\` 兜底）已覆盖
 - **Cloudflare** —— 域名区域、DNS 解析、SSL 模式、边缘缓存已覆盖
-- **蒲公英（内测分发）** —— 看版本/下载页/二维码、**上传安装包**、改版本说明、
-  设/取消最新版本、删版本、删应用，都由本工作台承担，
+- **蒲公英（内测分发）** —— 看版本/下载页/二维码、**上传安装包**（含**使用者本机上的包**，
+  走 \`get_upload_help\` 拿命令）、改版本说明、设/取消最新版本、删版本、删应用，都由本工作台承担，
   **不需要再单独挂蒲公英官方 MCP、Agent Skill 或装 CLI**
 
 > ⚠️ **主人已经（或即将）停用宝塔面板与 Cloudflare 的官方 MCP，只保留本工作台这一个。**
@@ -196,12 +197,16 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - \`list_distributed_apps\` — 账号下的应用清单：当前版本号、版本编号、安装包体积、上传时间，
   以及**下载页地址与二维码地址**
 - \`get_distributed_app\` — 某个应用的全部历史版本（先用上面那个拿 appKey）
-- \`upload_app_to_pgyer\` — 上传安装包（**包已经在一个网址上**时用它：给 downloadUrl，服务端先下载再传）
+- \`get_upload_help\` — **把「使用者本机的安装包」传上来的唯一路径**：返回一条可直接复制执行的
+  命令（端点、鉴权头、字段都填好）。传入 filePath 效果最好
+- \`upload_app_to_pgyer\` — 上传安装包（**包已经在一个公网网址上**时用它：给 downloadUrl，
+  服务端先下载再传）。包在本机请改用 \`get_upload_help\`
 - \`update_pgyer_build\` — 改某个版本的更新说明 / 版本号 / 安装方式 / 安装密码
 - \`set_pgyer_newest_build\` — 设 / 取消「最新版本」标记。**传错版本时用它，比删了重传安全**
 - \`delete_pgyer_build\` — ⛔ 删一个版本（不可恢复）
 - \`delete_pgyer_app\` — ⛔⛔ 删整个应用（连全部历史版本，不可恢复）
 - ⚠️ **上传 / 改 / 删都是写操作**：只读令牌的连接里这几个工具不会出现，硬调也会被拒
+  （\`get_upload_help\` 是只读的 —— 它只生成命令文本，不碰任何数据）
 
 **⑨ 计划任务（宝塔 · 只读）**
 - \`list_crontabs\` — 服务器上的**全部**计划任务：名称、执行周期、是否启用、执行身份、分类，
@@ -289,19 +294,17 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 **「把这个 APK 发到蒲公英 / 给我一个安装二维码」**
 **先判断包在哪**，再选一条路 —— 三条路都不要再让用户去装蒲公英官方 MCP / Agent Skill / CLI：
 
-1. **包已经在一个网址上**（CDN / 对象存储 / 别的下载站）→ 直接调
+1. **包在使用者本机（最常见）** → 调 \`get_upload_help({ filePath, fileSizeBytes })\`，
+   它会返回一条**可直接复制执行**的命令；然后在**本机终端**跑那条命令 ——
+   文件原始字节作为请求体 POST 到 \`https://aige-saas-mcp.miaocaieyc.com.cn/upload\`。
+   - ⛔ **Windows 必须写 \`curl.exe\`** —— PowerShell 里 \`curl\` 是 \`Invoke-WebRequest\` 的别名，
+     直接写 \`curl\` 会报参数错误，最容易卡在这一步
+   - ⛔ 令牌用 **MCP 的全权令牌**（不是面板登录态），而且**只能放请求头** ——
+     放进 URL 的 \`?token=\` 会当场 401
+   - ⛔ **不要用 multipart**：文件本身就是请求体（\`--data-binary @文件\`）
+2. **包已经在一个网址上**（CDN / 对象存储 / 别的下载站）→ 直接调
    \`upload_app_to_pgyer({ downloadUrl, fileName? })\`，服务端自己下载再上传、不落盘。
-2. **包在使用者本机、而你有终端能力**（最常见）→ 在**本机**跑一条 curl，
-   推到 **MCP 的上传入口**：
-   \`\`\`bash
-   curl -X POST --data-binary @app-release.apk \\
-     -H "x-mcp-token: <你手上这把 MCP 令牌>" \\
-     -H "Content-Type: application/octet-stream" \\
-     "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk"
-   \`\`\`
-   ⛔ 用的是 **MCP 令牌**（不是面板登录态），而且**只能放请求头** ——
-   放 URL 的 \`?token=\` 会建连即 401。⛔ 也**不要**用 multipart：文件本身就是请求体。
-3. **包在使用者本机、你没有终端能力** → 只能让用户打开工作台「应用分发」页，
+3. **包在使用者本机、而他那边没有终端可用** → 只能让他打开工作台「应用分发」页，
    把安装包**拖进上传区**，页面上会直接出现二维码。
    （MCP 协议传不了二进制，这是协议边界，别硬试、也别反复重试。）
 

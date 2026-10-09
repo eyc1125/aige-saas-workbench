@@ -24,6 +24,16 @@ const pgyerService = require('../services/pgyer');
 const { listTemplates } = require('../services/apps');
 const { writeLog } = require('../utils/logger');
 
+/**
+ * MCP 对外公网地址 —— `/upload` 端点就在它下面。
+ * ⛔ 没有它，`get_upload_help` 就给不出「可直接复制执行」的命令：
+ *    客户端那边（AI）根本拿不到端点地址，这正是「本机 APK 传不上去」的一半原因。
+ * 可用环境变量覆盖，换域名部署时不用改代码。
+ */
+const MCP_PUBLIC_BASE = String(
+  process.env.MCP_PUBLIC_URL || 'https://aige-saas-mcp.miaocaieyc.com.cn'
+).replace(/\/+$/, '');
+
 // ============================================================
 // 工具定义（JSON Schema）
 // ============================================================
@@ -547,9 +557,39 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'upload_app_to_pgyer',
+    name: 'get_upload_help',
     description:
-      '把安装包上传到蒲公英（内测分发）。用于「安装包已经在一个网址上」的情况：给它 downloadUrl，服务端先下载再上传，全程不落我们的盘。支持 .apk / .ipa / .hap，单包 ≤ 100MB。上传会**新增一个版本**，不会覆盖旧版本。⚠️ 如果安装包在**使用者自己的电脑上**，这条路帮不上忙（服务器看不到那台电脑的磁盘）—— 请改用说明书里另外两条路：工作台「应用分发」页拖拽，或有终端时用 curl 直传 MCP 的 /upload。',
+      '【把「本机文件」传到蒲公英的唯一可行路径】返回一条**可直接复制执行**的命令，把使用者本机的安装包 POST 到本工作台的上传入口。适用场景：安装包在使用者的电脑上（MCP 协议本身传不了二进制，所以必须由**本机终端**把文件送出去）。可选传 filePath，命令里的路径与文件名会直接填好。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description:
+            '使用者本机安装包的绝对路径（如 C:\\Users\\me\\Desktop\\app.apk）。给了它，返回的命令可直接复制执行',
+        },
+        fileSizeBytes: {
+          type: 'number',
+          description:
+            '文件字节数（可选）。超过 100MB 会明确警告 —— 上限由 Cloudflare 免费版定，放宽 nginx 也没用',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'upload_app_to_pgyer',
+    description: `把安装包上传到蒲公英（内测分发）。
+
+⚠️ 这条**只适用于「安装包已经在一个公网网址上」**：传 downloadUrl，服务端先下载再上传，全程不落我们的盘。
+
+**如果安装包在使用者的本机（更常见），走这条路**：
+1) 先调 get_upload_help（可带上 filePath）→ 拿到一条可直接复制的命令；
+2) 在**本机终端**执行它 —— 文件原始字节直接作为请求体 POST 到 ${MCP_PUBLIC_BASE}/upload，
+   鉴权用请求头 x-mcp-token: <全权令牌>（不能放 URL，也不要用 multipart）；
+3) 传完调 list_distributed_apps 把下载页与二维码取回来。
+
+限制：只支持 .apk / .ipa / .hap，单包 ≤ 100MB；上传是**新增版本**，不覆盖旧版本。`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -687,9 +727,11 @@ const READONLY_TOOLS = new Set([
   'list_repo_commits',
   'get_ci_status',
 
-  // 应用分发（蒲公英）—— 纯只读：上传走官方工具链，这里只查版本与下载页/二维码
+  // 应用分发（蒲公英）—— 只读部分：查版本 / 下载页 / 二维码，
+  // 外加「怎么把本机文件传上来」的帮助文本（它只是生成命令，不碰任何数据）
   'list_distributed_apps',
   'get_distributed_app',
+  'get_upload_help',
 
   // 计划任务（C3）—— 纯只读：只看服务器上有哪些定时任务，
   // 不返回脚本正文（其他项目的脚本里有明文密钥），也不提供启停/删除
@@ -1398,6 +1440,80 @@ const TOOL_HANDLERS = {
     return ok(data, `${data.repo}：${verdict}`);
   },
 
+  /**
+   * 29.5 上传帮助：生成一条可直接复制执行的命令（只读，不碰任何数据）
+   * ------------------------------------------------------------------
+   * 为什么需要它：MCP 协议传不了二进制，而文件在**使用者的电脑上** ——
+   * 唯一可行的路径就是「让本机终端把字节 POST 到工作台的上传入口」。
+   * 但客户端看不到本工作台的文档，所以端点 / 鉴权 / 字段必须由工具**当面告诉它**，
+   * 否则就会出现「知道该用 curl，却不知道往哪打、带什么头」的死角。
+   */
+  async get_upload_help({ filePath, fileSizeBytes } = {}) {
+    const rawPath = String(filePath || '').trim();
+    // 文件名取路径最后一段；中文名必须 URL 编码，否则 curl 会把 URL 拆坏 —— 这里替使用者编好
+    const rawName =
+      (rawPath ? rawPath.split(/[\\/]/).filter(Boolean).pop() : '') || 'app-release.apk';
+    const url = `${MCP_PUBLIC_BASE}/upload?fileName=${encodeURIComponent(rawName)}`;
+    const size = Number(fileSizeBytes) || 0;
+    const maxBytes = pgyerService.MAX_UPLOAD_BYTES;
+    const tooBig = size > maxBytes;
+
+    const winCmd = [
+      `curl.exe -X POST "${url}" \``,
+      '  -H "x-mcp-token: <你的全权 MCP 令牌>" `',
+      '  -H "Content-Type: application/octet-stream" `',
+      `  --data-binary "@${rawPath || '<安装包绝对路径>'}"`,
+    ].join('\n');
+    // 给的是 Windows 路径时，Linux 命令里就不该照抄（会被误当成真的能直接用）
+    const isWinPath = /^[a-zA-Z]:[\\/]/.test(rawPath) || rawPath.includes('\\');
+    const nixTarget = rawPath && !isWinPath ? rawPath : `/path/to/${rawName}`;
+    const nixCmd = [
+      `curl -X POST "${url}" \\`,
+      '  -H "x-mcp-token: <你的全权 MCP 令牌>" \\',
+      '  -H "Content-Type: application/octet-stream" \\',
+      `  --data-binary "@${nixTarget}"`,
+    ].join('\n');
+
+    const data = {
+      endpoint: url,
+      method: 'POST',
+      authHeader: 'x-mcp-token: <你的全权 MCP 令牌>（也可用 Authorization: Bearer <令牌>）',
+      body: '文件的原始字节（application/octet-stream）—— 不要用 multipart/form-data',
+      fileName: rawName,
+      fileSizeBytes: size || null,
+      maxBytes,
+      oversized: tooBig,
+      commands: { windowsPowerShell: winCmd, linuxMac: nixCmd },
+      responseExample:
+        '{"code":0,"message":"上传成功：艾哥剪辑 v0.0.03","data":{"buildKey":"…","version":"0.0.03","downloadPage":"https://www.pgyer.com/xxxx","qrCodeUrl":"…"}}',
+      commonErrors: [
+        '401 → 令牌没带，或放进了 URL 的 ?token=（必须放请求头）',
+        '403 → 用的是只读令牌；上传只认全权令牌',
+        '400 EMPTY_BODY → 少了 --data-binary，或误用了 multipart',
+        '413 → 超过 100MB（Cloudflare 免费版单次上传上限）',
+        '1249 → 这个文件不是有效的安装包',
+      ],
+      nextSteps: [
+        'set_pgyer_newest_build —— 把新版本设为最新版',
+        'update_pgyer_build —— 改版本说明 / 版本号',
+        'get_distributed_app —— 核对历史版本',
+      ],
+    };
+
+    const head = tooBig
+      ? `⛔ 这个文件 ${formatBytes(size)} 超过上限 ${formatBytes(maxBytes)}，会被 Cloudflare 拦掉，先别传。`
+      : '把下面整段复制到本机终端执行（Windows 用 PowerShell 那一条）：';
+
+    return ok(
+      data,
+      `${head}\n\n【Windows / PowerShell】\n${winCmd}\n\n【Linux / macOS】\n${nixCmd}\n\n` +
+        '⛔ 三个易错点：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
+        '② 令牌用 MCP 的全权令牌（你 MCP 配置里 Authorization: Bearer 后面那串），只能放请求头；' +
+        '③ 不要用 multipart，文件本身就是请求体。' +
+        (tooBig ? '' : '\n传完用 list_distributed_apps 取下载页与二维码。')
+    );
+  },
+
   /** 30. 蒲公英应用清单（B7） */
   async list_distributed_apps({ limit }) {
     const count = clampLimit(limit, 20, 50);
@@ -1406,7 +1522,7 @@ const TOOL_HANDLERS = {
     if (!list.length) {
       return ok(
         { apps: [], totalApps: 0, totalBuilds: 0 },
-        '蒲公英账号下还没有任何应用（安装包要用蒲公英官方 MCP 或 CLI 上传）'
+        '蒲公英账号下还没有任何应用（要发第一个包：包在网址上用 upload_app_to_pgyer，包在本机用 get_upload_help 拿命令）'
       );
     }
     const lines = list

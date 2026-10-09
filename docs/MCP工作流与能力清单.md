@@ -43,15 +43,15 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 40 个 | 默认就有；「重新生成令牌」可换一把 |
-| **只读令牌** | 22 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
+| **全权令牌** | 全部 41 个 | 默认就有；「重新生成令牌」可换一把 |
+| **只读令牌** | 23 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
-**只读令牌能用的 22 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
+**只读令牌能用的 23 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
 `list_websites`、`get_site_logs`、`get_nginx_config`、`read_file`、`list_directory`、
 `list_backups`、`list_domains`、`list_dns_records`、`get_zone_info`、`list_containers`、
 `get_container_logs`、`list_images`、`list_app_templates`、`get_deploy_logs`、
 `list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`、
-`list_crontabs`。
+`get_upload_help`、`list_crontabs`。
 
 **被挡在门外的 18 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
@@ -73,7 +73,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 
 ---
 
-## 二、能力清单（40 个工具 · 按用途分组）
+## 二、能力清单（41 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -152,6 +152,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 | --- | --- | --- |
 | `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
 | `get_distributed_app` | `appKey` | 某个应用的全部历史版本（appKey 从上面那个工具拿） |
+| `get_upload_help` | `filePath?` `fileSizeBytes?` | **把「本机文件」传上来的唯一路径**：返回一条可直接复制执行的命令（端点 / 鉴权头 / 字段都填好）。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码 |
 | `upload_app_to_pgyer` | `downloadUrl` `fileName?` `updateDescription?` | 把**网址上的**安装包传到蒲公英（服务端先下载再上传，全程不落盘），单包 ≤ 100MB |
 | `update_pgyer_build` | `buildKey` `updateDescription?` `version?` `installType?` `password?` | 改更新说明 / 版本号 / 安装方式 / 安装密码（**只带明确给了的字段**） |
 | `set_pgyer_newest_build` | `buildKey` `isNewest?` | 设 / 取消「最新版本」标记（比删了重传安全） |
@@ -166,21 +167,31 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 
 **上传安装包有三条路，按「包在哪」选：**
 
-1. **包在一个网址上**（CDN / 对象存储 / 别的下载站）→ MCP 工具 `upload_app_to_pgyer`：
-   服务端先下载、再转给蒲公英，全程只在内存里过一遍，**不落服务器磁盘**。
-2. **包在使用者本机、且有终端** → curl 直传 MCP 的上传入口（注意用 **MCP 令牌**，
-   不是面板的登录令牌 —— 面板接口要 JWT，AI 手上只有 MCP 令牌）：
+1. **包在使用者本机（最常见）** → 先调 **`get_upload_help`**（带上 `filePath`），
+   它返回**一条可直接复制执行的命令**；在本机终端跑它，文件以原始字节 POST 到
+   `https://aige-saas-mcp.miaocaieyc.com.cn/upload`。
 
-   ```bash
-   curl -X POST "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk" \
-     -H "x-mcp-token: <全权 MCP 令牌>" \
-     -H "Content-Type: application/octet-stream" \
-     --data-binary @./app-release.apk
+   ⛔ 三个易错点（`get_upload_help` 的返回里也会一并说明）：
+   - **Windows 必须写 `curl.exe`** —— PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，
+     直接写 `curl` 会报参数错误，这是最容易卡住的一步
+   - 令牌用 **MCP 的全权令牌**（不是面板登录令牌），而且**只能放请求头** ——
+     放进 URL 的 `?token=` 会当场 401
+   - **不要用 multipart**：文件本身就是请求体（`--data-binary @文件`）
+
+   命令长这样（示例，实际以 `get_upload_help` 返回的为准）：
+
+   ```powershell
+   curl.exe -X POST "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk" `
+     -H "x-mcp-token: <全权 MCP 令牌>" `
+     -H "Content-Type: application/octet-stream" `
+     --data-binary "@C:\path\to\app-release.apk"
    ```
 
-   · 文件**直接作为请求体**（不要用 multipart），单包 ≤ **100MB**（`.apk / .ipa / .hap`）
+   · 单包 ≤ **100MB**（`.apk / .ipa / .hap`）；传 `filePath` 时中文名会自动 URL 编码
    · 只认**全权**令牌：上传会改变线上分发的版本，只读令牌一律 `403`
-3. **包在使用者本机、没有终端** → 在「应用分发」页用拖拽上传区传。
+2. **包在一个网址上**（CDN / 对象存储 / 别的下载站）→ MCP 工具 `upload_app_to_pgyer`：
+   服务端先下载、再转给蒲公英，全程只在内存里过一遍，**不落服务器磁盘**。
+3. **包在使用者本机、但那边没有终端可用** → 在「应用分发」页用拖拽上传区传。
    （MCP 侧帮不了 —— 服务器看不到那台电脑的磁盘。）
 
 > ⚠️ 上限 **100MB** 是三处取最小：前端容器 nginx、宝塔站点 nginx、**Cloudflare 免费版单次上传上限**。
