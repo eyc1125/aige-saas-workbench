@@ -1477,23 +1477,34 @@ const TOOL_HANDLERS = {
     }
     const resolve = host && MCP_ORIGIN_IP ? `--resolve "${host}:443:${MCP_ORIGIN_IP}"` : '';
 
-    const winCmd = [
-      `curl.exe -X POST "${url}" \``,
-      '  -H "x-mcp-token: <你的全权 MCP 令牌>" `',
-      '  -H "Content-Type: application/octet-stream" `',
-      ...(resolve ? [`  ${resolve} \``] : []),
-      `  --data-binary "@${rawPath || '<安装包绝对路径>'}"`,
-    ].join('\n');
-    // 给的是 Windows 路径时，Linux 命令里就不该照抄（会被误当成真的能直接用）
     const isWinPath = /^[a-zA-Z]:[\\/]/.test(rawPath) || rawPath.includes('\\');
+    const winTarget = rawPath || '<安装包绝对路径>';
     const nixTarget = rawPath && !isWinPath ? rawPath : `/path/to/${rawName}`;
-    const nixCmd = [
-      `curl -X POST "${url}" \\`,
-      '  -H "x-mcp-token: <你的全权 MCP 令牌>" \\',
-      '  -H "Content-Type: application/octet-stream" \\',
-      ...(resolve ? [`  ${resolve} \\`] : []),
-      `  --data-binary "@${nixTarget}"`,
-    ].join('\n');
+
+    // 两条命令都给全：AI 不必自己拼（拼错一次就白跑一轮）。
+    // 主：直连源站（绕过 CF 100 秒上限）；备：走域名（直连不通时用）。
+    const winCmd = (withResolve) =>
+      [
+        `curl.exe -X POST "${url}" \``,
+        '  -H "x-mcp-token: <你的全权 MCP 令牌>" `',
+        '  -H "Content-Type: application/octet-stream" `',
+        ...(withResolve && resolve ? [`  ${resolve} \``] : []),
+        `  --data-binary "@${winTarget}"`,
+      ].join('\n');
+    const nixCmd = (withResolve) =>
+      [
+        `curl -X POST "${url}" \\`,
+        '  -H "x-mcp-token: <你的全权 MCP 令牌>" \\',
+        '  -H "Content-Type: application/octet-stream" \\',
+        ...(withResolve && resolve ? [`  ${resolve} \\`] : []),
+        `  --data-binary "@${nixTarget}"`,
+      ].join('\n');
+
+    const winDirect = winCmd(true);
+    const nixDirect = nixCmd(true);
+    const winPlain = winCmd(false);
+    const nixPlain = nixCmd(false);
+    const hasDirect = !!resolve;
 
     const data = {
       endpoint: url,
@@ -1506,15 +1517,60 @@ const TOOL_HANDLERS = {
       fileSizeBytes: size || null,
       maxBytes,
       oversized: tooBig,
-      commands: { windowsPowerShell: winCmd, linuxMac: nixCmd },
+      commands: {
+        recommended: {
+          label: hasDirect
+            ? '直连源站（推荐：绕过 Cloudflare 的 100 秒请求上限）'
+            : '直传（把文件原始字节 POST 到上传入口）',
+          windowsPowerShell: winDirect,
+          linuxMac: nixDirect,
+        },
+        fallback: hasDirect
+          ? {
+              label: '走域名（直连不通时用；大文件可能被 Cloudflare 掐断）',
+              windowsPowerShell: winPlain,
+              linuxMac: nixPlain,
+            }
+          : null,
+      },
       responseExample:
         '{"code":0,"message":"上传成功：艾哥剪辑 v0.0.03","data":{"buildKey":"…","version":"0.0.03","downloadPage":"https://www.pgyer.com/xxxx","qrCodeUrl":"…"}}',
-      commonErrors: [
-        '401 → 令牌没带，或放进了 URL 的 ?token=（必须放请求头）',
-        '403 → 用的是只读令牌；上传只认全权令牌',
-        '400 EMPTY_BODY → 少了 --data-binary，或误用了 multipart',
-        '413 → 超过 100MB（Cloudflare 免费版单次上传上限）',
-        '1249 → 这个文件不是有效的安装包',
+      troubleshooting: [
+        {
+          symptom: 'curl: (35) Connection was reset / 传一半就断',
+          cause: '走 Cloudflare，撞上它「单次请求 100 秒」的上限（源站日志里会一条都没有）',
+          fix: '改用上面的「直连源站」那条命令',
+        },
+        {
+          symptom: 'HTTP 401',
+          cause: '令牌没带、带错，或者放进了 URL 的 ?token=',
+          fix: '令牌放请求头（x-mcp-token 或 Authorization: Bearer）',
+        },
+        {
+          symptom: 'HTTP 403 FORBIDDEN',
+          cause: '用的是只读令牌 —— 上传会改线上分发的版本，只认全权令牌',
+          fix: '换成「系统设置 → MCP 连接」里的全权令牌',
+        },
+        {
+          symptom: 'HTTP 400 EMPTY_BODY',
+          cause: '少了 --data-binary，或误用了 multipart/form-data',
+          fix: '文件原始字节直接作为请求体',
+        },
+        {
+          symptom: 'Windows 报「curl 不是内部或外部命令」或参数错误',
+          cause: 'PowerShell 里 curl 是 Invoke-WebRequest 的别名',
+          fix: '写 curl.exe',
+        },
+        {
+          symptom: '413 / 文件过大',
+          cause: '安装包超过 100MB（Cloudflare 与蒲公英套餐都卡在这个量级）',
+          fix: '先压缩体积；或改用蒲公英官方 CLI / CI 插件走另一条渠道。MCP 侧没有别的路',
+        },
+        {
+          symptom: '业务码 1249',
+          cause: '这个文件不是有效的安装包（损坏，或后缀名骗人）',
+          fix: '确认包能正常安装、后缀是真 .apk / .ipa / .hap',
+        },
       ],
       nextSteps: [
         'set_pgyer_newest_build —— 把新版本设为最新版',
@@ -1524,24 +1580,33 @@ const TOOL_HANDLERS = {
     };
 
     const head = tooBig
-      ? `⛔ 这个文件 ${formatBytes(size)} 超过上限 ${formatBytes(maxBytes)}，会被 Cloudflare 拦掉，先别传。`
-      : '把下面整段复制到本机终端执行（Windows 用 PowerShell 那一条）：';
+      ? `⛔ 这个文件 ${formatBytes(size)} 超过上限 ${formatBytes(maxBytes)}，会被挡下，先别传（压缩后重试）。`
+      : '把下面整段复制到本机终端执行（Windows 用 PowerShell 那条）：';
 
-    const why = resolve
-      ? '\n\nℹ️ 命令里带了 --resolve：让流量**绕过 Cloudflare 直连源站**。' +
-        'Cloudflare 免费版对单次请求有 **100 秒上限**，上行慢时十几 MB 的包传不完就会被掐断' +
-        '（现象是 Connection was reset，而且源站日志里什么都没有，极难查）。直连实测快一倍以上。' +
-        '若直连不通（少数网络只放行 Cloudflare），**删掉 --resolve 那一行**即走域名。'
-      : '';
-
-    return ok(
-      data,
-      `${head}\n\n【Windows / PowerShell】\n${winCmd}\n\n【Linux / macOS】\n${nixCmd}${why}\n\n` +
-        '⛔ 三个易错点：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
-        '② 令牌用 MCP 的全权令牌（你 MCP 配置里 Authorization: Bearer 后面那串），只能放请求头；' +
-        '③ 不要用 multipart，文件本身就是请求体。' +
-        (tooBig ? '' : '\n传完用 list_distributed_apps 取下载页与二维码。')
+    const parts = [
+      head,
+      '',
+      `【推荐】${data.commands.recommended.label}`,
+      winDirect,
+      '',
+      nixDirect,
+    ];
+    if (data.commands.fallback) {
+      parts.push('', `【备选】${data.commands.fallback.label}`, winPlain);
+    }
+    parts.push(
+      '',
+      '⛔ 三个必知：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
+        '② 令牌 = 你 MCP 配置里 Authorization: Bearer 后面那串，且只能放请求头；' +
+        '③ 不要用 multipart，文件本身就是请求体。',
+      tooBig
+        ? ''
+        : '传完用 list_distributed_apps 取下载页与二维码，需要的话再用 set_pgyer_newest_build 设为最新版。',
+      '若失败：把完整报错贴回来，对着 data.troubleshooting 逐条排' +
+        '（最常见三条：Connection was reset → 换直连那条；401 → 令牌要放请求头；403 → 用了只读令牌）。'
     );
+
+    return ok(data, parts.join('\n'));
   },
 
   /** 30. 蒲公英应用清单（B7） */
