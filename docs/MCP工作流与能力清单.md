@@ -43,7 +43,7 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 41 个 | 默认就有；「重新生成令牌」可换一把 |
+| **全权令牌** | 全部 42 个 | 默认就有；「重新生成令牌」可换一把 |
 | **只读令牌** | 23 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
 **只读令牌能用的 23 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
@@ -53,14 +53,14 @@
 `list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`、
 `get_upload_help`、`list_crontabs`。
 
-**被挡在门外的 18 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
+**被挡在门外的 19 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
 `purge_cloudflare_cache`、`restart_container`、`manage_container`、`deploy_app`、
-`apply_health_fix`、`call_bt_api`、
+`apply_health_fix`、`call_bt_api`、`call_cf_api`、
 `upload_app_to_pgyer`、`update_pgyer_build`、`set_pgyer_newest_build`、
 `delete_pgyer_build`、`delete_pgyer_app`。
 
-AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会白试）；即使强行业务调用，
+AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会白试）；即使强行业务调用，
 服务端也会返回 `isError: true` 与「只读令牌无权调用…」。
 
 > `run_health_checks` 归只读是个**有意的取舍**：它会写告警记录、可能外发通知，
@@ -73,7 +73,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 
 ---
 
-## 二、能力清单（41 个工具 · 按用途分组）
+## 二、能力清单（42 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -218,13 +218,17 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 > ⚠️ 别答错一件事：**本工作台自己的定时清理不在这个清单里**（它在后端进程里用 `setInterval` 跑），
 > 所以「清单里没有 aige 的任务」不代表「工作台什么都没在清理」。
 
-### ⑩ 万能兜底
+### ⑩ 万能兜底（两个，别只记宝塔那个）
 
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |
-| `call_bt_api` | `endpoint` `params?` `method?` | 直接调宝塔任意 API（计划任务、防火墙、FTP、数据库、文件压缩等未封装能力） |
+| `call_bt_api` | `endpoint` `params?` `method?` | 直接调**宝塔**任意 API（计划任务、防火墙、FTP、数据库、文件压缩等未封装能力） |
+| `call_cf_api` | `path` `method?` `query?` `body?` | 直接调 **Cloudflare 区域级** API（**只允许 `/zones` 开头的路径**）：WAF / Page Rules / 缓存规则 / Transform Rules / 区域设置等。⚠️ 账号级端点（`/accounts`、`/user`、`/memberships`）会被拒绝，以免一把 Token 影响整个账号 |
 
-端点参考：<https://www.bt.cn/api-doc/>
+端点参考：宝塔 <https://www.bt.cn/api-doc/> · Cloudflare <https://developers.cloudflare.com/api/>
+
+> 📌 **遇到「本 MCP 好像没有这个操作」时，先想这两个兜底，不要回答「做不到」** ——
+> 宝塔侧用 `call_bt_api`、Cloudflare 侧用 `call_cf_api`。
 
 ---
 

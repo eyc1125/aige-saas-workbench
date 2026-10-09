@@ -84,7 +84,7 @@ const TOOL_GROUPS = [
     ],
   },
   { group: '计划任务（宝塔，只读）', tools: ['list_crontabs'] },
-  { group: '万能兜底', tools: ['call_bt_api'] },
+  { group: '万能兜底', tools: ['call_bt_api', 'call_cf_api'] },
 ];
 
 /** 分组自检：注册了却没归组、或归组了却不存在，都在启动日志里点名 */
@@ -113,15 +113,18 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 **✅ 这一个 MCP 就够了，不需要再挂下面这些：**
 - **宝塔面板** —— 站点、Nginx 配置、SSL 证书、文件与备份、**计划任务**（只读）、
   防火墙/FTP/数据库（用 \`call_bt_api\` 兜底）已覆盖
-- **Cloudflare** —— 域名区域、DNS 解析、SSL 模式、边缘缓存已覆盖
+- **Cloudflare** —— 域名区域、DNS 解析（含**加二级域名**）、SSL 模式、边缘缓存已覆盖；
+  其余**区域级**能力（WAF / Page Rules / 缓存规则 / Transform Rules / 区域设置…）
+  用 \`call_cf_api\` 兜底
 - **蒲公英（内测分发）** —— 看版本/下载页/二维码、**上传安装包**（含**使用者本机上的包**，
   走 \`get_upload_help\` 拿命令）、改版本说明、设/取消最新版本、删版本、删应用，都由本工作台承担，
   **不需要再单独挂蒲公英官方 MCP、Agent Skill 或装 CLI**
 
 > ⚠️ **主人已经（或即将）停用宝塔面板与 Cloudflare 的官方 MCP，只保留本工作台这一个。**
 > 这意味着：宝塔/Cloudflare 的任何操作**都只能走这里** —— 本系统封装的工具优先，
-> 没封装的用 \`call_bt_api\` 兜底（端点速查表见下方「⑩ 万能兜底」）。
-> 遇到「这个操作本 MCP 好像没有」时，**先想 \`call_bt_api\`，不要回答「做不到」**。
+> 没封装的用兜底：宝塔侧 \`call_bt_api\`、Cloudflare 侧 \`call_cf_api\`（见下方「⑩ 万能兜底」）。
+> 遇到「这个操作本 MCP 好像没有」时，**先想这两个兜底**（宝塔 \`call_bt_api\` /
+> CF \`call_cf_api\`），不要回答「做不到」。
 
 **⚠️ 有两组是纯只读，别承诺写操作：**
 - **GitHub**：只能看提交与 CI 状态（\`list_repo_commits\` / \`get_ci_status\`），
@@ -217,9 +220,16 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - ⚠️ 本工作台自己的定时清理（指标采样、日志保留、告警清理）在后端进程里跑，**不在这个清单里**，
   别回答「本项目没有定时任务所以什么东西都没在清理」
 
-**⑩ 万能兜底（宝塔任意端点）**
-- \`call_bt_api\` — 直接调用宝塔任意 API 端点。本系统没封装的能力（防火墙、FTP、数据库、
+**⑩ 万能兜底（两个，别只记宝塔那个）**
+- \`call_bt_api\` — 直接调用**宝塔**任意 API 端点。本系统没封装的能力（防火墙、FTP、数据库、
   文件压缩、系统服务…）都用它。端点参考 https://www.bt.cn/api-doc/
+- \`call_cf_api\` — 直接调用 **Cloudflare 区域级** API 端点（**只允许 \`/zones\` 开头的路径**）。
+  用于本系统没封装的 CF 能力：WAF 规则、Page Rules、缓存规则、Transform Rules、区域设置…
+  账号级端点（\`/accounts\`、\`/user\`、\`/memberships\`）会被拒绝，以免一把 Token 影响整个账号。
+  端点参考 https://developers.cloudflare.com/api/
+
+> 📌 **遇到「本 MCP 好像没有这个操作」时，先想这两个兜底，不要回答「做不到」**：
+> 宝塔侧的 → \`call_bt_api\`；Cloudflare 侧的 → \`call_cf_api\`。
 
 ### ⚠️ 用 \`call_bt_api\` 之前必读
 

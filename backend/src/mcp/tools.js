@@ -405,6 +405,32 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'call_cf_api',
+    description:
+      '【Cloudflare 兜底】直接调用 Cloudflare 的**区域级** API 端点，用于本系统还没封装的能力（WAF 规则、Page Rules、缓存规则、Transform Rules、区域设置等）。path 形如 /zones/{zone_id}/settings/ssl。' +
+      '⚠️ **只允许 /zones 开头的路径** —— 账号级端点（/accounts、/user、/memberships…）会被拒绝，以免一把 Token 影响整个 Cloudflare 账号。' +
+      '⚠️ 这是**写**工具（只读令牌用不了）；删除类操作不可恢复，动线上配置前先用 GET 看清现状。端点参考 https://developers.cloudflare.com/api/',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description:
+            'CF API 路径（必须以 /zones 开头），如 /zones/{zone_id}/settings/ssl 或 /zones/{zone_id}/rulesets',
+        },
+        method: {
+          type: 'string',
+          enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+          description: 'HTTP 方法，默认 GET',
+        },
+        query: { type: 'object', description: '查询参数对象，可省略' },
+        body: { type: 'object', description: '请求体对象（GET / DELETE 会忽略），可省略' },
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'update_dns_record',
     description:
       '修改已有的 DNS 记录（改记录值，或切换 Cloudflare 代理开关）。可传 record_id，或传 name（+可选 type）由系统自动定位记录。比「删了重建」安全。',
@@ -785,6 +811,9 @@ const WRITE_TOOLS = new Set([
 
   // 万能兜底：可以触达宝塔任意写接口，必须算写
   'call_bt_api',
+
+  // Cloudflare 兜底：可触达任意**区域级**写接口（账号级已挡），同样必须算写
+  'call_cf_api',
 ]);
 
 /** 统一成功结果 */
@@ -1298,6 +1327,27 @@ const TOOL_HANDLERS = {
       return { success: false, data: null, message: '需要提供 endpoint（宝塔 API 路径）' };
     const res = await baotaService.createClient().callRaw(endpoint, params || {}, method || 'POST');
     return ok(res, `已调用宝塔接口 ${res.endpoint}`);
+  },
+
+  /** 21.5 Cloudflare 兜底：直调区域级 API（账号级端点已被服务层挡掉） */
+  async call_cf_api({ path, method, query, body } = {}) {
+    const p = String(path || '').trim();
+    if (!p) {
+      return {
+        success: false,
+        data: null,
+        message:
+          '需要提供 path（CF API 路径，必须以 /zones 开头，如 /zones/{zone_id}/settings/ssl）',
+      };
+    }
+    const client = cloudflareService.createClient();
+    const data = await client.callApi(p, { method, query, body });
+    const m = String(method || 'GET').toUpperCase();
+    return {
+      ...ok(data, `已调用 Cloudflare ${m} ${p}`),
+      // 能改线上配置（WAF / 缓存规则 / 区域设置…），必须留痕
+      audit: { before: null, after: { method: m, path: p } },
+    };
   },
 
   /** 22. 修改 DNS 记录 */

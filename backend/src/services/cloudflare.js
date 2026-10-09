@@ -375,6 +375,51 @@ class CloudflareClient {
       zones: (res.result || []).map((z) => z.name),
     };
   }
+
+  /**
+   * 兜底：直接调用 Cloudflare API —— **只允许区域级端点**（`/zones...`）
+   * ------------------------------------------------------------------
+   * 与宝塔的 `call_bt_api` 对应。本工作台只封装了「DNS 解析 / SSL 模式 / 清缓存」，
+   * 其余 CF 能力（WAF 规则、Page Rules、缓存规则、Transform Rules、区域设置…）
+   * 没封装，得留一个出口 —— 否则「替代 CF 官方 MCP」这句话就会有缺口，
+   * 遇到没封装的只能让用户去 CF 面板手工点。
+   *
+   * ⛔ 三条硬边界：
+   *   ① **只允许 `/zones` 或 `/zones/...`** —— 账号级端点（`/accounts`、`/user`、
+   *      `/memberships`…）一律拒绝，避免一把 Token 被用来改整个 Cloudflare 账号；
+   *   ② 这里对调用方**没有任何额外保护**，删除类操作不可恢复 ——
+   *      动线上配置前先用 `GET` 看清现状；
+   *   ③ 归「写」工具：只读令牌连它都看不到。
+   */
+  async callApi(path, { method = 'GET', body, query } = {}) {
+    const p = String(path || '').trim();
+    if (!/^\/zones(\/|$|\?)/.test(p)) {
+      throw badRequest(
+        '出于安全，这里只能调用**区域级**端点（路径以 /zones 开头，如 /zones/{zone_id}/settings/ssl）。' +
+          '账号级端点（/accounts、/user、/memberships…）不允许 —— 那会影响整个 Cloudflare 账号。'
+      );
+    }
+    const m = String(method || 'GET').toUpperCase();
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(m)) {
+      throw badRequest(`不支持的 method：${method}（可用 GET / POST / PUT / PATCH / DELETE）`);
+    }
+
+    const res = await this.call(p, {
+      method: m,
+      query,
+      // GET / DELETE 不带 body：CF 部分端点对多余 body 会直接报错
+      body: m === 'GET' || m === 'DELETE' ? undefined : body,
+      timeout: 30000,
+    });
+
+    return {
+      method: m,
+      path: p,
+      result: res.result,
+      resultInfo: res.result_info || null,
+      messages: (res.messages || []).filter(Boolean),
+    };
+  }
 }
 
 /** 工厂：从系统配置读取 Token 并创建客户端 */
