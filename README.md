@@ -1029,6 +1029,34 @@ sign = base64( HMAC-SHA256( key = stringToSign, message = "" ) )
 > 另外这条能顺手说明：**`git rev-parse` 判范围 + 退化到 `--last`** 的那套逻辑是对的，
 > 缺的从来不是逻辑，而是**出错时的可见性**。
 
+### 17.22 经 Cloudflare 传大文件被掐断 —— 本机 APK 上传失败的真凶
+
+**现象**：用 `curl.exe` 把 17MB 的 APK POST 到 `https://<mcp 域名>/upload`，
+**243 秒后**报 `curl: (35) Recv failure: Connection was reset`，`size_upload` 是 **0**。
+更迷惑的是：**后端日志里一条相关记录都没有** —— 看起来像「服务器坏了」。
+
+**根因（两层）**：
+1. **Cloudflare 免费版对单次请求有 100 秒上限**。上行走公网本来就慢，17MB 传到 100 秒还没送完，
+   CF 直接把连接掐了 —— 请求**根本没到源站**，所以后端日志干净得像什么都没发生。
+2. nginx 侧完全无辜：`client_max_body_size 100m` 与 `proxy_read_timeout 3600s` 都已配好，
+   **放宽它们也没用** —— 拦路的是 CF，不是我们的 nginx。
+
+**修法**：让上传**绕过 Cloudflare 直连源站**（`curl --resolve`）：
+
+```powershell
+curl.exe -X POST "https://<mcp 域名>/upload?fileName=app.apk" `
+  -H "x-mcp-token: <全权令牌>" `
+  -H "Content-Type: application/octet-stream" `
+  --resolve "<mcp 域名>:443:120.53.102.56" `
+  --data-binary "@C:\path\to\app.apk"
+```
+
+实测同一个 17.4MB 的 APK：**直连 59 秒成功**（HTTP 200，拿到 `buildKey` 与下载页），
+走 CF 则 240 秒仍未传完。`get_upload_help` 返回的命令**已经带好这一行**。
+
+> 📌 两条教训：① **「源站日志里什么都没有」不等于「请求没发出」** —— 要往上查一层（CDN / 反代）；
+> ② **CDN 的超时不是靠改源站能解决的**，把 nginx 调宽是白费功夫。
+
 ---
 
 ## 十八、本次交付的部署实录

@@ -34,6 +34,16 @@ const MCP_PUBLIC_BASE = String(
   process.env.MCP_PUBLIC_URL || 'https://aige-saas-mcp.miaocaieyc.com.cn'
 ).replace(/\/+$/, '');
 
+/**
+ * 源站 IP —— 给 `get_upload_help` 生成「直连源站」命令用（跳过 Cloudflare）。
+ * ⛔ 为什么必须有：**Cloudflare 免费版对单次请求有 100 秒上限**。上行慢的时候，
+ *    十几 MB 的安装包根本传不完就被掐断，现象是 `curl: (35) Connection was reset`，
+ *    而且**源站日志里什么都没有**（请求压根没到）—— 极难查。
+ *    实测同一个 17MB 的 APK：直连源站 **59 秒成功**，走 Cloudflare 则 **240 秒仍未传完**。
+ * 环境变量可覆盖；为空时 `get_upload_help` 就只给走域名的那条命令。
+ */
+const MCP_ORIGIN_IP = String(process.env.MCP_ORIGIN_IP || '120.53.102.56').trim();
+
 // ============================================================
 // 工具定义（JSON Schema）
 // ============================================================
@@ -559,7 +569,7 @@ const TOOL_DEFINITIONS = [
   {
     name: 'get_upload_help',
     description:
-      '【把「本机文件」传到蒲公英的唯一可行路径】返回一条**可直接复制执行**的命令，把使用者本机的安装包 POST 到本工作台的上传入口。适用场景：安装包在使用者的电脑上（MCP 协议本身传不了二进制，所以必须由**本机终端**把文件送出去）。可选传 filePath，命令里的路径与文件名会直接填好。',
+      '【把「本机文件」传到蒲公英的唯一可行路径】返回一条**可直接复制执行**的命令，把使用者本机的安装包 POST 到本工作台的上传入口。适用场景：安装包在使用者的电脑上（MCP 协议本身传不了二进制，所以必须由**本机终端**把文件送出去）。可选传 filePath，命令里的路径与文件名会直接填好。返回的命令默认带 --resolve **直连源站**，绕过 Cloudflare 的 100 秒请求上限（大文件走 Cloudflare 会被掐断）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1458,10 +1468,20 @@ const TOOL_HANDLERS = {
     const maxBytes = pgyerService.MAX_UPLOAD_BYTES;
     const tooBig = size > maxBytes;
 
+    // ⛔ 默认就给「直连源站」的命令：走 Cloudflare 时，上行慢的大文件会被它的 100 秒上限掐断
+    let host;
+    try {
+      host = new URL(MCP_PUBLIC_BASE).hostname;
+    } catch {
+      host = '';
+    }
+    const resolve = host && MCP_ORIGIN_IP ? `--resolve "${host}:443:${MCP_ORIGIN_IP}"` : '';
+
     const winCmd = [
       `curl.exe -X POST "${url}" \``,
       '  -H "x-mcp-token: <你的全权 MCP 令牌>" `',
       '  -H "Content-Type: application/octet-stream" `',
+      ...(resolve ? [`  ${resolve} \``] : []),
       `  --data-binary "@${rawPath || '<安装包绝对路径>'}"`,
     ].join('\n');
     // 给的是 Windows 路径时，Linux 命令里就不该照抄（会被误当成真的能直接用）
@@ -1471,6 +1491,7 @@ const TOOL_HANDLERS = {
       `curl -X POST "${url}" \\`,
       '  -H "x-mcp-token: <你的全权 MCP 令牌>" \\',
       '  -H "Content-Type: application/octet-stream" \\',
+      ...(resolve ? [`  ${resolve} \\`] : []),
       `  --data-binary "@${nixTarget}"`,
     ].join('\n');
 
@@ -1480,6 +1501,8 @@ const TOOL_HANDLERS = {
       authHeader: 'x-mcp-token: <你的全权 MCP 令牌>（也可用 Authorization: Bearer <令牌>）',
       body: '文件的原始字节（application/octet-stream）—— 不要用 multipart/form-data',
       fileName: rawName,
+      originIp: MCP_ORIGIN_IP || null,
+      bypassCloudflare: resolve || null,
       fileSizeBytes: size || null,
       maxBytes,
       oversized: tooBig,
@@ -1504,9 +1527,16 @@ const TOOL_HANDLERS = {
       ? `⛔ 这个文件 ${formatBytes(size)} 超过上限 ${formatBytes(maxBytes)}，会被 Cloudflare 拦掉，先别传。`
       : '把下面整段复制到本机终端执行（Windows 用 PowerShell 那一条）：';
 
+    const why = resolve
+      ? '\n\nℹ️ 命令里带了 --resolve：让流量**绕过 Cloudflare 直连源站**。' +
+        'Cloudflare 免费版对单次请求有 **100 秒上限**，上行慢时十几 MB 的包传不完就会被掐断' +
+        '（现象是 Connection was reset，而且源站日志里什么都没有，极难查）。直连实测快一倍以上。' +
+        '若直连不通（少数网络只放行 Cloudflare），**删掉 --resolve 那一行**即走域名。'
+      : '';
+
     return ok(
       data,
-      `${head}\n\n【Windows / PowerShell】\n${winCmd}\n\n【Linux / macOS】\n${nixCmd}\n\n` +
+      `${head}\n\n【Windows / PowerShell】\n${winCmd}\n\n【Linux / macOS】\n${nixCmd}${why}\n\n` +
         '⛔ 三个易错点：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
         '② 令牌用 MCP 的全权令牌（你 MCP 配置里 Authorization: Bearer 后面那串），只能放请求头；' +
         '③ 不要用 multipart，文件本身就是请求体。' +

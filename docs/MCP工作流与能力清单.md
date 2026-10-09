@@ -171,12 +171,16 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
    它返回**一条可直接复制执行的命令**；在本机终端跑它，文件以原始字节 POST 到
    `https://aige-saas-mcp.miaocaieyc.com.cn/upload`。
 
-   ⛔ 三个易错点（`get_upload_help` 的返回里也会一并说明）：
+   ⛔ 四个易错点（`get_upload_help` 的返回里也会一并说明）：
    - **Windows 必须写 `curl.exe`** —— PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，
      直接写 `curl` 会报参数错误，这是最容易卡住的一步
    - 令牌用 **MCP 的全权令牌**（不是面板登录令牌），而且**只能放请求头** ——
      放进 URL 的 `?token=` 会当场 401
    - **不要用 multipart**：文件本身就是请求体（`--data-binary @文件`）
+   - **别删命令里那行 `--resolve`** —— 它是「直连源站、绕过 Cloudflare」。CF 免费版对
+     单次请求有 **100 秒上限**，上行慢时十几 MB 的包传不完就被掐断（现象是
+     `Connection was reset`，且**源站日志里什么都没有**）。实测同一个 17.4MB 的 APK：
+     直连 **59 秒成功**，走 CF 则 240 秒仍未传完
 
    命令长这样（示例，实际以 `get_upload_help` 返回的为准）：
 
@@ -184,6 +188,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
    curl.exe -X POST "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk" `
      -H "x-mcp-token: <全权 MCP 令牌>" `
      -H "Content-Type: application/octet-stream" `
+     --resolve "aige-saas-mcp.miaocaieyc.com.cn:443:120.53.102.56" `
      --data-binary "@C:\path\to\app-release.apk"
    ```
 
