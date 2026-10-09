@@ -538,7 +538,9 @@ const TOOL_DEFINITIONS = [
   {
     name: 'get_distributed_app',
     description:
-      '获取蒲公英上某个应用的详情与全部历史版本（版本号、版本编号、体积、上传时间），并带上当前版本的下载页与二维码地址。需要先用 list_distributed_apps 拿到 appKey。',
+      '获取蒲公英上某个应用的详情与**真实历史版本列表**（每条含各自的 buildKey / 版本号 / 版本编号 / 体积 / 上传时间，最新在前），并带上当前版本的下载页与二维码。需要先用 list_distributed_apps 拿到 appKey。' +
+      '⚠️ 历史版本的 buildKey 是 delete_pgyer_build / set_pgyer_newest_build 的**唯一依据** —— 删版本前务必先用本工具核对 buildKey 与版本号对得上（删了不可恢复）。' +
+      '⚠️ 二维码只有当前版本有（蒲公英只对最新版下发），历史条目的 qrCodeUrl 为 null 属正常，不是缺失。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -589,12 +591,11 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'upload_app_to_pgyer',
-    description: `把安装包上传到蒲公英（内测分发）。
+    description: `把**公网网址上**的安装包上传到蒲公英（内测分发）：传 downloadUrl，服务端先下载再上传，全程不落我们的盘。
 
-⚠️ 这条**只适用于「安装包已经在一个公网网址上」**：传 downloadUrl，服务端先下载再上传，全程不落我们的盘。
-
-**如果安装包在使用者的本机（更常见），走这条路**：
-1) 先调 get_upload_help（可带上 filePath）→ 拿到一条可直接复制的命令；
+⛔ **安装包在使用者本机时，不要用这个工具** —— 它只收 URL，服务器读不到那台电脑的磁盘。
+本机文件请走 get_upload_help（那条路是通的、已实测跑过）：
+1) 调 get_upload_help（带上 filePath）→ 拿到一条可直接复制执行的命令；
 2) 在**本机终端**执行它 —— 文件原始字节直接作为请求体 POST 到 ${MCP_PUBLIC_BASE}/upload，
    鉴权用请求头 x-mcp-token: <全权令牌>（不能放 URL，也不要用 multipart）；
 3) 传完调 list_distributed_apps 把下载页与二维码取回来。
@@ -1641,9 +1642,14 @@ const TOOL_HANDLERS = {
       });
     }
     const data = await pgyerService.appDetail(appKey);
+    // 把每个版本的 buildKey 直接列在 message 里 —— AI 接下来要拿它调
+    // delete_pgyer_build / set_pgyer_newest_build，不必再去 data.history 里翻
+    const lines = data.history.map((h) => `v${h.version}=${h.buildKey}`).join(' ｜ ');
     return ok(
       data,
-      `${data.latest.name} 当前 v${data.latest.version}（${formatBytes(data.latest.fileSize)}），共 ${data.history.length} 个历史版本；下载页 ${data.latest.downloadPage || '未获取到'}`
+      `${data.latest.name} 当前 v${data.latest.version}（${formatBytes(data.latest.fileSize || 0)}）；` +
+        `共 ${data.history.length} 个版本（新 → 旧）：${lines}；` +
+        `下载页 ${data.latest.downloadPage || '未获取到'}`
     );
   },
 

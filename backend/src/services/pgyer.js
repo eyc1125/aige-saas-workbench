@@ -259,8 +259,11 @@ function slimBuild(b) {
     icon: b.iconUrl || iconUrl(b.buildIcon),
     // 短链 listMy 就会带；二维码只有 view / buildInfo 才有
     shortcutUrl: b.buildShortcutUrl || '',
-    qrCodeUrl: b.buildQRCodeURL || '',
-    downloadPage: b.buildShortcutUrl ? `https://www.pgyer.com/${b.buildShortcutUrl}` : '',
+    // ⚠️ 列表接口不给二维码（蒲公英只对「当前版本」通过 view / buildInfo 下发），
+    //    所以这里**给 null 而不是空串** —— 空串让调用方以为「有字段但值为空」，
+    //    null 才是「没有这个数据」。前端用 v-if 判断，两者都安全。
+    qrCodeUrl: b.buildQRCodeURL || null,
+    downloadPage: b.buildShortcutUrl ? `https://www.pgyer.com/${b.buildShortcutUrl}` : null,
     updateDescription: b.buildUpdateDescription || '',
     // 只有 view 返回。「今日下载」是内测分发最该看的数字之一
     todayDownloads: b.todayDownloadCount === undefined ? null : toNum(b.todayDownloadCount),
@@ -268,33 +271,55 @@ function slimBuild(b) {
 }
 
 /**
- * 拉齐所有页。
+ * 我的**应用**清单（每个应用一条，只含「当前版本」信息）。
  *
- * ⛔⛔ 这里踩过一个极其隐蔽的坑，务必别再踩：
- *   官方文档的响应示例把 data 写成**数组** —— `{ code: 0, data: [ {...} ] }`；
- *   但**实测**是 `{ code: 0, data: { list: [...], total: "2", page: 1 } }`，
- *   data 是**对象**、里面才套 `list`。
+ * ⛔⛔ 这里踩过两个坑，务必看清（一个是「解析成空」，一个是「凭空多出 5 个版本」）：
  *
- *   第一版就是照文档写的 `Array.isArray(data) ? data : []`，结果永远解析成空列表 ——
- *   表现是「我明明传过包，页面上一个都没有」，**而且不报错、code 还是 0**，
- *   属于最难发现的那类 bug。教训：**文档只用来定接口名与参数，返回结构必须以实测为准。**
+ *   坑一（解析）：官方文档把 data 写成**数组** —— `{ code: 0, data: [ {...} ] }`；
+ *   实测是 `{ code: 0, data: { list: [...], count, pageCount, page } }`，data 是**对象**。
+ *   照文档写 `Array.isArray(data) ? data : []` 会永远解析成空列表 ——
+ *   表现是「我明明传过包，页面上一个都没有」，**而且不报错、code 还是 0**。
+ *   ⇒ 两种形状都兼容。教训：**文档只用来定接口名与参数，返回结构必须以实测为准。**
  *
- *   所以两种形状都兼容（文档万一改回来也能活），并优先用 total 控制翻页。
+ *   坑二（翻页，2026-10-09 修）：返回体里**没有 `total` 字段**（只有 count / pageCount / page），
+ *   而且 **`page` 参数被忽略** —— `page=1` 与 `page=2` 返回的内容一模一样。
+ *   原来的写法「翻到没有为止」于是把同一页追加了 MAX_PAGES(5) 次，
+ *   表现是**一个应用凭空多出 5 个「历史版本」，且 5 条的 buildKey 完全相同** ——
+ *   界面看着像真有 5 个版本，其实是同一份数据复制了 5 遍（最难发现的那类假数据）。
+ *   ⇒ 所以这里**只取第 1 页，绝不循环**。历史版本要用下面那个 `listBuildsAll`。
  */
 async function listMyAll() {
+  const data = await cachedPost('listMy:1', '/apiv2/app/listMy', { page: 1 });
+  return Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : [];
+}
+
+/**
+ * 某个应用的**全部历史构建**（按页拉齐）。
+ * ------------------------------------------------------------------
+ * ⛔ 历史版本**不在** `listMy` 里（它只给「每个应用的最新版」），必须用
+ *   `/apiv2/app/builds`（实测存在，返回 `{ list, pageCount, currentPage }`）。
+ *   这是 `get_distributed_app` 的 history 的唯一正确来源 —— 没有它就拿不到旧版本的
+ *   buildKey，也就无法安全地 `delete_pgyer_build` / `set_pgyer_newest_build`。
+ *
+ * ⚠️ 返回的条目**不带 appKey**（接口是「按 appKey 查」的），由调用方补上。
+ * ⚠️ 也不带二维码（那只有 `view` / `buildInfo` 才有，只对当前版本可取）。
+ */
+async function listBuildsAll(appKey) {
   const all = [];
-  let total = null;
+  let pageCount = 1;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const data = await cachedPost(`listMy:${page}`, '/apiv2/app/listMy', { page });
+    const data = await cachedPost(`builds:${appKey}:${page}`, '/apiv2/app/builds', {
+      appKey,
+      page,
+    });
 
     const isArray = Array.isArray(data);
     const list = isArray ? data : Array.isArray(data?.list) ? data.list : [];
-    if (!isArray && data && data.total !== undefined) total = toNum(data.total);
+    if (!isArray && data && data.pageCount !== undefined) pageCount = toNum(data.pageCount) || 1;
 
     all.push(...list);
-    if (!list.length) break;
-    if (total !== null && all.length >= total) break;
+    if (!list.length || page >= pageCount) break;
   }
   return all;
 }
@@ -459,35 +484,57 @@ async function listApps() {
 
   const items = [];
   for (const g of groups.values()) {
+    // ⛔ 版本数必须问 /apiv2/app/builds —— listMy 每个应用只给「最新版」一条，
+    //    拿它的条数当版本数会得到假数字（早期就因此把同一页重复算成 5 个版本）。
+    // eslint-disable-next-line no-await-in-loop
+    const all = await listBuildsAll(g.appKey);
+    const mine = all.map((b) => slimBuild({ ...b, appKey: g.appKey }));
     // buildBuildVersion 是蒲公英生成的版本序号，**最大的是最新**（注意它是字符串）
-    g.builds.sort((a, b) => b.buildNumber - a.buildNumber);
+    mine.sort((a, b) => b.buildNumber - a.buildNumber);
+
     // 只给当前版本补二维码 / 今日下载（view 只调这一次，不是每个历史版本都调）
     // eslint-disable-next-line no-await-in-loop
-    const latest = await enrichFromView(g.builds[0]);
+    const latest = await enrichFromView(mine[0] || g.builds[0]);
     items.push({
       appKey: g.appKey,
       name: latest.name || g.name,
       icon: latest.icon || g.icon,
       type: latest.type || g.type,
       identifier: latest.identifier || g.identifier,
-      versionCount: g.builds.length,
+      versionCount: mine.length || 1,
       latest,
     });
   }
 
   items.sort((a, b) => String(b.latest.createdAt).localeCompare(String(a.latest.createdAt)));
-  return { items, totalApps: items.length, totalBuilds: builds.length };
+  return {
+    items,
+    totalApps: items.length,
+    // 版本总数 = 各应用**真实**版本数之和（不是 listMy 的条数）
+    totalBuilds: items.reduce((n, a) => n + a.versionCount, 0),
+  };
 }
 
-/** 单个应用详情（含历史版本，最新的在前） */
+/** 单个应用详情（含**真实历史版本**，最新的在前） */
 async function appDetail(appKey) {
   const key = String(appKey || '').trim();
   if (!key) throw new AppError('需要提供 appKey', 400, 'INVALID_PARAM');
 
-  const all = await listMyAll();
-  const mine = all.map(slimBuild).filter((b) => b.appKey === key);
+  // ⛔ 历史版本只能来自 /apiv2/app/builds。
+  //    以前这里用 listMy 的结果当 history —— 而 listMy 每个应用只有一条（且当时还被
+  //    重复追加 5 次），于是「历史列表」实际是同一个最新版复制了 5 份：
+  //    buildKey 全一样，拿去 delete_pgyer_build 就等于删最新版，非常危险。
+  const raw = await listBuildsAll(key);
+  const mine = raw.map((b) => slimBuild({ ...b, appKey: key }));
+
   if (!mine.length) {
-    throw new AppError('在蒲公英账号下找不到这个应用', 404, 'NOT_FOUND');
+    // 空列表要分清两种情况：应用不存在 vs 应用在但一个包都没传过
+    const exists = (await listMyAll()).some((b) => b.appKey === key);
+    throw new AppError(
+      exists ? '这个应用下还没有任何安装包' : '在蒲公英账号下找不到这个应用',
+      404,
+      'NOT_FOUND'
+    );
   }
   mine.sort((a, b) => b.buildNumber - a.buildNumber);
 
