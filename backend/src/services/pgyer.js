@@ -173,10 +173,28 @@ async function httpForm(path, { form = {}, query = {}, timeout = TIMEOUT_MS } = 
   return { status: res.status, json };
 }
 
+/**
+ * 有些错误官方只回**英文原文**、也没有稳定的业务码可对应（实测：设置最新版失败时
+ * 返回的就是 `Setting failed. Please check The App version is published.`）。
+ * 这几条按**原文关键词**翻成人话 —— 否则用户拿到一句英文，不知道下一步该做什么。
+ */
+const MESSAGE_HINT = [
+  [
+    /version is published/i,
+    '设置最新版本失败。常见原因：这个版本不存在，或者还在解析中、还没发布完成。请先用 get_distributed_app 确认版本状态，稍后再试',
+  ],
+];
+
 /** 把蒲公英的业务错误转成「用户该做什么」 */
 function toApiError(json) {
   const code = json?.code;
-  const msg = CODE_HINT[code] || json?.message || `蒲公英返回未知错误（code: ${code}）`;
+  const raw = String(json?.message || '');
+  const byMessage = MESSAGE_HINT.find(([re]) => re.test(raw));
+  const msg =
+    CODE_HINT[code] ||
+    (byMessage ? byMessage[1] : '') ||
+    raw ||
+    `蒲公英返回未知错误（code: ${code}）`;
   const keyInvalid = code === 1002 || code === 1055;
   const userFault = USER_FAULT_CODES.has(code);
 
@@ -481,6 +499,183 @@ async function appDetail(appKey) {
   };
 }
 
+// ============================================================
+// 写操作（改 / 删 / 从网址上传）
+// ============================================================
+// ⚠️ 这些接口都是**不可恢复**或**会影响线上下载页**的动作，所以：
+//   · 参数先做非空校验，报错说清「缺什么」
+//   · 每次写完清缓存，避免列表页还是旧的
+//   · 官方是「传空即清空」，所以 updateBuild 只带明确给了的字段，
+//     绝不能无脑把 undefined 变成 ''
+// ============================================================
+
+/**
+ * 部分接口必须带「用户 KEY」，否则蒲公英直接报 1012（User key 不能为空）。
+ * 缺了就给出「去哪填」的可操作提示，而不是把 1012 原样抛给用户。
+ */
+function assertUserKey() {
+  const key = String(settings.get('pgyer_user_key') || '').trim();
+  if (!key) {
+    throw new AppError(
+      '蒲公英的这个接口必须带「用户 KEY」（否则官方报 1012）。请到「系统设置 → 蒲公英」把用户 KEY 填上再试。',
+      400,
+      'PGYER_USER_KEY_MISSING'
+    );
+  }
+  return key;
+}
+
+/** 删除指定版本（**不可恢复**） */
+async function deleteBuild(buildKey) {
+  const key = String(buildKey || '').trim();
+  if (!key) throw new AppError('需要提供 buildKey', 400, 'INVALID_PARAM');
+  await apiPost('/apiv2/app/buildDelete', { buildKey: key });
+  clearCache();
+  return { buildKey: key };
+}
+
+/** 删除整个应用（**含全部历史版本，不可恢复**） */
+async function deleteApp(appKey) {
+  const key = String(appKey || '').trim();
+  if (!key) throw new AppError('需要提供 appKey', 400, 'INVALID_PARAM');
+  await apiPost('/apiv2/app/deleteApp', { appKey: key });
+  clearCache();
+  return { appKey: key };
+}
+
+/** 设置 / 取消「最新版本」标记（下错了版本、想让历史版本顶上来时用） */
+async function setNewestBuild(buildKey, isNewest = true) {
+  const key = String(buildKey || '').trim();
+  if (!key) throw new AppError('需要提供 buildKey', 400, 'INVALID_PARAM');
+  const path = isNewest ? '/apiv2/app/setNewestVersion' : '/apiv2/app/cancelNewestVersion';
+  await apiPost(path, { buildKey: key });
+  clearCache();
+  return { buildKey: key, isNewest: !!isNewest };
+}
+
+/** 修改指定版本的更新说明 / 版本号 / 安装方式 / 安装密码 */
+async function updateBuild(buildKey, patch = {}) {
+  const key = String(buildKey || '').trim();
+  if (!key) throw new AppError('需要提供 buildKey', 400, 'INVALID_PARAM');
+
+  const form = { userKey: assertUserKey(), buildKey: key };
+  if (patch.updateDescription !== undefined)
+    form.buildUpdateDescription = String(patch.updateDescription);
+  if (patch.version !== undefined) form.buildVersion = String(patch.version);
+  if (patch.installType !== undefined) form.buildInstallType = String(patch.installType);
+  if (patch.password !== undefined) form.buildPassword = String(patch.password);
+
+  // form 里已经有 userKey 与 buildKey 两项，所以「没有第三项」= 没给要改的内容
+  if (Object.keys(form).length <= 2) {
+    throw new AppError(
+      '没有要改的内容：updateDescription / version / installType / password 至少要给一个',
+      400,
+      'INVALID_PARAM'
+    );
+  }
+
+  await apiPost('/apiv2/app/updateApp', form);
+  clearCache();
+  return {
+    buildKey: key,
+    updated: Object.keys(form).filter((k) => k !== 'userKey' && k !== 'buildKey'),
+  };
+}
+
+/** 从 URL 里尽量推断一个带合法扩展名的文件名（扩展名决定蒲公英的 buildType） */
+function fileNameFromUrl(parsed, contentDisposition = '') {
+  const star = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(String(contentDisposition || ''));
+  if (star && /\.(apk|ipa|hap)$/i.test(star[1])) return decodeURIComponent(star[1].trim());
+
+  const base = decodeURIComponent(
+    String(parsed.pathname || '')
+      .split('/')
+      .pop() || ''
+  ).trim();
+  if (/\.(apk|ipa|hap)$/i.test(base)) return base;
+  return '';
+}
+
+/**
+ * 服务器端下载一个 URL，再上传到蒲公英
+ * ------------------------------------------------------------------
+ * 用于「安装包在某个网址上」的场景（CDN / 对象存储 / 别的下载站）。
+ * 全程在内存里过一遍、**不落盘**，上限同样 100MB。
+ *
+ * ⚠️ 局限要说清：如果安装包在**使用者自己的电脑上**，这个方法帮不上忙 ——
+ *    服务器看不到那台电脑的磁盘。那种情况请用工作台「应用分发」页拖拽上传，
+ *    或在有终端的环境直接 POST 到 MCP 的上传入口（见 MCP 说明书）。
+ */
+async function uploadFromUrl(url, { fileName = '', updateDescription = '' } = {}) {
+  assertConfigured();
+
+  let parsed;
+  try {
+    parsed = new URL(String(url || '').trim());
+  } catch {
+    throw new AppError(
+      'downloadUrl 不是合法地址（要以 http:// 或 https:// 开头）',
+      400,
+      'INVALID_PARAM'
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new AppError('downloadUrl 只支持 http / https', 400, 'INVALID_PARAM');
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(parsed.href, { signal: ctrl.signal, redirect: 'follow' });
+  } catch (err) {
+    throw new AppError(`下载失败：${err.message}`, 400, 'DOWNLOAD_FAILED');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    throw new AppError(
+      `下载失败：远端返回 ${res.status} ${res.statusText}`,
+      400,
+      'DOWNLOAD_FAILED'
+    );
+  }
+
+  // 先看 Content-Length，能提前拒绝就别白下载 100MB
+  const declared = Number(res.headers.get('content-length')) || 0;
+  if (declared > MAX_UPLOAD_BYTES) {
+    throw new AppError(
+      `远端文件 ${(declared / 1024 / 1024).toFixed(1)}MB 超过上限 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB`,
+      413,
+      'FILE_TOO_LARGE'
+    );
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    throw new AppError(
+      `远端文件 ${(buffer.length / 1024 / 1024).toFixed(1)}MB 超过上限 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB`,
+      413,
+      'FILE_TOO_LARGE'
+    );
+  }
+
+  const name =
+    String(fileName || '').trim() ||
+    fileNameFromUrl(parsed, res.headers.get('content-disposition')) ||
+    '';
+  if (!name) {
+    throw new AppError(
+      '没法从下载地址判断安装包类型。请额外传 fileName（如 myapp.apk）—— 扩展名决定蒲公英把它归为 Android 还是 iOS',
+      400,
+      'INVALID_FILE_TYPE'
+    );
+  }
+
+  return uploadApp(buffer, name, { updateDescription });
+}
+
 module.exports = {
   CACHE_TTL,
   MAX_UPLOAD_BYTES,
@@ -490,5 +685,10 @@ module.exports = {
   listApps,
   appDetail,
   uploadApp,
+  uploadFromUrl,
+  deleteBuild,
+  deleteApp,
+  setNewestBuild,
+  updateBuild,
   iconUrl,
 };

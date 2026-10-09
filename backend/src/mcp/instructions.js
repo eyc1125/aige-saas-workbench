@@ -70,7 +70,18 @@ const TOOL_GROUPS = [
     tools: ['list_app_templates', 'deploy_app', 'get_deploy_logs'],
   },
   { group: '代码仓库（GitHub，只读）', tools: ['list_repo_commits', 'get_ci_status'] },
-  { group: '应用分发（蒲公英，只读）', tools: ['list_distributed_apps', 'get_distributed_app'] },
+  {
+    group: '应用分发（蒲公英）',
+    tools: [
+      'list_distributed_apps',
+      'get_distributed_app',
+      'upload_app_to_pgyer',
+      'update_pgyer_build',
+      'set_pgyer_newest_build',
+      'delete_pgyer_build',
+      'delete_pgyer_app',
+    ],
+  },
   { group: '计划任务（宝塔，只读）', tools: ['list_crontabs'] },
   { group: '万能兜底', tools: ['call_bt_api'] },
 ];
@@ -102,8 +113,9 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - **宝塔面板** —— 站点、Nginx 配置、SSL 证书、文件与备份、**计划任务**（只读）、
   防火墙/FTP/数据库（用 \`call_bt_api\` 兜底）已覆盖
 - **Cloudflare** —— 域名区域、DNS 解析、SSL 模式、边缘缓存已覆盖
-- **蒲公英（内测分发）** —— 看版本/下载页/二维码用下面的只读工具；**上传安装包也由本工作台承担**
-  （见下方「把安装包发到蒲公英」），**不需要再单独挂蒲公英官方 MCP 或装 CLI**
+- **蒲公英（内测分发）** —— 看版本/下载页/二维码、**上传安装包**、改版本说明、
+  设/取消最新版本、删版本、删应用，都由本工作台承担，
+  **不需要再单独挂蒲公英官方 MCP、Agent Skill 或装 CLI**
 
 > ⚠️ **主人已经（或即将）停用宝塔面板与 Cloudflare 的官方 MCP，只保留本工作台这一个。**
 > 这意味着：宝塔/Cloudflare 的任何操作**都只能走这里** —— 本系统封装的工具优先，
@@ -184,9 +196,12 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - \`list_distributed_apps\` — 账号下的应用清单：当前版本号、版本编号、安装包体积、上传时间，
   以及**下载页地址与二维码地址**
 - \`get_distributed_app\` — 某个应用的全部历史版本（先用上面那个拿 appKey）
-- ⚠️ 这两个**工具**是只读的（它们跑在服务器上、读不到用户本机的安装包）。
-  **但上传本身由本工作台承担** —— 用下面的「把安装包发到蒲公英」那条路，
-  不要再让用户去装蒲公英官方 MCP 或 CLI。
+- \`upload_app_to_pgyer\` — 上传安装包（**包已经在一个网址上**时用它：给 downloadUrl，服务端先下载再传）
+- \`update_pgyer_build\` — 改某个版本的更新说明 / 版本号 / 安装方式 / 安装密码
+- \`set_pgyer_newest_build\` — 设 / 取消「最新版本」标记。**传错版本时用它，比删了重传安全**
+- \`delete_pgyer_build\` — ⛔ 删一个版本（不可恢复）
+- \`delete_pgyer_app\` — ⛔⛔ 删整个应用（连全部历史版本，不可恢复）
+- ⚠️ **上传 / 改 / 删都是写操作**：只读令牌的连接里这几个工具不会出现，硬调也会被拒
 
 **⑨ 计划任务（宝塔 · 只读）**
 - \`list_crontabs\` — 服务器上的**全部**计划任务：名称、执行周期、是否启用、执行身份、分类，
@@ -272,22 +287,30 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 要看历史版本用 \`get_distributed_app\`（传 appKey）。
 
 **「把这个 APK 发到蒲公英 / 给我一个安装二维码」**
-按你手上有没有终端能力选一条，**都不要再让用户去装蒲公英官方 MCP 或 CLI**：
+**先判断包在哪**，再选一条路 —— 三条路都不要再让用户去装蒲公英官方 MCP / Agent Skill / CLI：
 
-1. **有终端能力（推荐）** —— 直接在**用户本机**跑一条 curl。
-   curl 读的是本机文件、走 HTTPS 推到工作台，工作台再转交蒲公英：
+1. **包已经在一个网址上**（CDN / 对象存储 / 别的下载站）→ 直接调
+   \`upload_app_to_pgyer({ downloadUrl, fileName? })\`，服务端自己下载再上传、不落盘。
+2. **包在使用者本机、而你有终端能力**（最常见）→ 在**本机**跑一条 curl，
+   推到 **MCP 的上传入口**：
    \`\`\`bash
    curl -X POST --data-binary @app-release.apk \\
-     -H "Authorization: Bearer <工作台令牌>" \\
-     "https://<面板域名>/api/distribute/upload?fileName=app-release.apk"
+     -H "x-mcp-token: <你手上这把 MCP 令牌>" \\
+     -H "Content-Type: application/octet-stream" \\
+     "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk"
    \`\`\`
-   传完再调 \`list_distributed_apps\` 把二维码与下载页取回来给用户。
-2. **没有终端能力** —— 让用户打开「应用分发」页，把安装包**拖进上传区**，
-   页面上会直接出现二维码。
+   ⛔ 用的是 **MCP 令牌**（不是面板登录态），而且**只能放请求头** ——
+   放 URL 的 \`?token=\` 会建连即 401。⛔ 也**不要**用 multipart：文件本身就是请求体。
+3. **包在使用者本机、你没有终端能力** → 只能让用户打开工作台「应用分发」页，
+   把安装包**拖进上传区**，页面上会直接出现二维码。
+   （MCP 协议传不了二进制，这是协议边界，别硬试、也别反复重试。）
 
-⚠️ 三条别踩：① **不要**用 \`read_file\` 去读用户本机的 APK（读不到，工具在服务器上跑）；
-② 不要把安装包写到服务器上再传 —— 那条路纯属绕远；③ 单个安装包上限 **100MB**
-（Cloudflare 免费版与两层 nginx 都是这个数），超了要在上传前就告诉用户，别等传一半才报错。
+传完都可以调 \`list_distributed_apps\` 把**二维码与下载页**取回来给用户。
+
+⚠️ 三条别踩：① **不要**用 \`read_file\` 去读使用者本机的安装包（读不到，工具在服务器上跑）；
+② **不要**先把包读进上下文再传 —— 二进制过不了 JSON，几十 MB 塞不进去；
+③ 单个安装包上限 **100MB**（Cloudflare 免费版与两层 nginx 都是这个数），
+超了要在动手前就告诉用户，别等传一半才报错。
 
 
 **「磁盘快满了」**

@@ -45,6 +45,7 @@ const {
 
 const config = require('../config');
 const settings = require('../services/settings');
+const pgyerService = require('../services/pgyer');
 const { TOOL_DEFINITIONS, callTool, READONLY_TOOLS } = require('./tools');
 const { SERVER_INFO, SERVER_INSTRUCTIONS } = require('./instructions');
 
@@ -340,6 +341,86 @@ async function startMcpServer() {
       }
     }
     return undefined;
+  });
+
+  /**
+   * 安装包上传入口（HTTP，给「有终端」的 AI / 脚本用）
+   * ------------------------------------------------------------------
+   * ⛔ 为什么开在 MCP 服务上，而不是复用面板的 `/api/distribute/upload`：
+   *    面板那个接口要**面板登录态**（JWT），而 AI 手上只有 MCP 令牌 —— 它拿不到面板 JWT，
+   *    于是「把本机这个 APK 发到蒲公英」这件事在 MCP 侧就是断的。
+   *    MCP 令牌本来就能调 `call_bt_api` 做任意服务器操作，所以把上传开在这里**没有放宽信任边界**。
+   *
+   * 用法（本机打包完，一条命令发走）：
+   *   curl -X POST "https://<mcp 域名>/upload?fileName=app.apk" \
+   *        -H "x-mcp-token: <全权令牌>" -H "Content-Type: application/octet-stream" \
+   *        --data-binary @app.apk
+   *
+   * ⚠️ 只认**全权**令牌：上传会改变线上分发的版本，只读令牌一律 403。
+   * ⚠️ 文件在内存里过一遍就转给蒲公英对象存储，**不落我们的盘**。
+   */
+  app.post(
+    '/upload',
+    authMiddleware,
+    express.raw({
+      type: () => true,
+      limit: `${Math.ceil(pgyerService.MAX_UPLOAD_BYTES / 1024 / 1024)}mb`,
+    }),
+    async (req, res) => {
+      if (req.mcpScope !== SCOPE_FULL) {
+        return res.status(403).json({
+          code: 'FORBIDDEN',
+          message: '上传会改变线上分发的版本，只读令牌不行，请改用全权令牌。',
+          data: null,
+        });
+      }
+
+      const fileName = String(req.query.fileName || req.headers['x-file-name'] || '').trim();
+      const updateDescription = String(req.query.updateDescription || '').trim();
+      const buffer = req.body;
+
+      if (!Buffer.isBuffer(buffer) || !buffer.length) {
+        return res.status(400).json({
+          code: 'EMPTY_BODY',
+          message:
+            '没有收到文件内容。请以 application/octet-stream 把文件直接作为请求体发送（不要用 multipart/form-data）。',
+          data: null,
+        });
+      }
+
+      try {
+        const result = await pgyerService.uploadApp(buffer, fileName, { updateDescription });
+        return res.json({
+          code: 0,
+          message: result.pending
+            ? '安装包已上传，蒲公英还在解析，稍后刷新即可看到新版本'
+            : `上传成功：${result.name} v${result.version}`,
+          data: result,
+        });
+      } catch (err) {
+        return res.status(err.status || 500).json({
+          code: err.code || 'ERROR',
+          message: err.message,
+          data: null,
+        });
+      }
+    }
+  );
+
+  // 兜底错误处理：让任何异常都以 JSON 回去，而不是 Express 默认的 HTML 错误页
+  // （客户端拿到 HTML 时只会说「返回了非 JSON」，排查方向会被带偏）
+  app.use((err, _req, res, _next) => {
+    const tooLarge = err?.type === 'entity.too.large';
+    const limitMb = err?.limit ? Math.round(err.limit / 1024 / 1024) : null;
+    console.error('[mcp] 请求处理失败：', err?.message);
+    if (res.headersSent) return;
+    res.status(tooLarge ? 413 : err?.status || 500).json({
+      code: tooLarge ? 'ENTITY_TOO_LARGE' : err?.code || 'INTERNAL_ERROR',
+      message: tooLarge
+        ? `请求体太大${limitMb ? `，上限 ${limitMb}MB` : ''}。请换更小的安装包。`
+        : err?.message || '服务器内部错误',
+      data: null,
+    });
   });
 
   return new Promise((resolve) => {

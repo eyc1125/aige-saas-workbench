@@ -546,6 +546,94 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'upload_app_to_pgyer',
+    description:
+      '把安装包上传到蒲公英（内测分发）。用于「安装包已经在一个网址上」的情况：给它 downloadUrl，服务端先下载再上传，全程不落我们的盘。支持 .apk / .ipa / .hap，单包 ≤ 100MB。上传会**新增一个版本**，不会覆盖旧版本。⚠️ 如果安装包在**使用者自己的电脑上**，这条路帮不上忙（服务器看不到那台电脑的磁盘）—— 请改用说明书里另外两条路：工作台「应用分发」页拖拽，或有终端时用 curl 直传 MCP 的 /upload。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        downloadUrl: {
+          type: 'string',
+          description: '安装包的下载地址（http/https，服务器能访问到即可）',
+        },
+        fileName: {
+          type: 'string',
+          description:
+            '文件名，如 myapp.apk。省略时会从下载地址和响应头里推断；推断不出来必须给 —— 扩展名决定蒲公英归为 Android 还是 iOS',
+        },
+        updateDescription: { type: 'string', description: '这个版本的更新说明（会显示在下载页）' },
+      },
+      required: ['downloadUrl'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'update_pgyer_build',
+    description:
+      '修改蒲公英上某个版本的更新说明 / 版本号 / 安装方式 / 安装密码。需要先用 list_distributed_apps 或 get_distributed_app 拿到 buildKey。⚠️ 官方接口是「传空即清空」，所以这里**只带明确给了的字段**，没给的字段原样保留。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        buildKey: {
+          type: 'string',
+          description: '版本标识，从 get_distributed_app 的历史版本里取',
+        },
+        updateDescription: { type: 'string', description: '更新说明' },
+        version: { type: 'string', description: '版本号，如 1.2.0' },
+        installType: {
+          type: 'number',
+          description: '安装方式：2 = 密码安装，3 = 邀请安装',
+        },
+        password: { type: 'string', description: '安装密码（installType 为 2 时使用）' },
+      },
+      required: ['buildKey'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_pgyer_newest_build',
+    description:
+      '把蒲公英上某个版本设为「最新版本」，或取消它的最新标记。传错版本、想让正确的版本顶到下载页最上面时用它 —— 这比删掉重传安全得多。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        buildKey: { type: 'string', description: '版本标识' },
+        isNewest: {
+          type: 'boolean',
+          description: 'true 设为最新版本（默认），false 取消最新标记',
+        },
+      },
+      required: ['buildKey'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_pgyer_build',
+    description:
+      '⛔ 删除蒲公英上的**一个版本**，不可恢复。调用前务必先用 get_distributed_app 核对 buildKey 与版本号对得上。只是不想让它当最新版，请用 set_pgyer_newest_build，不要删。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        buildKey: { type: 'string', description: '要删除的版本标识（务必先核对）' },
+      },
+      required: ['buildKey'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_pgyer_app',
+    description:
+      '⛔⛔ 删除蒲公英上的**整个应用**（连它的全部历史版本一起删，不可恢复）。只在确认这个内测应用彻底不再需要时使用；只是想清旧版本请用 delete_pgyer_build。删之前建议先跟使用者确认一次应用名。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appKey: { type: 'string', description: '应用标识，从 list_distributed_apps 取' },
+      },
+      required: ['appKey'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ============================================================
@@ -632,6 +720,13 @@ const WRITE_TOOLS = new Set([
   // 应用部署
   'deploy_app',
 
+  // 应用分发（蒲公英）：上传会新增线上版本，改/删直接影响下载页，全算写
+  'upload_app_to_pgyer',
+  'update_pgyer_build',
+  'set_pgyer_newest_build',
+  'delete_pgyer_build',
+  'delete_pgyer_app',
+
   // 自愈修复
   'apply_health_fix',
 
@@ -658,6 +753,10 @@ const pickZoneId = (args = {}) => String(args.zone_id || args.zoneId || '').trim
 
 /** 取「记录 ID」：同理，\`record_id\` 与 \`recordId\` 都认 */
 const pickRecordId = (args = {}) => String(args.record_id || args.recordId || '').trim();
+
+/** 取蒲公英的「版本标识」：\`buildKey\` / \`build_key\` / \`key\` 都认 */
+const pickBuildKey = (args = {}) =>
+  String(args.buildKey || args.build_key || args.key || '').trim();
 
 /** Cloudflare 的 zone_id 形状：32 位十六进制（用来区分「这是 ID」还是「这是域名」） */
 const looksLikeZoneId = (v) => /^[0-9a-f]{32}$/i.test(String(v || ''));
@@ -1337,6 +1436,78 @@ const TOOL_HANDLERS = {
     );
   },
 
+  /** 33. 上传安装包到蒲公英（从网址拉取） */
+  async upload_app_to_pgyer(args = {}) {
+    const url = String(args.downloadUrl || args.url || '').trim();
+    if (!url) {
+      return { success: false, data: null, message: '需要提供 downloadUrl（安装包的下载地址）' };
+    }
+    const r = await pgyerService.uploadFromUrl(url, {
+      fileName: String(args.fileName || '').trim(),
+      updateDescription: String(args.updateDescription || '').trim(),
+    });
+    return ok(
+      r,
+      r.pending
+        ? '安装包已上传，蒲公英还在解析，稍后刷新即可看到新版本'
+        : `上传成功：${r.name} v${r.version}（${formatBytes(r.fileSize)}）`
+    );
+  },
+
+  /** 34. 修改蒲公英版本信息（更新说明 / 版本号 / 安装方式 / 密码） */
+  async update_pgyer_build(args = {}) {
+    const buildKey = pickBuildKey(args);
+    if (!buildKey) {
+      return {
+        success: false,
+        data: null,
+        message: '需要提供 buildKey（从 get_distributed_app 的历史版本里取）',
+      };
+    }
+    const r = await pgyerService.updateBuild(buildKey, {
+      updateDescription: args.updateDescription,
+      version: args.version,
+      installType: args.installType,
+      password: args.password,
+    });
+    return ok(r, `已更新版本 ${buildKey} 的：${r.updated.join('、')}`);
+  },
+
+  /** 35. 设置 / 取消「最新版本」标记 */
+  async set_pgyer_newest_build(args = {}) {
+    const buildKey = pickBuildKey(args);
+    if (!buildKey) return { success: false, data: null, message: '需要提供 buildKey' };
+    const isNewest = args.isNewest !== false;
+    const r = await pgyerService.setNewestBuild(buildKey, isNewest);
+    return {
+      ...ok(r, isNewest ? `已把 ${buildKey} 设为最新版本` : `已取消 ${buildKey} 的最新版本标记`),
+      // 这会直接改变下载页上「最新版是哪个」，属于要留痕的动作
+      audit: { before: { buildKey, isNewest: !isNewest }, after: { buildKey, isNewest } },
+    };
+  },
+
+  /** 36. 删除蒲公英上的一个版本（⛔ 不可恢复） */
+  async delete_pgyer_build(args = {}) {
+    const buildKey = pickBuildKey(args);
+    if (!buildKey) return { success: false, data: null, message: '需要提供 buildKey' };
+    const r = await pgyerService.deleteBuild(buildKey);
+    return {
+      ...ok(r, `已删除版本 ${buildKey}。此操作不可恢复`),
+      audit: { before: { buildKey, exists: true }, after: { buildKey, deleted: true } },
+    };
+  },
+
+  /** 37. 删除蒲公英上的整个应用（⛔ 连历史版本一起删，不可恢复） */
+  async delete_pgyer_app(args = {}) {
+    const appKey = String(args.appKey || args.app_key || '').trim();
+    if (!appKey) return { success: false, data: null, message: '需要提供 appKey' };
+    const r = await pgyerService.deleteApp(appKey);
+    return {
+      ...ok(r, `已删除应用 ${appKey}（含全部历史版本）。此操作不可恢复`),
+      audit: { before: { appKey, exists: true }, after: { appKey, deleted: true } },
+    };
+  },
+
   /** 32. 计划任务清单（C3，只读） */
   async list_crontabs({ owner, keyword, limit }) {
     const count = clampLimit(limit, 50, 200);
@@ -1473,6 +1644,8 @@ async function callTool(name, args = {}) {
         args.container_id ||
         args.task_id ||
         args.app_name ||
+        args.appKey ||
+        args.buildKey ||
         args.checkId ||
         null,
       source: 'mcp',
