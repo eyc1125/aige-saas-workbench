@@ -151,7 +151,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 18 个**（不会
 | 工具 | 关键参数 | 做什么 |
 | --- | --- | --- |
 | `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
-| `get_distributed_app` | `appKey` | 某个应用的全部历史版本（appKey 从上面那个工具拿） |
+| `get_distributed_app` | `appKey` | 某个应用的**真实历史版本**（appKey 从上面那个工具拿）：每条含各自的 `buildKey` / 版本号 / 版本编号 / 体积 / 上传时间，新的在前。⚠️ 历史条目的 `qrCodeUrl` 为 `null` 属正常（蒲公英只对当前版本下发二维码） |
 | `get_upload_help` | `filePath?` `fileSizeBytes?` | **把「本机文件」传上来的唯一路径**：返回一条可直接复制执行的命令（端点 / 鉴权头 / 字段都填好）。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码 |
 | `upload_app_to_pgyer` | `downloadUrl` `fileName?` `updateDescription?` | 把**网址上的**安装包传到蒲公英（服务端先下载再上传，全程不落盘），单包 ≤ 100MB |
 | `update_pgyer_build` | `buildKey` `updateDescription?` `version?` `installType?` `password?` | 改更新说明 / 版本号 / 安装方式 / 安装密码（**只带明确给了的字段**） |

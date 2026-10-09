@@ -1057,6 +1057,37 @@ curl.exe -X POST "https://<mcp 域名>/upload?fileName=app.apk" `
 > 📌 两条教训：① **「源站日志里什么都没有」不等于「请求没发出」** —— 要往上查一层（CDN / 反代）；
 > ② **CDN 的超时不是靠改源站能解决的**，把 nginx 调宽是白费功夫。
 
+### 17.23 蒲公英 `listMy` 的 `page` 是「假分页」—— 会凭空多出版本
+
+**现象**：`get_distributed_app` 返回的 history 有 **5 条**，但 5 条的
+**buildKey / 版本号 / 上传时间 / 体积完全一样** —— 历史列表被「最新版」同一份数据填满。
+更危险的是：拿这些 buildKey 去 `delete_pgyer_build`，删掉的其实是**最新版**。
+
+**根因（两层叠在一起）**：
+1. **`listMy` 返回的是「应用」不是「版本」**：每个应用一条、只含当前版本。历史版本**根本不在这个接口里**。
+2. **返回体没有 `total` 字段**（只有 `count` / `pageCount` / `page`），而且 **`page` 参数被忽略** ——
+   实测 `page=1` 与 `page=2` 返回的内容**一模一样**。原代码写的是「翻到没有为止」，
+   于是同一页被追加 `MAX_PAGES`(5) 次 → 一个应用**凭空多出 5 个「版本」**。
+
+**修法**：
+- `listMy` **只取第 1 页，绝不循环**；
+- 历史版本改走 **`/apiv2/app/builds`**（实测存在，返回 `{ list, pageCount, currentPage }`），
+  按 `pageCount` 翻页 —— 这才是「各版本各自 buildKey」的正确来源：
+
+  ```bash
+  curl -s -X POST -d "_api_key=***&appKey=***&page=1" https://www.pgyer.com/apiv2/app/builds
+  # {"code":0,"data":{"list":[
+  #   {"buildKey":"611b…","buildVersion":"0.0.03","buildIsLastest":"1"},
+  #   {"buildKey":"2ce6…","buildVersion":"0.0.02","buildIsLastest":"2"}],
+  #   "pageCount":1,"currentPage":1}}
+  ```
+
+- 二维码 / 下载页缺失时给 `null` 而不是空串（历史条目本来就没有二维码 —— 蒲公英只对当前版本下发）。
+
+> 📌 教训：**「翻页直到空」这种写法的前提，是分页参数真的生效**。
+> 一旦看到「同一份数据重复 N 次」的假数据，第一反应就该去查分页参数 ——
+> 这次是 `page` 无效 + 没有 `total` 兜底，两个坑正好叠在一起，而且**不报错、code 还是 0**。
+
 ---
 
 ## 十八、本次交付的部署实录
