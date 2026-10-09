@@ -85,12 +85,27 @@ jobs:
           if [ -z "$FROM" ] || [ "$FROM" = "$TO" ] || ! git rev-parse --verify --quiet "$FROM" >/dev/null 2>&1; then
             echo "只校验 HEAD：$TO（起点 ${FROM:-<空>} 不可用或与终点相同）"
             git log -1 --pretty='%h %s'
-            npx commitlint --last --verbose
-            exit 0
+            ARGS="--last"
+          else
+            echo "校验范围：$FROM..$TO"
+            git log --oneline "$FROM..$TO" | head -20
+            ARGS="--from $FROM --to $TO"
           fi
 
-          echo "校验范围：$FROM..$TO"
-          npx commitlint --from "$FROM" --to "$TO" --verbose
+          # ⛔ 失败时把 commitlint 的**原话**写成 GitHub 注解。
+          #    默认那条注解只有一句「Process completed with exit code 1.」——
+          #    而 Actions 的运行日志在未登录时根本看不到（"Sign in to view logs"），
+          #    等于什么都没说，排查成本极高（本项目为此白绕了一大圈）。
+          if OUT=$(npx commitlint $ARGS --verbose 2>&1); then
+            echo "$OUT"
+            echo "✅ 提交信息合规"
+          else
+            echo "$OUT"
+            echo "$OUT" | tail -10 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
 
   # ---------------- 2. 后端语法（快，不用装依赖） ----------------
   backend-syntax:
