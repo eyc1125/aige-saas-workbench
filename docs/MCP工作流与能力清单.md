@@ -152,7 +152,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会
 | --- | --- | --- |
 | `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
 | `get_distributed_app` | `appKey` | 某个应用的**真实历史版本**（appKey 从上面那个工具拿）：每条含各自的 `buildKey` / 版本号 / 版本编号 / 体积 / 上传时间，新的在前。⚠️ 历史条目的 `qrCodeUrl` 为 `null` 属正常（蒲公英只对当前版本下发二维码） |
-| `get_upload_help` | `filePath?` `fileSizeBytes?` | **把「本机文件」传上来的唯一路径**：返回一条可直接复制执行的命令（端点 / 鉴权头 / 字段都填好）。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码 |
+| `get_upload_help` | `filePath?` `fileSizeBytes?` | **把「本机文件」传上来的唯一路径**：返回一条**已内嵌一次性票据**的 curl 命令（5 分钟有效 / 一次性 / 绑文件名 / 反推不出主人令牌），**AI 直接复制执行即可，不需要向任何人索要令牌**。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码。⚠️ 全权令牌才有；只读令牌会被拒 |
 | `upload_app_to_pgyer` | `downloadUrl` `fileName?` `updateDescription?` | 把**网址上的**安装包传到蒲公英（服务端先下载再上传，全程不落盘），单包 ≤ 100MB |
 | `update_pgyer_build` | `buildKey` `updateDescription?` `version?` `installType?` `password?` | 改更新说明 / 版本号 / 安装方式 / 安装密码（**只带明确给了的字段**） |
 | `set_pgyer_newest_build` | `buildKey` `isNewest?` | 设 / 取消「最新版本」标记（比删了重传安全） |
@@ -168,14 +168,15 @@ AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会
 **上传安装包有三条路，按「包在哪」选：**
 
 1. **包在使用者本机（最常见）** → 先调 **`get_upload_help`**（带上 `filePath`），
-   它返回**一条可直接复制执行的命令**；在本机终端跑它，文件以原始字节 POST 到
+   它返回**一条已内嵌一次性票据的命令**（**不需要向任何人索要令牌**）；
+   在本机终端跑它，文件以原始字节 POST 到
    `https://aige-saas-mcp.miaocaieyc.com.cn/upload`。
 
    ⛔ 四个易错点（`get_upload_help` 的返回里也会一并说明）：
    - **Windows 必须写 `curl.exe`** —— PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，
      直接写 `curl` 会报参数错误，这是最容易卡住的一步
-   - 令牌用 **MCP 的全权令牌**（不是面板登录令牌），而且**只能放请求头** ——
-     放进 URL 的 `?token=` 会当场 401
+   - 票据**已内嵌在 URL 里**，不需要再配任何鉴权头；票据过期 / 用过会返回明确的
+     401（`BAD_UPLOAD_TICKET`）—— 重新调 `get_upload_help` 拿新命令即可
    - **不要用 multipart**：文件本身就是请求体（`--data-binary @文件`）
    - **别删命令里那行 `--resolve`** —— 它是「直连源站、绕过 Cloudflare」。CF 免费版对
      单次请求有 **100 秒上限**，上行慢时十几 MB 的包传不完就被掐断（现象是
@@ -185,15 +186,14 @@ AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会
    命令长这样（示例，实际以 `get_upload_help` 返回的为准）：
 
    ```powershell
-   curl.exe -X POST "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk" `
-     -H "x-mcp-token: <全权 MCP 令牌>" `
+   curl.exe -X POST "https://aige-saas-mcp.miaocaieyc.com.cn/upload?fileName=app-release.apk&ticket=eyJ…" `
      -H "Content-Type: application/octet-stream" `
      --resolve "aige-saas-mcp.miaocaieyc.com.cn:443:120.53.102.56" `
      --data-binary "@C:\path\to\app-release.apk"
    ```
 
    · 单包 ≤ **100MB**（`.apk / .ipa / .hap`）；传 `filePath` 时中文名会自动 URL 编码
-   · 只认**全权**令牌：上传会改变线上分发的版本，只读令牌一律 `403`
+   · 票据只能由**全权**令牌签发（上传会改变线上分发的版本，只读令牌一律被拒）
 2. **包在一个网址上**（CDN / 对象存储 / 别的下载站）→ MCP 工具 `upload_app_to_pgyer`：
    服务端先下载、再转给蒲公英，全程只在内存里过一遍，**不落服务器磁盘**。
 3. **包在使用者本机、但那边没有终端可用** → 在「应用分发」页用拖拽上传区传。
