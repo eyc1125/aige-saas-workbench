@@ -306,7 +306,7 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 
 1. **包在使用者本机（最常见）** → 调 \`get_upload_help({ filePath, fileSizeBytes, updateDescription?, setNewest? })\`，
    它会返回一条**可直接复制执行**的命令 —— 命令里**已内嵌一次性上传票据**
-   （默认 15 分钟有效 · 只能用一次 · 只绑这个文件名 · 反推不出主人令牌），
+   （默认 30 分钟有效 · 只能用一次 · 只绑这个文件名 · 反推不出主人令牌），
    **不需要向任何人索要令牌**：整段复制到**本机终端**跑掉即可，
    文件原始字节作为请求体 POST 到 \`https://aige-saas-mcp.miaocaieyc.com.cn/upload\`。
    - ⛔ **Windows 必须写 \`curl.exe\`** —— PowerShell 里 \`curl\` 是 \`Invoke-WebRequest\` 的别名，
@@ -340,7 +340,7 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 | 现象 | 原因 | 怎么办 |
 | --- | --- | --- |
 | \`curl: (35) Connection was reset\`、传一半就断 | 走 Cloudflare，撞上它「单次请求 100 秒」的上限（**源站日志里一条都没有**） | 用 \`get_upload_help\` 返回的**「直连源站」**那条（带 \`--resolve\`） |
-| HTTP 401（\`BAD_UPLOAD_TICKET\`） | 票据过期（默认 15 分钟，可用 \`UPLOAD_TICKET_TTL_MINUTES\` 调）/ 已用过 / 与文件名不符 | 重新调 \`get_upload_help\` 拿新命令（不用找任何人要令牌） |
+| HTTP 401（\`BAD_UPLOAD_TICKET\`） | 票据过期（默认 30 分钟，可用 \`UPLOAD_TICKET_TTL_MINUTES\` 调）/ 已用过 / 与文件名不符 | 重新调 \`get_upload_help\` 拿新命令（不用找任何人要令牌） |
 | HTTP 403 | 当前连接是只读令牌，拿不到上传票据 | 换**全权**令牌 |
 | HTTP 400 EMPTY_BODY | 少了 \`--data-binary\`，或用了 multipart | 文件原始字节作请求体 |
 | Windows 报「curl 不是内部或外部命令」 | PowerShell 的 \`curl\` 是 \`Invoke-WebRequest\` 别名 | 写 \`curl.exe\` |

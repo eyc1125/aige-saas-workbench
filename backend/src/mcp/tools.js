@@ -1528,7 +1528,7 @@ const TOOL_HANDLERS = {
     // ⛔ 命令必须「开箱即用」：签发一张**一次性上传票据**直接内嵌进 URL。
     //    旧版写的是 `<你的全权 MCP 令牌>` 占位符 —— 但令牌只存在主人的 MCP 配置里，
     //    客户端根本填不上，那条命令等于死路（Agent 只能回头找主人要令牌）。
-    //    票据边界见 upload-ticket.js：有有效期（默认 15 分钟、可用 UPLOAD_TICKET_TTL_MINUTES 调）
+    //    票据边界见 upload-ticket.js：有有效期（默认 30 分钟、可用 UPLOAD_TICKET_TTL_MINUTES 调）
     //    / 一次性 / 绑文件名 / 反推不出主令牌。
     const issued = uploadTicket.issue(rawName);
     // 把「更新说明」「传完是否设为最新版」也拼进 URL —— 开发迭代时这两个是高频需求，
@@ -1631,7 +1631,7 @@ const TOOL_HANDLERS = {
         {
           symptom: 'HTTP 401（BAD_UPLOAD_TICKET）',
           cause:
-            '票据过期（默认 15 分钟，可用 UPLOAD_TICKET_TTL_MINUTES 调整）、已经用过、或与实际文件名对不上',
+            '票据过期（默认 30 分钟，可用 UPLOAD_TICKET_TTL_MINUTES 调整）、已经用过、或与实际文件名对不上',
           fix: '重新调用 get_upload_help 拿一条新命令即可（不需要找任何人要令牌）',
         },
         {
