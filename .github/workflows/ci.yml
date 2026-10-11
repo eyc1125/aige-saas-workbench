@@ -56,49 +56,24 @@ jobs:
         run: |
           set -e
 
-          # 先决定校验范围。
+          # ⛔ 只用 `--last`（直接读 HEAD），**不做任何分支判断**。
           #
-          # ⛔ 这里踩过一个「只在 force push 时才出现」的坑，别再踩回去：
-          #    原来的写法是范围起点不存在时退化成
-          #      npx commitlint --verbose <<< "$(git log -1 --pretty=%B)"
-          #    —— 这条路径在 CI 上**拿不到 stdin**，commitlint 会以
-          #      「[input] is required」**退出 1**，看起来像「提交信息不合规」，其实完全没校验到。
-          #    因为普通推送的 before 总是存在，这条分支平时走不到，
-          #    直到有一次 force push（before 指向的提交在新克隆里已不存在）才暴露。
-          #    现在统一改用 `--last`（直接读 HEAD，不依赖 stdin）。
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            FROM="${{ github.event.pull_request.base.sha }}"
-            TO="${{ github.event.pull_request.head.sha }}"
-          else
-            FROM="${{ github.event.before }}"
-            TO="${{ github.sha }}"
-            # 新建分支 / 首次推送：before 是全 0，当作「没有起点」
-            case "$FROM" in
-              ''|0000000000000000000000000000000000000000) FROM="" ;;
-            esac
-          fi
-
-          # 三种情况都退化为「只校验 HEAD」：
-          #   ① 没有起点（新建分支 / 首次推送）
-          #   ② 起点与终点相同（commitlint 会直接报「--from 与 --to 指向同一个提交」并以退出码 9 挂掉）
-          #   ③ 起点在新克隆里不存在（force push 后常见）
-          if [ -z "$FROM" ] || [ "$FROM" = "$TO" ] || ! git rev-parse --verify --quiet "$FROM" >/dev/null 2>&1; then
-            echo "只校验 HEAD：$TO（起点 ${FROM:-<空>} 不可用或与终点相同）"
-            git log -1 --pretty='%h %s'
-            ARGS="--last"
-          else
-            echo "校验范围：$FROM..$TO"
-            git log --oneline "$FROM..$TO" | head -20
-            ARGS="--from $FROM --to $TO"
-          fi
-
-          # ⛔ 失败时把 commitlint 的**原话**写成 GitHub 注解。
-          #    默认那条注解只有一句「Process completed with exit code 1.」——
-          #    而 Actions 的运行日志在未登录时根本看不到（"Sign in to view logs"），
-          #    等于什么都没说，排查成本极高（本项目为此白绕了一大圈）。
-          if OUT=$(npx commitlint $ARGS --verbose 2>&1); then
+          # 这里先后踩过两个「只在特定情况下才炸」的坑，共同点是
+          # **依赖了外部的、可能不存在的上下文**：
+          #   ① `npx commitlint <<< "$(git log -1 --pretty=%B)"` ——
+          #      CI 上这条路径拿不到 stdin，报「[input] is required」并以退出码 1 挂掉，
+          #      看起来像「提交信息不合规」，其实**根本没校验到**。
+          #   ② 拿 `github.event.before` 当校验范围起点 ——
+          #      force push 之后那个提交在新克隆里已经不存在，
+          #      commitlint 内部读历史时直接抛 Node 异常（getHistoryCommits → getRawCommits），
+          #      同样是「看着像格式问题、其实是脚本自己崩了」。
+          #
+          # ⇒ `--last` 只认 HEAD，没有这些前提，本地与 CI 行为完全一致。
+          #   取舍：一次 push 多个提交时只校验最后一个 —— 我们本来就是
+          #   「一次提交一次 push」的节奏，这个取舍换来的是「永远不会误报」。
+          if OUT=$(npx commitlint --last --verbose 2>&1); then
             echo "$OUT"
-            echo "✅ 提交信息合规"
+            echo "✅ 提交信息合规（已校验 HEAD）"
           else
             echo "$OUT"
             echo "$OUT" | tail -10 | while IFS= read -r line; do
