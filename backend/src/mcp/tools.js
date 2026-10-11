@@ -612,6 +612,16 @@ const TOOL_DEFINITIONS = [
           description:
             '文件字节数（可选）。超过 100MB 会明确警告 —— 上限由 Cloudflare 免费版定，放宽 nginx 也没用',
         },
+        updateDescription: {
+          type: 'string',
+          description:
+            '更新说明（可选）—— 会写进这条上传命令里，随包一起提交给蒲公英，不用传完再单独改一次',
+        },
+        setNewest: {
+          type: 'boolean',
+          description:
+            '传完是否直接把这个版本设为「最新版」（可选，默认否）。开发迭代时很省事：一条命令搞定「上传 + 设为最新」',
+        },
       },
       additionalProperties: false,
     },
@@ -1510,7 +1520,7 @@ const TOOL_HANDLERS = {
    * 但客户端看不到本工作台的文档，所以端点 / 鉴权 / 字段必须由工具**当面告诉它**，
    * 否则就会出现「知道该用 curl，却不知道往哪打、带什么头」的死角。
    */
-  async get_upload_help({ filePath, fileSizeBytes } = {}) {
+  async get_upload_help({ filePath, fileSizeBytes, updateDescription, setNewest } = {}) {
     const rawPath = String(filePath || '').trim();
     // 文件名取路径最后一段；中文名必须 URL 编码，否则 curl 会把 URL 拆坏 —— 这里替使用者编好
     const rawName =
@@ -1518,9 +1528,21 @@ const TOOL_HANDLERS = {
     // ⛔ 命令必须「开箱即用」：签发一张**一次性上传票据**直接内嵌进 URL。
     //    旧版写的是 `<你的全权 MCP 令牌>` 占位符 —— 但令牌只存在主人的 MCP 配置里，
     //    客户端根本填不上，那条命令等于死路（Agent 只能回头找主人要令牌）。
-    //    票据边界见 upload-ticket.js：5 分钟 / 一次性 / 绑这个文件名 / 反推不出主令牌。
+    //    票据边界见 upload-ticket.js：有有效期（默认 15 分钟、可用 UPLOAD_TICKET_TTL_MINUTES 调）
+    //    / 一次性 / 绑文件名 / 反推不出主令牌。
     const issued = uploadTicket.issue(rawName);
-    const url = `${MCP_PUBLIC_BASE}/upload?fileName=${encodeURIComponent(rawName)}&ticket=${encodeURIComponent(issued.ticket)}`;
+    // 把「更新说明」「传完是否设为最新版」也拼进 URL —— 开发迭代时这两个是高频需求，
+    // 让一条命令全带过去，省掉上传完再分别调 update_pgyer_build / set_pgyer_newest_build
+    const extraQuery = [];
+    const desc = String(updateDescription || '').trim();
+    if (desc) extraQuery.push(`updateDescription=${encodeURIComponent(desc)}`);
+    if (setNewest) extraQuery.push('setNewest=1');
+    const qs = [
+      `fileName=${encodeURIComponent(rawName)}`,
+      `ticket=${encodeURIComponent(issued.ticket)}`,
+      ...extraQuery,
+    ].join('&');
+    const url = `${MCP_PUBLIC_BASE}/upload?${qs}`;
     const size = Number(fileSizeBytes) || 0;
     const maxBytes = pgyerService.MAX_UPLOAD_BYTES;
     const tooBig = size > maxBytes;
@@ -1571,6 +1593,10 @@ const TOOL_HANDLERS = {
         ttlSeconds: issued.ttlSeconds,
         boundFileName: rawName,
       },
+      uploadOptions: {
+        updateDescription: desc || null,
+        setNewest: !!setNewest,
+      },
       body: '文件的原始字节（application/octet-stream）—— 不要用 multipart/form-data',
       fileName: rawName,
       originIp: MCP_ORIGIN_IP || null,
@@ -1605,7 +1631,7 @@ const TOOL_HANDLERS = {
         {
           symptom: 'HTTP 401（BAD_UPLOAD_TICKET）',
           cause:
-            '票据过期（5 分钟）、已经用过、或与实际文件名对不上 —— 票据是一次性的，这是设计如此',
+            '票据过期（默认 15 分钟，可用 UPLOAD_TICKET_TTL_MINUTES 调整）、已经用过、或与实际文件名对不上',
           fix: '重新调用 get_upload_help 拿一条新命令即可（不需要找任何人要令牌）',
         },
         {
@@ -1658,8 +1684,9 @@ const TOOL_HANDLERS = {
     }
     parts.push(
       '',
-      `ℹ️ 票据边界：${issued.ttlSeconds} 秒内有效 · 只能用一次 · 只能传「${rawName}」这一个文件 · 泄漏了也反推不出主人令牌。` +
-        '过期或重复使用会明确报错，届时重新调用本工具拿新命令即可。',
+      `ℹ️ 票据边界：约 ${Math.round(issued.ttlSeconds / 60)} 分钟内有效 · 只能用一次 · 只能传「${rawName}」这一个文件 · 泄漏了也反推不出主人令牌。` +
+        '过期或重复使用会**明确报错**（不会静默失败），届时重新调用本工具拿新命令即可 —— 一次工具调用的事。' +
+        `（有效期可用环境变量 UPLOAD_TICKET_TTL_MINUTES 调整，当前 ${Math.round(issued.ttlSeconds / 60)} 分钟）`,
       '⛔ 两个必知：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
         '② 不要用 multipart，文件本身就是请求体。',
       tooBig ? '' : '上传成功的响应里会**直接带上 buildKey / 下载页 / 二维码**，不用再查一次。',

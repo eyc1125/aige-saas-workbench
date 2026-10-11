@@ -304,9 +304,9 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 **「把这个 APK 发到蒲公英 / 给我一个安装二维码」**
 **先判断包在哪**，再选一条路 —— 三条路都不要再让用户去装蒲公英官方 MCP / Agent Skill / CLI：
 
-1. **包在使用者本机（最常见）** → 调 \`get_upload_help({ filePath, fileSizeBytes })\`，
+1. **包在使用者本机（最常见）** → 调 \`get_upload_help({ filePath, fileSizeBytes, updateDescription?, setNewest? })\`，
    它会返回一条**可直接复制执行**的命令 —— 命令里**已内嵌一次性上传票据**
-   （5 分钟有效 · 只能用一次 · 只绑这个文件名 · 反推不出主人令牌），
+   （默认 15 分钟有效 · 只能用一次 · 只绑这个文件名 · 反推不出主人令牌），
    **不需要向任何人索要令牌**：整段复制到**本机终端**跑掉即可，
    文件原始字节作为请求体 POST 到 \`https://aige-saas-mcp.miaocaieyc.com.cn/upload\`。
    - ⛔ **Windows 必须写 \`curl.exe\`** —— PowerShell 里 \`curl\` 是 \`Invoke-WebRequest\` 的别名，
@@ -328,12 +328,19 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 上传成功的响应里**已经直接带上 buildKey / 下载页 / 二维码**，不用再查一次；
 要看全部历史版本再调 \`list_distributed_apps\` / \`get_distributed_app\`。
 
+> 📌 **开发迭代（反复打包装机调试）的顺手用法**：\`get_upload_help\` 支持两个可选参数 ——
+> \`updateDescription\`（更新说明，随包一起提交，不用传完再改）与 \`setNewest\`（传完**直接设为最新版**）。
+> 一句 \`get_upload_help({ filePath, updateDescription: "修了登录闪退", setNewest: true })\`
+> 就能拿到「上传 + 写说明 + 设为最新」一条命令，调试节奏不用来回切工具。
+> ⚠️ **版本没更新、包没开发完也能传** —— 蒲公英不关心「完成度」，同一个版本号反复传会各自成为一条构建，
+> 正好用于调试记录；只有你要「删旧版本」时才需要 buildKey（\`get_distributed_app\` 取）。
+
 **上传失败了怎么查（按现象对号，别猜、别反复重试）**
 
 | 现象 | 原因 | 怎么办 |
 | --- | --- | --- |
 | \`curl: (35) Connection was reset\`、传一半就断 | 走 Cloudflare，撞上它「单次请求 100 秒」的上限（**源站日志里一条都没有**） | 用 \`get_upload_help\` 返回的**「直连源站」**那条（带 \`--resolve\`） |
-| HTTP 401（\`BAD_UPLOAD_TICKET\`） | 票据过期（5 分钟）/ 已用过 / 与文件名不符 —— 一次性票据就是这样 | 重新调 \`get_upload_help\` 拿新命令（不用找任何人要令牌） |
+| HTTP 401（\`BAD_UPLOAD_TICKET\`） | 票据过期（默认 15 分钟，可用 \`UPLOAD_TICKET_TTL_MINUTES\` 调）/ 已用过 / 与文件名不符 | 重新调 \`get_upload_help\` 拿新命令（不用找任何人要令牌） |
 | HTTP 403 | 当前连接是只读令牌，拿不到上传票据 | 换**全权**令牌 |
 | HTTP 400 EMPTY_BODY | 少了 \`--data-binary\`，或用了 multipart | 文件原始字节作请求体 |
 | Windows 报「curl 不是内部或外部命令」 | PowerShell 的 \`curl\` 是 \`Invoke-WebRequest\` 别名 | 写 \`curl.exe\` |

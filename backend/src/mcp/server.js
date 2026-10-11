@@ -399,6 +399,8 @@ async function startMcpServer() {
 
       const fileName = String(req.query.fileName || req.headers['x-file-name'] || '').trim();
       const updateDescription = String(req.query.updateDescription || '').trim();
+      // 传完直接设为「最新版」—— 开发迭代时省掉一次单独调用
+      const setNewest = ['1', 'true'].includes(String(req.query.setNewest || '').toLowerCase());
       const buffer = req.body;
 
       if (!Buffer.isBuffer(buffer) || !buffer.length) {
@@ -419,14 +421,25 @@ async function startMcpServer() {
         // （AI 少一次工具调用 = 少一次等待与出错机会）。拿不到不影响「上传已成功」。
         const detail = await pgyerService.latestDetailOf(result.appKey).catch(() => null);
 
+        // 可选：顺手设为「最新版本」。失败**不影响**「上传已经成功」这件事，只如实报告
+        let newestNote = '';
+        if (setNewest && result.buildKey) {
+          try {
+            await pgyerService.setNewestBuild(result.buildKey, true);
+            newestNote = '，已设为最新版本';
+          } catch (e) {
+            newestNote = `（自动设为最新版没成功：${e.message}；可稍后用 set_pgyer_newest_build 手动设）`;
+          }
+        }
+
         return res.json({
           code: 0,
           message: result.pending
-            ? '安装包已上传，蒲公英还在解析，稍后刷新即可看到新版本'
-            : `上传成功：${result.name} v${result.version}${
+            ? `安装包已上传，蒲公英还在解析，稍后刷新即可看到新版本${newestNote}`
+            : `上传成功：${result.name} v${result.version}${newestNote}${
                 detail && detail.downloadPage ? `；下载页 ${detail.downloadPage}` : ''
               }`,
-          data: { ...result, ...(detail || {}) },
+          data: { ...result, ...(detail || {}), setNewestApplied: setNewest || false },
         });
       } catch (err) {
         return res.status(err.status || 500).json({

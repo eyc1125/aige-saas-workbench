@@ -23,8 +23,23 @@
  */
 const crypto = require('node:crypto');
 
-const TICKET_TTL_MS = 5 * 60 * 1000;
-/** 已用票据（nonce → 过期时间），用后即废。进程内存即可：单实例、窗口只有 5 分钟 */
+/**
+ * 票据有效期（分钟）。默认 **15 分钟**，可用环境变量 `UPLOAD_TICKET_TTL_MINUTES` 调整。
+ *
+ * 为什么给到 15 分钟（而不是更短的 5 分钟）：这个工作台是**自己用**的、令牌不外发，
+ * 而典型流程是「拿到命令 → 复制 → 本机终端跑」，大包在慢上行下要传几分钟，
+ * 也常出现「拿到命令后先干了点别的、回头再跑」。15 分钟能覆盖这些正常情况。
+ *
+ * ⚠️ 放宽时限**不削弱**这层保护：票据仍是一次性 + 绑定文件名 + 只能打 /upload +
+ *    只由全权令牌签发 —— 最坏情况依然只是「那一个文件、那一次被重放」，
+ *    而不是「拿到长期凭据」。所以「够用」比「够短」更重要。
+ */
+const TTL_MINUTES = Math.max(
+  1,
+  Math.min(24 * 60, Number(process.env.UPLOAD_TICKET_TTL_MINUTES) || 15)
+);
+const TICKET_TTL_MS = TTL_MINUTES * 60 * 1000;
+/** 已用票据（nonce → 过期时间），用后即废。内存即可：单实例；超 500 条时清掉已过期的 */
 const used = new Map();
 
 function secret() {
