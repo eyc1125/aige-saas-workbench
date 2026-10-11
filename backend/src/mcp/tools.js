@@ -21,6 +21,7 @@ const deployService = require('../services/deploy');
 const healthService = require('../services/health');
 const githubService = require('../services/github');
 const pgyerService = require('../services/pgyer');
+const uploadTicket = require('./upload-ticket');
 const { listTemplates } = require('../services/apps');
 const { writeLog } = require('../utils/logger');
 
@@ -621,10 +622,10 @@ const TOOL_DEFINITIONS = [
 
 ⛔ **安装包在使用者本机时，不要用这个工具** —— 它只收 URL，服务器读不到那台电脑的磁盘。
 本机文件请走 get_upload_help（那条路是通的、已实测跑过）：
-1) 调 get_upload_help（带上 filePath）→ 拿到一条可直接复制执行的命令；
-2) 在**本机终端**执行它 —— 文件原始字节直接作为请求体 POST 到 ${MCP_PUBLIC_BASE}/upload，
-   鉴权用请求头 x-mcp-token: <全权令牌>（不能放 URL，也不要用 multipart）；
-3) 传完调 list_distributed_apps 把下载页与二维码取回来。
+1) 调 get_upload_help（带上 filePath）→ 拿到一条**已内嵌一次性票据**的命令（不需要令牌）；
+2) 在**本机终端**执行它 —— 一次性票据**已内嵌在 URL 里，不需要再配任何令牌**；
+   文件原始字节直接作为请求体（**不要用 multipart**）；
+3) 响应里会**直接带回 buildKey / 下载页 / 二维码**，不用再查一次。
 
 限制：只支持 .apk / .ipa / .hap，单包 ≤ 100MB；上传是**新增版本**，不覆盖旧版本。`,
     inputSchema: {
@@ -1514,7 +1515,12 @@ const TOOL_HANDLERS = {
     // 文件名取路径最后一段；中文名必须 URL 编码，否则 curl 会把 URL 拆坏 —— 这里替使用者编好
     const rawName =
       (rawPath ? rawPath.split(/[\\/]/).filter(Boolean).pop() : '') || 'app-release.apk';
-    const url = `${MCP_PUBLIC_BASE}/upload?fileName=${encodeURIComponent(rawName)}`;
+    // ⛔ 命令必须「开箱即用」：签发一张**一次性上传票据**直接内嵌进 URL。
+    //    旧版写的是 `<你的全权 MCP 令牌>` 占位符 —— 但令牌只存在主人的 MCP 配置里，
+    //    客户端根本填不上，那条命令等于死路（Agent 只能回头找主人要令牌）。
+    //    票据边界见 upload-ticket.js：5 分钟 / 一次性 / 绑这个文件名 / 反推不出主令牌。
+    const issued = uploadTicket.issue(rawName);
+    const url = `${MCP_PUBLIC_BASE}/upload?fileName=${encodeURIComponent(rawName)}&ticket=${encodeURIComponent(issued.ticket)}`;
     const size = Number(fileSizeBytes) || 0;
     const maxBytes = pgyerService.MAX_UPLOAD_BYTES;
     const tooBig = size > maxBytes;
@@ -1537,7 +1543,6 @@ const TOOL_HANDLERS = {
     const winCmd = (withResolve) =>
       [
         `curl.exe -X POST "${url}" \``,
-        '  -H "x-mcp-token: <你的全权 MCP 令牌>" `',
         '  -H "Content-Type: application/octet-stream" `',
         ...(withResolve && resolve ? [`  ${resolve} \``] : []),
         `  --data-binary "@${winTarget}"`,
@@ -1545,7 +1550,6 @@ const TOOL_HANDLERS = {
     const nixCmd = (withResolve) =>
       [
         `curl -X POST "${url}" \\`,
-        '  -H "x-mcp-token: <你的全权 MCP 令牌>" \\',
         '  -H "Content-Type: application/octet-stream" \\',
         ...(withResolve && resolve ? [`  ${resolve} \\`] : []),
         `  --data-binary "@${nixTarget}"`,
@@ -1560,7 +1564,13 @@ const TOOL_HANDLERS = {
     const data = {
       endpoint: url,
       method: 'POST',
-      authHeader: 'x-mcp-token: <你的全权 MCP 令牌>（也可用 Authorization: Bearer <令牌>）',
+      auth: `URL 里已内嵌一次性票据（${issued.ttlSeconds} 秒内有效、只能用一次、只能传「${rawName}」）—— 不需要再配置任何鉴权头`,
+      uploadTicket: {
+        embedded: true,
+        expiresAt: issued.expiresAt,
+        ttlSeconds: issued.ttlSeconds,
+        boundFileName: rawName,
+      },
       body: '文件的原始字节（application/octet-stream）—— 不要用 multipart/form-data',
       fileName: rawName,
       originIp: MCP_ORIGIN_IP || null,
@@ -1593,14 +1603,15 @@ const TOOL_HANDLERS = {
           fix: '改用上面的「直连源站」那条命令',
         },
         {
-          symptom: 'HTTP 401',
-          cause: '令牌没带、带错，或者放进了 URL 的 ?token=',
-          fix: '令牌放请求头（x-mcp-token 或 Authorization: Bearer）',
+          symptom: 'HTTP 401（BAD_UPLOAD_TICKET）',
+          cause:
+            '票据过期（5 分钟）、已经用过、或与实际文件名对不上 —— 票据是一次性的，这是设计如此',
+          fix: '重新调用 get_upload_help 拿一条新命令即可（不需要找任何人要令牌）',
         },
         {
           symptom: 'HTTP 403 FORBIDDEN',
-          cause: '用的是只读令牌 —— 上传会改线上分发的版本，只认全权令牌',
-          fix: '换成「系统设置 → MCP 连接」里的全权令牌',
+          cause: '当前连接用的是只读令牌，拿不到上传票据',
+          fix: '在 MCP 配置里改用全权令牌（只读令牌刻意不给上传能力）',
         },
         {
           symptom: 'HTTP 400 EMPTY_BODY',
@@ -1632,7 +1643,7 @@ const TOOL_HANDLERS = {
 
     const head = tooBig
       ? `⛔ 这个文件 ${formatBytes(size)} 超过上限 ${formatBytes(maxBytes)}，会被挡下，先别传（压缩后重试）。`
-      : '把下面整段复制到本机终端执行（Windows 用 PowerShell 那条）：';
+      : '**命令里已内嵌一次性上传票据，整段复制到本机终端执行即可，不需要再填任何令牌**（Windows 用 PowerShell 那条）：';
 
     const parts = [
       head,
@@ -1647,14 +1658,13 @@ const TOOL_HANDLERS = {
     }
     parts.push(
       '',
-      '⛔ 三个必知：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
-        '② 令牌 = 你 MCP 配置里 Authorization: Bearer 后面那串，且只能放请求头；' +
-        '③ 不要用 multipart，文件本身就是请求体。',
-      tooBig
-        ? ''
-        : '传完用 list_distributed_apps 取下载页与二维码，需要的话再用 set_pgyer_newest_build 设为最新版。',
+      `ℹ️ 票据边界：${issued.ttlSeconds} 秒内有效 · 只能用一次 · 只能传「${rawName}」这一个文件 · 泄漏了也反推不出主人令牌。` +
+        '过期或重复使用会明确报错，届时重新调用本工具拿新命令即可。',
+      '⛔ 两个必知：① PowerShell 里必须写 curl.exe（curl 是 Invoke-WebRequest 的别名）；' +
+        '② 不要用 multipart，文件本身就是请求体。',
+      tooBig ? '' : '上传成功的响应里会**直接带上 buildKey / 下载页 / 二维码**，不用再查一次。',
       '若失败：把完整报错贴回来，对着 data.troubleshooting 逐条排' +
-        '（最常见三条：Connection was reset → 换直连那条；401 → 令牌要放请求头；403 → 用了只读令牌）。'
+        '（最常见：Connection was reset → 换直连那条；401 → 票据过期/用过，重新调本工具）。'
     );
 
     return ok(data, parts.join('\n'));
@@ -1888,10 +1898,21 @@ function clampLimit(value, fallback, max = 30) {
  * @param {object} args 参数
  * @returns {Promise<{success:boolean, data:any, message:string}>}
  */
-async function callTool(name, args = {}) {
+async function callTool(name, args = {}, ctx = {}) {
   const handler = TOOL_HANDLERS[name];
   if (!handler) {
     return { success: false, data: null, message: `未知工具：${name}` };
+  }
+
+  // ⛔ get_upload_help 会**签发上传票据**，而票据可以上传安装包（属于写能力）——
+  //    只读令牌不给签，否则等于用只读令牌换来一个能写的票据，绕过了只读边界。
+  if (name === 'get_upload_help' && ctx.scope && ctx.scope !== 'full') {
+    return {
+      success: false,
+      data: null,
+      message:
+        '这个工具会签发「上传票据」（票据可以上传安装包，属于写能力），只读令牌用不了 —— 请改用全权令牌。',
+    };
   }
 
   const start = Date.now();

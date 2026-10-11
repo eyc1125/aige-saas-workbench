@@ -305,13 +305,15 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
 **先判断包在哪**，再选一条路 —— 三条路都不要再让用户去装蒲公英官方 MCP / Agent Skill / CLI：
 
 1. **包在使用者本机（最常见）** → 调 \`get_upload_help({ filePath, fileSizeBytes })\`，
-   它会返回一条**可直接复制执行**的命令；然后在**本机终端**跑那条命令 ——
+   它会返回一条**可直接复制执行**的命令 —— 命令里**已内嵌一次性上传票据**
+   （5 分钟有效 · 只能用一次 · 只绑这个文件名 · 反推不出主人令牌），
+   **不需要向任何人索要令牌**：整段复制到**本机终端**跑掉即可，
    文件原始字节作为请求体 POST 到 \`https://aige-saas-mcp.miaocaieyc.com.cn/upload\`。
    - ⛔ **Windows 必须写 \`curl.exe\`** —— PowerShell 里 \`curl\` 是 \`Invoke-WebRequest\` 的别名，
      直接写 \`curl\` 会报参数错误，最容易卡在这一步
-   - ⛔ 令牌用 **MCP 的全权令牌**（不是面板登录态），而且**只能放请求头** ——
-     放进 URL 的 \`?token=\` 会当场 401
-   - ⛔ **不要用 multipart**：文件本身就是请求体（\`--data-binary @文件\`）
+   - ⛔ **不要用 multipart**（\`-F\`），文件本身就是请求体（\`--data-binary\`）
+   - ℹ️ 票据过期 / 重复使用会返回**明确的 401** —— 重新调 \`get_upload_help\` 拿新命令即可，
+     **别回头去问用户要令牌**（那条路已经不需要了）
    - ⛔ **大文件/上行慢时，命令里那条 \`--resolve\` 千万别删** —— 它是「直连源站、绕过
      Cloudflare」。CF 免费版对单次请求有 **100 秒上限**，十几 MB 的包传不完就被掐断，
      现象是 \`Connection was reset\` 且**源站日志里什么都没有**（极难查）。\`get_upload_help\`
@@ -323,15 +325,16 @@ content=服务器 IP, proxied=true）→ 若要能访问还需 \`create_website\
    只要还有终端，就优先用第 1 条（直连源站）。
    （MCP 协议本身传不了二进制，这是协议边界，别硬试、也别反复重试。）
 
-传完都可以调 \`list_distributed_apps\` 把**二维码与下载页**取回来给用户。
+上传成功的响应里**已经直接带上 buildKey / 下载页 / 二维码**，不用再查一次；
+要看全部历史版本再调 \`list_distributed_apps\` / \`get_distributed_app\`。
 
 **上传失败了怎么查（按现象对号，别猜、别反复重试）**
 
 | 现象 | 原因 | 怎么办 |
 | --- | --- | --- |
 | \`curl: (35) Connection was reset\`、传一半就断 | 走 Cloudflare，撞上它「单次请求 100 秒」的上限（**源站日志里一条都没有**） | 用 \`get_upload_help\` 返回的**「直连源站」**那条（带 \`--resolve\`） |
-| HTTP 401 | 令牌没带 / 带错，或放进了 URL 的 \`?token=\` | 令牌放**请求头** |
-| HTTP 403 | 用的是只读令牌 | 换**全权**令牌 |
+| HTTP 401（\`BAD_UPLOAD_TICKET\`） | 票据过期（5 分钟）/ 已用过 / 与文件名不符 —— 一次性票据就是这样 | 重新调 \`get_upload_help\` 拿新命令（不用找任何人要令牌） |
+| HTTP 403 | 当前连接是只读令牌，拿不到上传票据 | 换**全权**令牌 |
 | HTTP 400 EMPTY_BODY | 少了 \`--data-binary\`，或用了 multipart | 文件原始字节作请求体 |
 | Windows 报「curl 不是内部或外部命令」 | PowerShell 的 \`curl\` 是 \`Invoke-WebRequest\` 别名 | 写 \`curl.exe\` |
 | 413 / 文件过大 | 安装包超过 100MB | 压缩；或改用蒲公英官方 CLI / CI 插件 —— **MCP 侧没有别的路** |

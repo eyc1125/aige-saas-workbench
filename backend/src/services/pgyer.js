@@ -132,32 +132,50 @@ const USER_FAULT_CODES = new Set([1018, 1022, 1026, 1249]);
  * ⚠️ 参数放 body 还是 query 是接口定的：`buildInfo` 官方 Node 示例把参数放在
  * **查询串**（文档写的是 GET，实测/示例是 POST + query），所以这里两种都支持。
  */
+/** 网络层失败的重试次数（不含首次尝试） */
+const NET_RETRIES = 2;
+
 async function httpForm(path, { form = {}, query = {}, timeout = TIMEOUT_MS } = {}) {
   const url = new URL(config.pgyer.apiBase + path);
   Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, String(v)));
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  // ⛔ 网络层重试：Node 的 fetch 抖动时只抛一句 `fetch failed`（没有状态码、也没有原因），
+  //    调用方（尤其 AI）拿到这句完全无从下手 —— 实测表现就是
+  //    「mcp error: unknown error: fetch failed」。所以这里对**网络层失败**自动重试，
+  //    并把它翻译成人能看懂的话。业务码错误（蒲公英返回 code≠0）不在这里，不重试。
   let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'aige-saas-workbench',
-      },
-      body: new URLSearchParams(form),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw upstream(`连蒲公英超时（${Math.round(timeout / 1000)} 秒），请稍后重试`, {
-        url: url.toString(),
+  for (let attempt = 0; ; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'aige-saas-workbench',
+        },
+        body: new URLSearchParams(form),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+      break;
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < NET_RETRIES) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      const why =
+        err.name === 'AbortError'
+          ? `超时（${Math.round(timeout / 1000)} 秒）`
+          : err.message || err.name;
+      throw upstream(
+        `连不上蒲公英（${why}；已自动重试 ${NET_RETRIES} 次）。稍后再试；若一直失败，先确认服务器能正常出网。`,
+        { url: url.toString() }
+      );
     }
-    throw upstream(`连不上蒲公英：${err.message}`, { url: url.toString() });
-  } finally {
-    clearTimeout(timer);
   }
 
   const text = await res.text();
@@ -546,6 +564,32 @@ async function appDetail(appKey) {
   };
 }
 
+/**
+ * 取某应用**当前版本**的下载页 / 二维码 / 版本号 —— 给「上传成功后内联返回」用。
+ * 上传接口本身只回 buildKey，下载页与二维码得再问一次 view；与其让调用方多跑一个来回
+ * （AI 多一次工具调用 = 多一次等待与出错机会），不如直接在上传响应里带上。
+ * 拿不到就返回 null —— 不影响「上传本身已经成功」这个事实。
+ */
+async function latestDetailOf(appKey) {
+  const key = String(appKey || '').trim();
+  if (!key) return null;
+
+  const builds = await listBuildsAll(key);
+  const mine = builds.map((b) => slimBuild({ ...b, appKey: key }));
+  if (!mine.length) return null;
+  mine.sort((a, b) => b.buildNumber - a.buildNumber);
+
+  const view = await apiPost('/apiv2/app/view', { appKey: key, buildKey: mine[0].buildKey });
+  const full = slimBuild({ ...view, appKey: key });
+  return {
+    appKey: key,
+    version: full.version,
+    downloadPage: full.downloadPage || null,
+    qrCodeUrl: full.qrCodeUrl || null,
+    historyCount: mine.length,
+  };
+}
+
 // ============================================================
 // 写操作（改 / 删 / 从网址上传）
 // ============================================================
@@ -731,6 +775,7 @@ module.exports = {
   clearCache,
   listApps,
   appDetail,
+  latestDetailOf,
   uploadApp,
   uploadFromUrl,
   deleteBuild,

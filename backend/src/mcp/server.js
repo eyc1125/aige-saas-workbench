@@ -46,6 +46,7 @@ const {
 const config = require('../config');
 const settings = require('../services/settings');
 const pgyerService = require('../services/pgyer');
+const uploadTicket = require('./upload-ticket');
 const { TOOL_DEFINITIONS, callTool, READONLY_TOOLS } = require('./tools');
 const { SERVER_INFO, SERVER_INSTRUCTIONS } = require('./instructions');
 
@@ -124,7 +125,7 @@ function createMcpServer({ scope = SCOPE_FULL } = {}) {
       };
     }
 
-    const result = await callTool(name, args || {});
+    const result = await callTool(name, args || {}, { scope });
 
     return {
       content: [
@@ -351,17 +352,38 @@ async function startMcpServer() {
    *    于是「把本机这个 APK 发到蒲公英」这件事在 MCP 侧就是断的。
    *    MCP 令牌本来就能调 `call_bt_api` 做任意服务器操作，所以把上传开在这里**没有放宽信任边界**。
    *
-   * 用法（本机打包完，一条命令发走）：
+   * 用法（**AI 全自动**）：先调 `get_upload_help`，它会返回一条**已内嵌一次性票据**的
+   *   curl 命令，直接在本机终端执行即可 —— 全程不需要向任何人索要令牌。
+   * 用法（人工 / 脚本，带令牌的老方式，仍然支持）：
    *   curl -X POST "https://<mcp 域名>/upload?fileName=app.apk" \
    *        -H "x-mcp-token: <全权令牌>" -H "Content-Type: application/octet-stream" \
    *        --data-binary @app.apk
    *
-   * ⚠️ 只认**全权**令牌：上传会改变线上分发的版本，只读令牌一律 403。
+   * ⚠️ 令牌路径只认**全权**令牌；票据路径只由全权令牌签发，且 5 分钟有效、一次性、绑文件名。
    * ⚠️ 文件在内存里过一遍就转给蒲公英对象存储，**不落我们的盘**。
    */
   app.post(
     '/upload',
-    authMiddleware,
+    // 两种鉴权，任一通过即可：
+    //   ① **请求头全权令牌**（脚本 / 人工用；原有方式，完全向后兼容）
+    //   ② **一次性上传票据**（AI 全自动用）—— 由 `get_upload_help` 签发、内嵌在 URL 里。
+    //      票据专为「命令能被 AI 直接执行」而设：5 分钟有效、只能传签发时指定的那一个
+    //      文件名、用后即废、且**反推不出主人令牌**。详见 mcp/upload-ticket.js
+    (req, res, next) => {
+      const ticket = String(req.query.ticket || '').trim();
+      if (!ticket) return authMiddleware(req, res, next);
+      try {
+        req.uploadTicket = uploadTicket.verify(ticket, String(req.query.fileName || '').trim());
+        req.mcpScope = SCOPE_FULL; // 票据只由全权令牌签发，等价于全权
+        return next();
+      } catch (err) {
+        return res.status(err.status || 401).json({
+          code: err.code || 'BAD_UPLOAD_TICKET',
+          message: err.message,
+          data: null,
+        });
+      }
+    },
     express.raw({
       type: () => true,
       limit: `${Math.ceil(pgyerService.MAX_UPLOAD_BYTES / 1024 / 1024)}mb`,
@@ -390,12 +412,21 @@ async function startMcpServer() {
 
       try {
         const result = await pgyerService.uploadApp(buffer, fileName, { updateDescription });
+        // 票据用后即废 —— 放在**上传成功之后**：万一失败还能拿同一张重试，更实用
+        if (req.uploadTicket) uploadTicket.consume(req.uploadTicket);
+
+        // 顺手把下载页 / 二维码 / 版本号带回去，省掉调用方再查一次
+        // （AI 少一次工具调用 = 少一次等待与出错机会）。拿不到不影响「上传已成功」。
+        const detail = await pgyerService.latestDetailOf(result.appKey).catch(() => null);
+
         return res.json({
           code: 0,
           message: result.pending
             ? '安装包已上传，蒲公英还在解析，稍后刷新即可看到新版本'
-            : `上传成功：${result.name} v${result.version}`,
-          data: result,
+            : `上传成功：${result.name} v${result.version}${
+                detail && detail.downloadPage ? `；下载页 ${detail.downloadPage}` : ''
+              }`,
+          data: { ...result, ...(detail || {}) },
         });
       } catch (err) {
         return res.status(err.status || 500).json({
