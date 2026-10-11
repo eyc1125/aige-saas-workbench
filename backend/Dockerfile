@@ -6,7 +6,7 @@
 # ============================================================
 
 # ---------------- 阶段一：编译依赖 ----------------
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 # 编译 better-sqlite3 需要的工具链。
 # ⚠️ 必须先换国内 Alpine 镜像：Alpine 官方 CDN（dl-cdn.alpinelinux.org）在国内服务器上
@@ -27,7 +27,7 @@ COPY package.json ./
 RUN npm install --omit=dev --registry=https://registry.npmmirror.com --no-audit --no-fund
 
 # ---------------- 阶段二：运行 ----------------
-FROM node:20-alpine
+FROM node:26-alpine
 
 ENV NODE_ENV=production \
     TZ=Asia/Shanghai
