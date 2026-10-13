@@ -2308,7 +2308,7 @@ onMounted(async () => {
 }
 
 .mode-switch__btn.is-active {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   color: var(--brand);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
@@ -2333,7 +2333,7 @@ onMounted(async () => {
   gap: 2px;
   padding: var(--sp-4) var(--sp-5);
   /* 运行时指标格贴在玻璃卡里，底色半透明才不破连续性 */
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
 }
 
 .runtime__k {

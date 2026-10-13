@@ -1048,7 +1048,7 @@ watch(
 }
 
 .range-switch__btn.is-active {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   color: var(--brand);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
@@ -1321,7 +1321,7 @@ watch(
   padding: var(--sp-4) var(--sp-5);
   /* 与 .surface 同一套真玻璃：这块提示面板直接压在视频上，实白会糊成一块白板。
      ⛔ 去掉 backdrop-filter（第 5 轮性能）：与 .surface/.card 同理，少一个去模糊动视频的面就少一分合成开销。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   box-shadow:
@@ -1490,7 +1490,7 @@ watch(
   gap: 2px;
   padding: var(--sp-4) var(--sp-5);
   /* 指标格贴在玻璃卡里，底色半透明才不破连续性 */
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
 }
 
 .meta__label {

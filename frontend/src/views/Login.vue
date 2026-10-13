@@ -543,7 +543,7 @@ function toggleRecovery() {
   padding: var(--sp-7) var(--sp-6);
   /* 与 .login__card（.surface）同一套玻璃的 62% 底：卡片已建 backdrop root，
      这里再加 backdrop-filter 是空转（只会对自己的祖先底色做模糊），所以只叠色调、不叠模糊 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -672,7 +672,7 @@ function toggleRecovery() {
     padding: var(--sp-6) var(--sp-5) calc(var(--sp-6) + env(safe-area-inset-bottom));
     /* 窄屏整屏就这一块「白」：跟玻璃卡同一套 62% 透明度，视频透出来；
        同样只叠色调不叠模糊（卡片已建 backdrop root，后代再加是空转）。 */
-    background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+    background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   }
 }
 

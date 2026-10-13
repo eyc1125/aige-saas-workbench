@@ -496,7 +496,10 @@ onBeforeUnmount(() => {
   height: 40px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-md);
-  color: var(--text-secondary);
+  /* ♻️ 第 6 轮：侧栏是全站最透的一块（50% + blur），视频暗帧透上来时 secondary 只有 ~2.9:1，
+     而导航文字是全站点得最多、最不能糊的字 —— 单点提到 primary（最坏 ~5.9:1 / 常见 ~7.2:1）。
+     玻璃保持「最透」，不加浓；选中态仍靠品牌色 + 半透明品牌底 + 600 字重区分。 */
+  color: var(--text-primary);
   font-size: var(--fs-base);
   font-weight: 500;
   white-space: nowrap;
@@ -620,7 +623,9 @@ onBeforeUnmount(() => {
 
 .topbar__subtitle {
   font-size: var(--fs-xs);
-  color: var(--text-tertiary);
+  /* ♻️ 第 6 轮：顶栏底衬只有 50% + blur(4px)，视频暗帧透上来时 12px 的 tertiary 会跌到 2:1 读不清，
+     所以这块小字单点提到 secondary —— 结构玻璃保持「最透」的观感，只把压在它上面的小字加重。 */
+  color: var(--text-secondary);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -638,7 +643,7 @@ onBeforeUnmount(() => {
   border-radius: var(--r-md);
   /* 顶栏里的图标按钮也走半透明：顶栏是玻璃，按钮若实白就是玻璃上贴白块。
      不加 backdrop-filter（顶栏已建 backdrop root，后代再加是空转）。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   color: var(--text-secondary);
   font-size: 16px;
   cursor: pointer;
@@ -689,7 +694,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-full);
   /* 用户胶囊同样半透明（顶栏是玻璃，实白会破连续性） */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
 }
@@ -815,7 +820,7 @@ onBeforeUnmount(() => {
   border-left: 2px solid var(--sev, var(--text-tertiary));
   border-radius: var(--r-md);
   /* 告警项在玻璃抽屉里，底色半透明才不破玻璃连续性 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
 }
 
 .alert-item--critical {

@@ -131,9 +131,11 @@ const barValue = computed(() => {
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
-  /* 与 .surface 同一套真玻璃：62% 半透明 + 可见内框，视频从卡片后面透出来。
-     ⛔ 去掉 backdrop-filter（第 5 轮性能）：4 张 KPI 卡同时去模糊动的视频，代价高、3px 模糊看不出。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  /* 与 .surface 同一套真玻璃：--glass-fill 半透明 + 可见内框，视频从卡片后面透出来。
+     ⛔ 去掉 backdrop-filter（第 5 轮性能）：4 张 KPI 卡同时去模糊动的视频，代价高、3px 模糊看不出。
+     ♻️ 浓度改走 --glass-fill（第 6 轮）：KPI 数字是「大号标题」、旁边 hint 是 12px 次级文字，
+        底衬太透时 hint 会被视频暗帧吃掉 —— 统一提实后一并解决。 */
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   box-shadow:

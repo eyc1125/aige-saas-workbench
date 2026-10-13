@@ -462,7 +462,7 @@ onMounted(loadAll);
 }
 
 .switcher__item.is-active {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   color: var(--brand);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
@@ -641,7 +641,7 @@ onMounted(loadAll);
   flex: 0 0 32px;
   border-radius: 50%;
   font-size: 16px;
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   color: var(--text-secondary);
 }
 

@@ -567,7 +567,7 @@ onBeforeUnmount(stopPolling);
   padding: 4px 10px 4px 6px;
   border-radius: var(--r-full);
   border: 1px solid var(--border-hairline);
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
 }
@@ -739,7 +739,7 @@ onBeforeUnmount(stopPolling);
      ⛔ 去掉 backdrop-filter + hover 位移（第 5 轮性能）：
         模板卡是网格，一屏可达十几张 —— 全部去模糊动的视频、再叠 hover transform，
         滚动与指针移动都会掉帧。改为「只加深阴影」，观感不变、开销大降。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     var(--shadow-sm);

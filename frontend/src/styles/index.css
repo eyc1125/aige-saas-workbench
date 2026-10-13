@@ -114,8 +114,12 @@ a {
   --el-bg-color-page: var(--bg-page);
   /* 浮层（下拉 / 提示 / 弹窗 / 抽屉）底色也半透明：
      全站背景是视频，若这里留实白，一打开就会在玻璃上糊出一块白板。
-     给到 70% —— 透得出底下的视频，但因为带 6px 模糊，浮层里的字照样读得清。 */
-  --el-bg-color-overlay: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+     给到 --glass-fill-overlay（80%，第 6 轮）—— 透得出底下的视频，但因为带 6px 模糊，浮层里的字照样一眼读清。 */
+  --el-bg-color-overlay: color-mix(
+    in srgb,
+    var(--bg-surface) var(--glass-fill-overlay),
+    transparent
+  );
 
   --el-text-color-primary: var(--text-primary);
   --el-text-color-regular: var(--text-secondary);
@@ -131,9 +135,9 @@ a {
   --el-fill-color: var(--bg-subtle);
   --el-fill-color-light: var(--bg-subtle);
   --el-fill-color-lighter: var(--bg-subtle);
-  /* 输入框类控件的空白底：比玻璃卡（62%）略实一点 —— 框里是用户正在打的字，
-     可读性优先；只实 4%，观感上仍是「玻璃上再叠一层薄玻璃」，不会像贴了张白纸 */
-  --el-fill-color-blank: color-mix(in srgb, var(--bg-surface) 66%, transparent);
+  /* 输入框类控件的空白底：比玻璃卡（--glass-fill）更实一档 —— 框里是用户正在打的字，
+     可读性优先；只实 10%，观感上仍是「玻璃上再叠一层薄玻璃」，不会像贴了张白纸 */
+  --el-fill-color-blank: color-mix(in srgb, var(--bg-surface) var(--glass-fill-sub), transparent);
 
   --el-border-radius-base: var(--r-md);
   --el-border-radius-small: var(--r-sm);
@@ -168,7 +172,7 @@ a {
 .el-table {
   --el-table-border-color: var(--border-hairline);
   /* 表头也半透明：卡片是玻璃，表头若是实白就会在玻璃上贴出一条突兀的白块 */
-  --el-table-header-bg-color: color-mix(in srgb, var(--bg-subtle) 62%, transparent);
+  --el-table-header-bg-color: color-mix(in srgb, var(--bg-subtle) var(--glass-fill), transparent);
   --el-table-row-hover-bg-color: color-mix(in srgb, var(--bg-hover) 70%, transparent);
   --el-table-bg-color: transparent;
   --el-table-tr-bg-color: transparent;
@@ -233,7 +237,7 @@ html.dark .el-button--primary:not(.is-disabled) {
   /* 输入框也半透明：卡片已是玻璃，输入框若实白就是玻璃上贴白纸（与 --el-fill-color-blank 同值）。
      ⛔ 这里**不加** backdrop-filter：卡片本身已建立 backdrop root，
      后代再加只会变成空转的双重模糊，既没效果又多一层合成开销。 */
-  background: color-mix(in srgb, var(--bg-surface) 66%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill-sub), transparent);
   transition: box-shadow var(--dur-base) var(--ease);
 }
 
@@ -245,13 +249,14 @@ html.dark .el-button--primary:not(.is-disabled) {
     0 0 0 3px var(--border-focus);
 }
 
-/* 弹窗 / 抽屉：真玻璃 —— 70% 半透明底 + 6px 模糊 + 不透明内框。
-   抽屉是侧边栏在移动端的形态，主人专门点过名（「我们展开这个，这边不是玻璃」），
-   所以这里的透明度必须和侧边栏同一档，不能像上一版那样给到 88%（那就是一块白板）。 */
+/* 弹窗 / 抽屉：真玻璃 —— --glass-fill-overlay（80%）半透明底 + 6px 模糊 + 不透明内框。
+   抽屉是侧边栏在移动端的形态，主人专门点过名（「我们展开这个，这边不是玻璃」），所以必须保持玻璃。
+   ⚠️ 这里的浓度比内容面（--glass-fill）略透一点是**刻意的**：浮层自带 6px 模糊把底下的视频
+      平均过一遍，底衬本来就更稳；再叠上 80% 就足够压住文字，不必像内容面那样实。 */
 .el-dialog,
 .el-drawer {
   border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill-overlay), transparent);
   -webkit-backdrop-filter: var(--glass-blur-overlay);
   backdrop-filter: var(--glass-blur-overlay);
   border: 1px solid var(--border-hairline);
@@ -261,7 +266,7 @@ html.dark .el-button--primary:not(.is-disabled) {
 }
 
 .el-message-box {
-  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill-overlay), transparent);
   -webkit-backdrop-filter: var(--glass-blur-overlay);
   backdrop-filter: var(--glass-blur-overlay);
   border: 1px solid var(--border-hairline);
@@ -284,7 +289,7 @@ html.dark .el-button--primary:not(.is-disabled) {
    各自有实白底色，必须逐个点名，否则「每一个页面消息框」都不会玻璃（主人本轮点名）。 */
 .el-message,
 .el-notification {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill-overlay), transparent);
   -webkit-backdrop-filter: var(--glass-blur-overlay);
   backdrop-filter: var(--glass-blur-overlay);
   border: 1px solid var(--border-hairline);
@@ -310,7 +315,7 @@ html.dark .el-button--primary:not(.is-disabled) {
 }
 
 .el-collapse-item__header {
-  background: color-mix(in srgb, var(--bg-subtle) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-subtle) var(--glass-fill), transparent);
 }
 
 .el-descriptions__body {
@@ -319,7 +324,7 @@ html.dark .el-button--primary:not(.is-disabled) {
 
 .el-descriptions__cell.is-bordered-label,
 .el-descriptions__label.el-descriptions__cell.is-bordered-label {
-  background: color-mix(in srgb, var(--bg-subtle) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-subtle) var(--glass-fill), transparent);
 }
 
 .el-dialog__header {
@@ -381,9 +386,10 @@ html.dark .el-button--primary:not(.is-disabled) {
         每帧都要重采样 + 重模糊，合成器直接饱和 → 滚动 / 切页卡顿。
         3px 的模糊原本几乎看不出来，去掉后「透明 + 内框」的玻璃观感不变；
         真正需要模糊的只有**数量少、位置固定**的侧栏 / 顶栏 / 浮层（见各自定义）。
-     ⚠️ 62% 是「能看清视频」与「文字压得住」之间反复调过的平衡点，
-        再往下调（<55%）浅色文字会开始发飘，先别动它。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+     ♻️ 底色浓度改走 --glass-fill（第 6 轮 · 76%）：62% 时视频暗帧透上来会把底衬拉到中灰，
+        secondary / tertiary 文字掉到 3.7 / 2.3:1 看不清 —— 主人「字体不够清晰」的根因就在这。
+        以后要整体调浓淡，改 tokens.css 里的 --glass-fill 一处即可，不要再散着写数字。 */
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   /* 玻璃内框：外侧发丝线 + 内侧 1px 实线 + 顶部高光，做出实体玻璃的厚度，边缘看得见（不是透明的） */
@@ -615,10 +621,10 @@ html.dark .el-button--primary:not(.is-disabled) {
   padding: var(--sp-4);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  /* 与 .surface 同一套真玻璃：62% + 不透明内框；窄屏整屏都是卡，实白会把视频彻底盖住。
+  /* 与 .surface 同一套真玻璃：--glass-fill（76%）+ 不透明内框；窄屏整屏都是卡，实白会把视频彻底盖住。
      ⛔ 同样去掉 backdrop-filter：窄屏一屏可达数十张 .card，全部去模糊动的视频 =
         滚动时合成器彻底饱和（第 5 轮实测到的主要卡顿源之一）。 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) var(--glass-fill), transparent);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),

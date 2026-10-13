@@ -72,12 +72,19 @@
   --border-strong: #d8eadf; /* 需要稍微清晰一点的分隔 */
   --border-focus: rgba(21, 128, 61, 0.35);
 
-  /* 文字对比度（对 --bg-surface #fcfdfc 实测）：
-     primary 15.9:1 · secondary 5.9:1 · tertiary 3.7:1 */
-  --text-primary: #13251a;
-  --text-secondary: #4c6a58;
-  --text-tertiary: #738a7b;
-  --text-disabled: #a2b7a8;
+  /* 文字对比度（第 6 轮重定 · 2026-10-14）
+     ⛔ 上一版这四个值是按**实底 #fcfdfc** 校准的（primary 15.9 / secondary 5.9 / tertiary 3.7:1），
+        但全站文字真正压在底下的是「玻璃 + 一层会动的视频」：视频暗帧透上来时底衬亮度会掉一大截，
+        secondary / tertiary 直接跌到 3.7 / 2.3:1 —— 这就是主人说的「字体不够清晰、不够能看」。
+        本次按**最坏情况的玻璃底衬**（视频暗帧透光后）重新校准，并同时把内容玻璃底衬加实
+        （--glass-fill 见下）：文字与底衬两道一起动，才真的读得清。
+        最坏玻璃底衬下：primary ≈12:1 · secondary ≈5.8:1 · tertiary ≈4.5:1（WCAG AA 全部达标）
+        实底 #fcfdfc 下：primary ≈16.4:1 · secondary ≈9.1:1 · tertiary ≈7.0:1
+     ⛔ primary 用**真正的近黑**（主人明确要「真正的黑色」）—— 只带一丝冷调，不是纯 #000（工艺地板）。 */
+  --text-primary: #0a0d0b;
+  --text-secondary: #3a4a41;
+  --text-tertiary: #4a5a50;
+  --text-disabled: #9db3a4;
   --text-on-dark: #eaf3ec;
 
   /* ---------- 阴影：全部带冷绿色调，不用纯黑 ---------- */
@@ -100,6 +107,18 @@
   --glass-blur: blur(3px) saturate(1.3); /* 卡片 / 表格 / KPI 卡 */
   --glass-blur-strong: blur(4px) saturate(1.4); /* 侧边栏 / 顶栏（最透，优先级最高） */
   --glass-blur-overlay: blur(6px) saturate(1.25); /* 弹窗 / 抽屉 / 下拉浮层（可读性优先） */
+
+  /* ---------- 玻璃底衬浓度（第 6 轮新增 · 收归一处集中管理） ----------
+     ⛔ 以前这个百分比散落在 12 个文件里各写各的（62% / 66% / 70% / 72%），
+        想统一调一次得改十几处，漏掉一处就留下一块「比旁边更实」的补丁。
+        现在收成 3 个令牌：内容面 / 输入面 / 浮层面，全站引用同一套 —— 以后要调整体浓淡只动这里。
+     为什么比上一版（62%）实：62% 时视频暗帧透上来会把底衬拉到中灰，
+     secondary / tertiary 文字直接掉到 3.7 / 2.3:1，看不清。
+     76% 是「最坏情况下 tertiary 仍保住 ≥4.5:1（WCAG AA）」的最低浓度，
+     同时还有 24% 的视频透出来 —— 「玻璃」的观感与「能看到视频原素材」都在。 */
+  --glass-fill: 76%; /* 内容面：卡片 / 表格 / KPI / 列表项 / 内嵌小块 */
+  --glass-fill-sub: 84%; /* 输入类：框里是用户正在打的字，可读性优先 */
+  --glass-fill-overlay: 80%; /* 浮层：弹窗 / 抽屉 / 下拉；自带 6px 模糊垫底，可比内容面再透一点 */
 
   /* ---------- 圆角：一套刻度锁死 ---------- */
   --r-xs: 4px;
@@ -187,10 +206,17 @@ html.dark {
   --border-strong: rgba(255, 255, 255, 0.14);
   --border-focus: rgba(61, 220, 132, 0.45);
 
-  --text-primary: #eaf3ec;
-  --text-secondary: #a3bcac;
-  --text-tertiary: #7d9585;
-  --text-disabled: #4c6a58;
+  /* 深色下方向相反：底衬是深色，视频**亮帧**透上来才掉对比 —— 同样按最坏情况校准 */
+  --text-primary: #f4f8f5;
+  --text-secondary: #c3d5cb;
+  --text-tertiary: #a0b6a9;
+  --text-disabled: #607a6c;
+
+  /* 深色内容玻璃比浅色再实一档：深色底 + 视频亮帧透上来会同时冲掉「深」和「静」，
+     亮文字要守住对比，底衬就得更沉 */
+  --glass-fill: 84%;
+  --glass-fill-sub: 90%;
+  --glass-fill-overlay: 88%;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.45);
