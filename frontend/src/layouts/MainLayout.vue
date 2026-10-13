@@ -432,9 +432,13 @@ onBeforeUnmount(() => {
   height: 100dvh;
   flex: 0 0 auto;
   padding: var(--sp-4) var(--sp-3);
-  /* 真玻璃（不用模糊）：62% 半透明，底下的背景视频清晰透出来；
-     靠不透明的内框线把导航区"框"出来，文字对比度由这层半透明底子保证。 */
-  background: color-mix(in srgb, var(--bg-sidebar) 62%, transparent);
+  /* 真玻璃（iOS 毛玻璃）：58% 半透明底 + 轻模糊 3px + 提饱和 + 不透明内框。
+     侧边栏是全站最该像玻璃的一块 —— 它压在视频上，透过去要能实时看到视频原素材。
+     ⛔ 半径刻意压到 3px：既能看清底下的画面，又不像上一版 16px 那样把视频糊掉。
+     -webkit- 前缀不能省：微信内置浏览器（iOS WKWebView）只认带前缀的写法。 */
+  background: color-mix(in srgb, var(--bg-sidebar) 58%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
   border-right: 1px solid var(--border-hairline);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
@@ -575,8 +579,10 @@ onBeforeUnmount(() => {
   gap: var(--sp-4);
   height: var(--topbar-h);
   padding: 0 var(--sp-5);
-  /* 与侧边栏同一套真玻璃：半透明、不模糊，视频从顶栏清晰透出来，内框线保证边缘可见 */
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  /* 与侧边栏同一套真玻璃：58% 半透明 + 轻模糊 3px，视频从顶栏透出来，内框线保证边缘可见 */
+  background: color-mix(in srgb, var(--bg-surface) 58%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
   border-bottom: 1px solid var(--border-hairline);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),

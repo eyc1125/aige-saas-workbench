@@ -131,7 +131,8 @@ a {
   --el-fill-color: var(--bg-subtle);
   --el-fill-color-light: var(--bg-subtle);
   --el-fill-color-lighter: var(--bg-subtle);
-  /* 输入框类控件的空白底：跟玻璃卡同一套透明度，否则卡片上会浮出一块块白方框 */
+  /* 输入框类控件的空白底：比玻璃卡（72%）略实一点 —— 框里是用户正在打的字，
+     可读性优先；只实 6%，观感上仍是「玻璃上再叠一层薄玻璃」，不会像贴了张白纸 */
   --el-fill-color-blank: color-mix(in srgb, var(--bg-surface) 78%, transparent);
 
   --el-border-radius-base: var(--r-md);
@@ -167,7 +168,7 @@ a {
 .el-table {
   --el-table-border-color: var(--border-hairline);
   /* 表头也半透明：卡片是玻璃，表头若是实白就会在玻璃上贴出一条突兀的白块 */
-  --el-table-header-bg-color: color-mix(in srgb, var(--bg-subtle) 78%, transparent);
+  --el-table-header-bg-color: color-mix(in srgb, var(--bg-subtle) 72%, transparent);
   --el-table-row-hover-bg-color: color-mix(in srgb, var(--bg-hover) 86%, transparent);
   --el-table-bg-color: transparent;
   --el-table-tr-bg-color: transparent;
@@ -229,7 +230,9 @@ html.dark .el-button--primary:not(.is-disabled) {
 .el-select__wrapper {
   border-radius: var(--r-md);
   box-shadow: 0 0 0 1px var(--border-hairline) inset;
-  /* 输入框也半透明：卡片已是玻璃，输入框若实白就是玻璃上贴白纸（与 --el-fill-color-blank 同值） */
+  /* 输入框也半透明：卡片已是玻璃，输入框若实白就是玻璃上贴白纸（与 --el-fill-color-blank 同值）。
+     ⛔ 这里**不加** backdrop-filter：卡片本身已建立 backdrop root，
+     后代再加只会变成空转的双重模糊，既没效果又多一层合成开销。 */
   background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
   transition: box-shadow var(--dur-base) var(--ease);
 }
@@ -247,12 +250,25 @@ html.dark .el-button--primary:not(.is-disabled) {
 .el-drawer {
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
-  /* 弹层也透一点：不铺实白，但以可读为先（88%） */
+  /* 弹层也走一套玻璃：88% 半透明 + 轻模糊 4px，既透得出底下视频，又以可读为先 */
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-overlay);
+  backdrop-filter: var(--glass-blur-overlay);
 }
 
 .el-message-box {
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-overlay);
+  backdrop-filter: var(--glass-blur-overlay);
+}
+
+/* Element Plus 浮层（下拉 / 选择面板 / 气泡 / 日期面板）：
+   它们都挂在 .el-popper 里，底色走 --el-bg-color-overlay；
+   这里补上模糊，否则一展开就在玻璃卡上糊出一块实白，比卡片还「不玻璃」 */
+.el-popper.is-light,
+.el-picker-panel {
+  -webkit-backdrop-filter: var(--glass-blur-overlay);
+  backdrop-filter: var(--glass-blur-overlay);
 }
 
 .el-dialog {
@@ -311,10 +327,12 @@ html.dark .el-button--primary:not(.is-disabled) {
 }
 
 .surface {
-  /* 玻璃模块：78% 半透明 —— 底下的背景视频真的能透出来，但底子还在，文字照样读得清。
-     ⛔ 刻意**不用** backdrop-filter：整站背景是视频，全屏模糊既把画面糊掉（主人明确不要模糊），
-        又让每个卡片都多一层合成开销（低配机与移动端明显掉帧）。 */
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  /* 真玻璃模块：72% 半透明底 + 轻模糊 2px + 不透明内框。
+     透过去能实时看到底下的视频原素材，同时底子还在，文字照样读得清。
+     （以前这里刻意不用 backdrop-filter，结果只剩半透明色块 —— 那看着是「透明膜」不是玻璃。） */
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   /* 玻璃内框：外侧发丝线 + 内侧 1px 实线 + 顶部高光，做出实体玻璃的厚度，边缘看得见（不是透明的） */
@@ -546,8 +564,10 @@ html.dark .el-button--primary:not(.is-disabled) {
   padding: var(--sp-4);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  /* 与 .surface 同一套玻璃：窄屏整屏都是卡，实白会把视频彻底盖住 */
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  /* 与 .surface 同一套真玻璃：72% + 轻模糊 2px，窄屏整屏都是卡，实白会把视频彻底盖住 */
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
