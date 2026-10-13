@@ -300,6 +300,26 @@ const loginExpr = () => `(async () => {
     );
     report.steps.dashboardDesktop = { probe: b1 };
 
+    // 需求 ⑦：同一会话内切路由，背景视频不能中断/重建。
+    // 给 video 节点打个标记，切完路由标记还在 + 时间轴继续走 = 组件没被重建。
+    const chrome = await ev(
+      `(() => { const f = (el) => { if (!el) return null; const c = getComputedStyle(el); return { bg: c.backgroundColor, blur: c.backdropFilter || c.webkitBackdropFilter || 'none' }; }; return JSON.stringify({ side: f(document.querySelector('.side')), topbar: f(document.querySelector('.topbar')) }); })()`
+    );
+    console.log('F chrome ' + chrome);
+    report.chrome = JSON.parse(chrome);
+
+    await ev(
+      `(() => { const v = document.querySelector('video'); if (v) v.dataset.keepProbe = '1'; return 'tagged'; })()`
+    );
+    const ctBefore = V(JSON.parse(await ev(probeExpr()))).currentTime;
+    await ev(`(location.hash = '#/websites')`);
+    await sleep(4500);
+    const keep = await ev(
+      `(() => { const v = document.querySelector('video'); if (!v) return 'no-video'; return JSON.stringify({ tag: v.dataset.keepProbe || '', ct: Number(v.currentTime.toFixed(2)), paused: v.paused }); })()`
+    );
+    console.log('E route-switch video ' + keep + ' ctBefore=' + ctBefore);
+    report.steps.routeSwitch = { keep: JSON.parse(keep), ctBefore };
+
     await nav(ORIGIN + '/#/this-route-does-not-exist', 3500);
     const c1 = JSON.parse(await ev(probeExpr()));
     await shot('04-404-desktop.png');

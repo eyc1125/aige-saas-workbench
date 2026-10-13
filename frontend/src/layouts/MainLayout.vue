@@ -432,7 +432,12 @@ onBeforeUnmount(() => {
   height: 100dvh;
   flex: 0 0 auto;
   padding: var(--sp-4) var(--sp-3);
-  background: var(--bg-sidebar);
+  /* 半透明 + 毛玻璃：视频从侧边栏透出来（整站背景视频在最底层），
+     同时把底下的画面糊成一片均值，导航文字/图标对比度不被视频明暗牵着走。
+     ⛔ 不能用 100% 透明：导航是文字列表，直接压在运动画面上会读不清。 */
+  background: color-mix(in srgb, var(--bg-sidebar) 70%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
   border-right: 1px solid var(--border-hairline);
   transition: width var(--dur-card) var(--ease);
 }
@@ -570,9 +575,23 @@ onBeforeUnmount(() => {
   gap: var(--sp-4);
   height: var(--topbar-h);
   padding: 0 var(--sp-5);
-  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
-  backdrop-filter: blur(12px);
+  /* 与侧边栏同一套处理：半透明 + 毛玻璃，视频从顶栏透出来，文字仍读得清 */
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
   border-bottom: 1px solid var(--border-hairline);
+}
+
+/* 不支持 backdrop-filter 的浏览器（老 Safari / 部分内嵌 WebView）：
+   回到接近实底，宁可少透一点，也不能让导航和标题糊在视频上看不清 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .side {
+    background: color-mix(in srgb, var(--bg-sidebar) 96%, transparent);
+  }
+
+  .topbar {
+    background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  }
 }
 
 .topbar__left,
