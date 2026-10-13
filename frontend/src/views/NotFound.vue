@@ -22,7 +22,8 @@
   min-height: 100dvh;
   padding: var(--sp-6);
   text-align: center;
-  background: var(--bg-page);
+  /* 不铺自己的底色：全站视频背景在最底层，铺了就把它盖住了 */
+  background: transparent;
 }
 
 .nf__code {
