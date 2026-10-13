@@ -639,17 +639,17 @@ function toggleRecovery() {
 /* ---------------- 移动端：单列 ---------------- */
 @media (max-width: 860px) {
   .login {
-    padding: 0;
+    /* 留出四周留白：原来卡片铺满整屏、圆角归零，全站视频背景被彻底盖死；
+       现在改成「悬浮玻璃卡」，视频从卡片四周与卡片内部都透得出来。 */
+    padding: var(--sp-4);
     align-items: stretch;
   }
 
   .login__card {
     grid-template-columns: 1fr;
     width: 100%;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
-    min-height: 100dvh;
+    /* 保留 .surface 的玻璃内框与圆角，只把高度改成「视口减去四周留白」 */
+    min-height: calc(100dvh - var(--sp-4) * 2);
   }
 
   .brand {
@@ -668,6 +668,9 @@ function toggleRecovery() {
 
   .form-panel {
     padding: var(--sp-6) var(--sp-5) calc(var(--sp-6) + env(safe-area-inset-bottom));
+    /* 窄屏整屏就这一块「白」：跟玻璃卡同一套透明度，视频透出来；
+       底子仍在（叠加后约 95%），表单文字与输入框的对比度不受影响。 */
+    background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
   }
 }
 
