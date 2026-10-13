@@ -7,12 +7,15 @@
     ③ 固定在**最底层**，且 `pointer-events: none` —— 不吃任何鼠标事件，
        因此**不遮挡 UI、也不影响上层交互**
 
-  ⛔ 三个必须用 JS / 编码格式兜的坑：
+  ⛔ 四个必须用 JS / 编码格式兜的坑：
     · `muted` —— Vue 的布尔属性在部分浏览器（Chrome / Safari）**不会真正写进 DOM**，
       DOM 里 muted=false 时自动播放会被浏览器策略直接拦掉（控制台报 NotAllowedError）。
       所以挂载后再补一次 `el.muted = true`。
     · `play()` —— 即便静音，个别环境仍可能拒绝；用 catch 静默吞掉。
       背景视频播不了不该影响任何人使用页面（此时露出兜底色 + 品牌色渐变，一样好看）。
+    · **微信内置浏览器**（Android 的 X5 / iOS 的 WKWebView）不认普通自动播放：
+      必须等 `WeixinJSBridgeReady` 后再 `play()`，并给 video 挂 X5 专属属性
+      （`x5-video-player-type="h5-page"` 等），否则要么不播、要么被拉起原生全屏播放器。
     · **编码必须是 H.264（`avc1`）**——`public/bg-video.mp4` 第一版是 HEVC/H.265（`hvc1`），
       浏览器根本解不出来：`readyState=4`、时间轴在走，但 `videoWidth=0`、
       `totalVideoFrames=0`，画面上永远只有兜底色（实测踩过，看着就像"没换背景"）。
@@ -31,6 +34,10 @@
       loop
       muted
       playsinline
+      webkit-playsinline="true"
+      x5-playsinline="true"
+      x5-video-player-type="h5-page"
+      x5-video-player-fullscreen="false"
       preload="auto"
       disablepictureinpicture
       controlslist="nodownload noplaybackrate noremoteplayback"
@@ -101,12 +108,37 @@ function tryPlay() {
   }
 }
 
-onMounted(tryPlay);
+/** 微信桥就绪 / 媒体数据就绪时的统一补播入口 */
+function onWeixinReady() {
+  tryPlay();
+}
+
+onMounted(() => {
+  tryPlay();
+
+  // ---- 微信内置浏览器兜底（Android 的 X5 内核 / iOS 的 WKWebView）----
+  // ⛔ 微信不会在挂载时就允许 play()，必须等它的 JS 桥就绪：
+  //    · 桥已就绪时 `WeixinJSBridgeReady` 不会再触发（事件早于本组件挂载），
+  //      所以先判存在性，存在就直接补播；
+  //    · 桥未就绪才挂回调 —— 其他浏览器永远不会触发它，挂上无副作用。
+  if (typeof window.WeixinJSBridge === 'undefined') {
+    document.addEventListener('WeixinJSBridgeReady', onWeixinReady, false);
+  } else {
+    tryPlay();
+  }
+
+  // 微信里 play() 有时发生在媒体数据就绪之前，会**静默失败**（不 reject、无从感知），
+  // 画面就永远停在首帧。数据就绪后再补一次，成本极低。
+  const v = el.value;
+  if (v) v.addEventListener('loadeddata', onWeixinReady, { once: true });
+});
 
 onBeforeUnmount(() => {
   if (unbindGesture) unbindGesture();
+  document.removeEventListener('WeixinJSBridgeReady', onWeixinReady, false);
   const v = el.value;
   if (v) {
+    v.removeEventListener('loadeddata', onWeixinReady);
     try {
       v.pause();
       v.removeAttribute('src');

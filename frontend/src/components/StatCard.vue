@@ -183,10 +183,14 @@ const barValue = computed(() => {
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
-  background: var(--bg-surface);
+  /* 与 .surface 同一套玻璃：半透明 + 可见内框，视频从卡片后面透出来（不用模糊） */
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
+    var(--shadow-sm);
   overflow: hidden;
   /* 3D 倾斜：角度来自 JS 写的 --tilt-*，未启用时恒为 0deg（等于没变换）。
      perspective 放在卡片自身上，透视强度小一点，倾斜才不会看起来像被拉扯。
@@ -202,7 +206,11 @@ const barValue = computed(() => {
 
 .stat:hover {
   --lift: -2px;
-  box-shadow: var(--shadow-md);
+  /* 悬停只把外阴影加深，内框必须保留 —— 单独写 shadow-md 会把玻璃内框一起清掉 */
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
+    var(--shadow-md);
 }
 
 /* 指针跟随的一层极淡高光：让"立体"有光源方向，而不是硬邦邦地转 */
