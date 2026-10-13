@@ -1,11 +1,5 @@
 <template>
-  <div
-    ref="rootRef"
-    class="stat"
-    :class="`stat--${tone}`"
-    @pointermove="onPointerMove"
-    @pointerleave="onPointerLeave"
-  >
+  <div class="stat" :class="`stat--${tone}`">
     <div class="stat__head">
       <span class="stat__label">{{ label }}</span>
       <span class="stat__icon" aria-hidden="true">
@@ -51,56 +45,11 @@ const props = defineProps({
   percent: { type: [Number, String], default: null },
 });
 
-const rootRef = ref(null);
-
-// ============================================================
-// 3D 倾斜
-// ------------------------------------------------------------------
-// 只给「有鼠标且不排斥动效」的设备开：
-//   · 触屏上没有 hover，指针事件在抬手前一直触发，只会白耗电；
-//   · 服务器这台机器资源紧张，能省的重绘就省。
-// 角度刻意压得很小（X 5° / Y 7°）—— 大面积卡片转太多会晕，
-// 而且一旦超过 ~10° 就会露出「塑料感」。
-// ============================================================
-const TILT_X_LIMIT = 5;
-const TILT_Y_LIMIT = 7;
-
+// ⛔ 3D 倾斜已移除（2026-10-14 第 5 轮性能修复）：
+//    卡片原本带 backdrop-filter，再叠 rotateX/rotateY 的实时 transform →
+//    指针每次移动都要**重建 backdrop root 并重模糊整块**，是卡顿的头号放大器。
+//    4 张 KPI 卡同时转，指针一动就整屏掉帧。去掉后静态玻璃观感不变，指针滑动丝滑。
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const tiltEnabled =
-  !reducedMotion && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-
-let rafId = 0;
-
-function onPointerMove(event) {
-  if (!tiltEnabled || rafId || !rootRef.value) return;
-  const rect = rootRef.value.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  // 归一化到 [-0.5, 0.5]
-  const px = (event.clientX - rect.left) / rect.width - 0.5;
-  const py = (event.clientY - rect.top) / rect.height - 0.5;
-
-  // 指针移动是高频事件（可达 120Hz），用 rAF 合并成每帧最多一次写入
-  rafId = requestAnimationFrame(() => {
-    rafId = 0;
-    const el = rootRef.value;
-    if (!el) return;
-    el.style.setProperty('--tilt-x', `${(-py * TILT_X_LIMIT).toFixed(2)}deg`);
-    el.style.setProperty('--tilt-y', `${(px * TILT_Y_LIMIT).toFixed(2)}deg`);
-    el.style.setProperty('--glow-x', `${((px + 0.5) * 100).toFixed(1)}%`);
-    el.style.setProperty('--glow-y', `${((py + 0.5) * 100).toFixed(1)}%`);
-  });
-}
-
-function onPointerLeave() {
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = 0;
-  }
-  const el = rootRef.value;
-  if (!el) return;
-  el.style.setProperty('--tilt-x', '0deg');
-  el.style.setProperty('--tilt-y', '0deg');
-}
 
 // ============================================================
 // 数字滚动
@@ -159,7 +108,6 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (rafId) cancelAnimationFrame(rafId);
   if (numRaf) cancelAnimationFrame(numRaf);
 });
 
@@ -183,10 +131,9 @@ const barValue = computed(() => {
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
-  /* 与 .surface 同一套真玻璃：62% 半透明 + 轻模糊 3px + 可见内框，视频从卡片后面透出来 */
+  /* 与 .surface 同一套真玻璃：62% 半透明 + 可见内框，视频从卡片后面透出来。
+     ⛔ 去掉 backdrop-filter（第 5 轮性能）：4 张 KPI 卡同时去模糊动的视频，代价高、3px 模糊看不出。 */
   background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   box-shadow:
@@ -194,45 +141,15 @@ const barValue = computed(() => {
     inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
     var(--shadow-sm);
   overflow: hidden;
-  /* 3D 倾斜：角度来自 JS 写的 --tilt-*，未启用时恒为 0deg（等于没变换）。
-     perspective 放在卡片自身上，透视强度小一点，倾斜才不会看起来像被拉扯。
-     注意：这里**没有** preserve-3d，也不要加 —— 卡片有 overflow: hidden，
-     按规范它会强制把 preserve-3d 降级成 flat，子元素的 translateZ 会静默失效。 */
-  transform: perspective(760px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))
-    translateY(var(--lift, 0px));
-  transition:
-    transform var(--dur-card) var(--ease),
-    box-shadow var(--dur-card) var(--ease);
-  will-change: transform;
+  transition: box-shadow var(--dur-card) var(--ease);
 }
 
 .stat:hover {
-  --lift: -2px;
   /* 悬停只把外阴影加深，内框必须保留 —— 单独写 shadow-md 会把玻璃内框一起清掉 */
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
     var(--shadow-md);
-}
-
-/* 指针跟随的一层极淡高光：让"立体"有光源方向，而不是硬邦邦地转 */
-.stat::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    240px circle at var(--glow-x, 50%) var(--glow-y, 0%),
-    color-mix(in oklab, var(--brand) 12%, transparent),
-    transparent 70%
-  );
-  opacity: 0;
-  transition: opacity var(--dur-card) var(--ease);
-  pointer-events: none;
-}
-
-.stat:hover::after {
-  opacity: 1;
 }
 
 /* 左侧 1px 色调标记：极细，避免「左侧 3px 色条」这种廉价装饰 */
@@ -331,13 +248,6 @@ const barValue = computed(() => {
 @media (max-width: 768px) {
   .stat {
     padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
-    /* 手机上不做 3D：没有 hover、且这几张卡是首屏最大的一块重绘 */
-    transform: none;
-    will-change: auto;
-  }
-
-  .stat::after {
-    display: none;
   }
 
   .stat__num {

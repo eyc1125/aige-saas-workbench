@@ -735,20 +735,18 @@ onBeforeUnmount(stopPolling);
   padding: var(--sp-4);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  /* 模板卡直接压在视频上，走真玻璃（62% + 轻模糊 3px） */
+  /* 模板卡直接压在视频上，走真玻璃（62% + 不透明内框）。
+     ⛔ 去掉 backdrop-filter + hover 位移（第 5 轮性能）：
+        模板卡是网格，一屏可达十几张 —— 全部去模糊动的视频、再叠 hover transform，
+        滚动与指针移动都会掉帧。改为「只加深阴影」，观感不变、开销大降。 */
   background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     var(--shadow-sm);
-  transition:
-    transform var(--dur-card) var(--ease),
-    box-shadow var(--dur-card) var(--ease);
+  transition: box-shadow var(--dur-card) var(--ease);
 }
 
 .tpl:hover {
-  transform: translateY(-1px);
   /* 悬停只加深外阴影，内框必须原样保留（单独写 shadow-md 会把玻璃内框一起清掉） */
   box-shadow:
     inset 0 0 0 1px var(--border-strong),

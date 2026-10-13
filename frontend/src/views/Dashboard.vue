@@ -1319,10 +1319,9 @@ watch(
   gap: var(--sp-4);
   flex-wrap: wrap;
   padding: var(--sp-4) var(--sp-5);
-  /* 与 .surface 同一套真玻璃：这块提示面板直接压在视频上，实白会糊成一块白板 */
+  /* 与 .surface 同一套真玻璃：这块提示面板直接压在视频上，实白会糊成一块白板。
+     ⛔ 去掉 backdrop-filter（第 5 轮性能）：与 .surface/.card 同理，少一个去模糊动视频的面就少一分合成开销。 */
   background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   box-shadow:

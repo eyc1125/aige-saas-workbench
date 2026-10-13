@@ -13,7 +13,10 @@
     -->
     <VideoBackground :scrim="0.18" />
     <router-view v-slot="{ Component }">
-      <!-- 页面切换淡入（250ms），尊重 reduced-motion 时由样式表统一降级 -->
+      <!-- 页面切换淡入（150ms），尊重 reduced-motion 时由样式表统一降级。
+           ⛔ 只做 opacity，**不做位移**（第 5 轮性能修复）：
+              transform 作用在「包含大量玻璃面」的整页祖先上 → 每帧重建 backdrop root + 重模糊，
+              是路由切换卡顿的主因。纯淡入淡出几乎零成本，观感同样干净。 -->
       <transition name="page-fade" mode="out-in">
         <component :is="Component" />
       </transition>
@@ -30,18 +33,11 @@ import VideoBackground from '@/components/VideoBackground.vue';
 <style scoped>
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition:
-    opacity var(--dur-card) var(--ease),
-    transform var(--dur-card) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease);
 }
 
-.page-fade-enter-from {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
+.page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(-4px);
 }
 </style>

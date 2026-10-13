@@ -374,14 +374,16 @@ html.dark .el-button--primary:not(.is-disabled) {
 }
 
 .surface {
-  /* 真玻璃模块：62% 半透明底 + 轻模糊 3px + 不透明内框。
+  /* 真玻璃模块：62% 半透明底 + 不透明内框。
      透过去能实时看到底下的视频原素材，同时底子还在，文字照样读得清。
-     （以前这里刻意不用 backdrop-filter，结果只剩半透明色块 —— 那看着是「透明膜」不是玻璃。）
+     ⛔ 这里**刻意去掉 backdrop-filter**（2026-10-14 第 5 轮性能修复）：
+        每页 4~8 个 .surface 同时去模糊一块 30fps 正在动的全屏视频 →
+        每帧都要重采样 + 重模糊，合成器直接饱和 → 滚动 / 切页卡顿。
+        3px 的模糊原本几乎看不出来，去掉后「透明 + 内框」的玻璃观感不变；
+        真正需要模糊的只有**数量少、位置固定**的侧栏 / 顶栏 / 浮层（见各自定义）。
      ⚠️ 62% 是「能看清视频」与「文字压得住」之间反复调过的平衡点，
         再往下调（<55%）浅色文字会开始发飘，先别动它。 */
   background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
   /* 玻璃内框：外侧发丝线 + 内侧 1px 实线 + 顶部高光，做出实体玻璃的厚度，边缘看得见（不是透明的） */
@@ -613,10 +615,10 @@ html.dark .el-button--primary:not(.is-disabled) {
   padding: var(--sp-4);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  /* 与 .surface 同一套真玻璃：62% + 轻模糊 3px，窄屏整屏都是卡，实白会把视频彻底盖住 */
+  /* 与 .surface 同一套真玻璃：62% + 不透明内框；窄屏整屏都是卡，实白会把视频彻底盖住。
+     ⛔ 同样去掉 backdrop-filter：窄屏一屏可达数十张 .card，全部去模糊动的视频 =
+        滚动时合成器彻底饱和（第 5 轮实测到的主要卡顿源之一）。 */
   background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
   box-shadow:
     inset 0 0 0 1px var(--border-strong),
     inset 0 1px 0 color-mix(in srgb, var(--bg-surface) 85%, transparent),
