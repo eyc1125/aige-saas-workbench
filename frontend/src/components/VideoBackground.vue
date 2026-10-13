@@ -43,7 +43,7 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 
-const props = defineProps({
+defineProps({
   /** 视频地址（放 frontend/public 下，用根路径引用） */
   src: { type: String, default: '/bg-video.mp4' },
   /** 压暗层浓度 0–1：视频越花、越大，就该给得越高（默认 0.35） */
