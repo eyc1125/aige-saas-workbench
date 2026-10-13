@@ -567,7 +567,7 @@ onBeforeUnmount(stopPolling);
   padding: 4px 10px 4px 6px;
   border-radius: var(--r-full);
   border: 1px solid var(--border-hairline);
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
 }
@@ -735,8 +735,13 @@ onBeforeUnmount(stopPolling);
   padding: var(--sp-4);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-sm);
+  /* 模板卡直接压在视频上，走真玻璃（62% + 轻模糊 3px） */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    var(--shadow-sm);
   transition:
     transform var(--dur-card) var(--ease),
     box-shadow var(--dur-card) var(--ease);
@@ -744,7 +749,10 @@ onBeforeUnmount(stopPolling);
 
 .tpl:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  /* 悬停只加深外阴影，内框必须原样保留（单独写 shadow-md 会把玻璃内框一起清掉） */
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    var(--shadow-md);
 }
 
 .tpl--featured {

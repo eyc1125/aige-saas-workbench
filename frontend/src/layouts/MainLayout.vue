@@ -432,11 +432,11 @@ onBeforeUnmount(() => {
   height: 100dvh;
   flex: 0 0 auto;
   padding: var(--sp-4) var(--sp-3);
-  /* 真玻璃（iOS 毛玻璃）：58% 半透明底 + 轻模糊 3px + 提饱和 + 不透明内框。
+  /* 真玻璃（iOS 毛玻璃）：50% 半透明底 + 轻模糊 4px + 提饱和 + 不透明内框。
      侧边栏是全站最该像玻璃的一块 —— 它压在视频上，透过去要能实时看到视频原素材。
-     ⛔ 半径刻意压到 3px：既能看清底下的画面，又不像上一版 16px 那样把视频糊掉。
+     ⛔ 半径刻意压到 4px：既能看清底下的画面，又不像早期 16px 那样把视频糊掉。
      -webkit- 前缀不能省：微信内置浏览器（iOS WKWebView）只认带前缀的写法。 */
-  background: color-mix(in srgb, var(--bg-sidebar) 58%, transparent);
+  background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
   -webkit-backdrop-filter: var(--glass-blur-strong);
   backdrop-filter: var(--glass-blur-strong);
   border-right: 1px solid var(--border-hairline);
@@ -506,12 +506,15 @@ onBeforeUnmount(() => {
 }
 
 .nav__item:hover {
-  background: var(--bg-hover);
+  /* 半透明悬停底：侧栏本身是玻璃，若这里铺一块**不透明**的 --bg-hover，
+     一悬停就在玻璃上贴出一块白块、玻璃连续性直接断掉（主人第 4 轮点名）。 */
+  background: color-mix(in srgb, var(--bg-hover) 62%, transparent);
   color: var(--text-primary);
 }
 
 .nav__item--active {
-  background: var(--brand-soft);
+  /* 选中态同理：半透明品牌浅底，压住但仍透得出侧栏底下的视频 */
+  background: color-mix(in srgb, var(--brand-soft) 72%, transparent);
   color: var(--brand);
   font-weight: 600;
   box-shadow: inset 0 0 0 1px var(--brand-soft-border);
@@ -552,7 +555,7 @@ onBeforeUnmount(() => {
 }
 
 .side__collapse:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 62%, transparent);
   color: var(--text-secondary);
 }
 
@@ -579,8 +582,8 @@ onBeforeUnmount(() => {
   gap: var(--sp-4);
   height: var(--topbar-h);
   padding: 0 var(--sp-5);
-  /* 与侧边栏同一套真玻璃：58% 半透明 + 轻模糊 3px，视频从顶栏透出来，内框线保证边缘可见 */
-  background: color-mix(in srgb, var(--bg-surface) 58%, transparent);
+  /* 与侧边栏同一套真玻璃：50% 半透明 + 轻模糊 4px，视频从顶栏透出来，内框线保证边缘可见 */
+  background: color-mix(in srgb, var(--bg-surface) 50%, transparent);
   -webkit-backdrop-filter: var(--glass-blur-strong);
   backdrop-filter: var(--glass-blur-strong);
   border-bottom: 1px solid var(--border-hairline);
@@ -633,7 +636,9 @@ onBeforeUnmount(() => {
   flex: 0 0 34px;
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-md);
-  background: var(--bg-surface);
+  /* 顶栏里的图标按钮也走半透明：顶栏是玻璃，按钮若实白就是玻璃上贴白块。
+     不加 backdrop-filter（顶栏已建 backdrop root，后代再加是空转）。 */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
   color: var(--text-secondary);
   font-size: 16px;
   cursor: pointer;
@@ -644,7 +649,7 @@ onBeforeUnmount(() => {
 }
 
 .topbar__icon-btn:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 62%, transparent);
   color: var(--brand);
   transform: translateY(-1px);
 }
@@ -683,13 +688,14 @@ onBeforeUnmount(() => {
   padding: 0 var(--sp-2) 0 4px;
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-full);
-  background: var(--bg-surface);
+  /* 用户胶囊同样半透明（顶栏是玻璃，实白会破连续性） */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
 }
 
 .user:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 62%, transparent);
 }
 
 .user__avatar {
@@ -808,7 +814,8 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-hairline);
   border-left: 2px solid var(--sev, var(--text-tertiary));
   border-radius: var(--r-md);
-  background: var(--bg-surface);
+  /* 告警项在玻璃抽屉里，底色半透明才不破玻璃连续性 */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
 }
 
 .alert-item--critical {
@@ -850,7 +857,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   padding: 0 6px;
   border-radius: var(--r-xs);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
   font-size: 11px;
   line-height: 18px;
   color: var(--text-tertiary);
@@ -862,7 +869,7 @@ onBeforeUnmount(() => {
   max-height: 160px;
   overflow-y: auto;
   border-radius: var(--r-sm);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
   font-family: inherit;
   font-size: var(--fs-xs);
   line-height: 1.7;
@@ -970,5 +977,16 @@ onBeforeUnmount(() => {
 /* 抽屉内的导航需要非 scoped 样式覆盖（内容由 el-drawer 挂到 body 上） */
 .side-drawer .el-drawer__body {
   padding: var(--sp-4) var(--sp-3);
+}
+
+/* 移动端抽屉 = 侧边栏的移动形态：透明度与模糊必须跟桌面侧栏**同一档**（50% / 4px）。
+   index.css 里 el-drawer 的通用值是 70%/6px —— 那是给中间弹窗的；
+   抽屉若是 70%，展开后就是一块明显比侧栏白的板子（主人第 4 轮：「我们展开这个，这边不是玻璃」）。
+   两种写法都写上：EP 版本不同时 class 可能落在 .el-drawer 上、也可能落在其 overlay 上。 */
+.side-drawer .el-drawer,
+.el-drawer.side-drawer {
+  background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
 }
 </style>

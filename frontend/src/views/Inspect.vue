@@ -398,10 +398,15 @@ onMounted(load);
   gap: var(--sp-4);
   flex-wrap: wrap;
   padding: var(--sp-4) var(--sp-5);
-  background: var(--bg-surface);
+  /* 与 .surface 同一套真玻璃：结论面板压在视频上，实白会糊成一块白板 */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    var(--shadow-md);
   border-left: 2px solid var(--tone, var(--brand));
 }
 

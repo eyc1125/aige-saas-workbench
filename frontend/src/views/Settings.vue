@@ -2282,7 +2282,7 @@ onMounted(async () => {
   padding: 2px;
   border: 1px solid var(--border-hairline);
   border-radius: var(--r-sm);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
 }
 
 .mode-switch__btn {
@@ -2303,12 +2303,12 @@ onMounted(async () => {
 }
 
 .mode-switch__btn:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
   color: var(--text-primary);
 }
 
 .mode-switch__btn.is-active {
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   color: var(--brand);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
@@ -2332,7 +2332,8 @@ onMounted(async () => {
   flex-direction: column;
   gap: 2px;
   padding: var(--sp-4) var(--sp-5);
-  background: var(--bg-surface);
+  /* 运行时指标格贴在玻璃卡里，底色半透明才不破连续性 */
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
 }
 
 .runtime__k {

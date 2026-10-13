@@ -70,7 +70,7 @@ defineEmits(['action']);
   height: 44px;
   margin-bottom: var(--sp-1);
   border-radius: var(--r-lg);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
   border: 1px solid var(--border-hairline);
   font-size: 20px;
   color: var(--text-tertiary);

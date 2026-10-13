@@ -436,7 +436,7 @@ onMounted(loadAll);
   gap: var(--sp-1);
   padding: 3px;
   border-radius: var(--r-md);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
   overflow-x: auto;
   max-width: 100%;
 }
@@ -458,11 +458,11 @@ onMounted(loadAll);
 
 .switcher__item:hover {
   color: var(--text-primary);
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
 
 .switcher__item.is-active {
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   color: var(--brand);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
@@ -641,7 +641,7 @@ onMounted(loadAll);
   flex: 0 0 32px;
   border-radius: 50%;
   font-size: 16px;
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   color: var(--text-secondary);
 }
 

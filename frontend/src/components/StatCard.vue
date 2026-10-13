@@ -183,8 +183,8 @@ const barValue = computed(() => {
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
-  /* 与 .surface 同一套真玻璃：72% 半透明 + 轻模糊 2px + 可见内框，视频从卡片后面透出来 */
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  /* 与 .surface 同一套真玻璃：62% 半透明 + 轻模糊 3px + 可见内框，视频从卡片后面透出来 */
+  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-hairline);

@@ -174,7 +174,11 @@ onBeforeUnmount(() => {
 .vbg__scrim {
   position: absolute;
   inset: 0;
-  background: var(--bg-page);
+  /* ⛔ 深色压暗，不是白膜。
+     上一版这里跟着 .vbg 用 --bg-page（近白）—— 25% 的近白等于给整块视频刷了层牛奶，
+     画面被洗成灰白，看不到原素材的颜色（主人第 4 轮明确否定）。
+     改成深色（ND 减光镜）：只压亮度、不吃色相，视频按原素材显色，玻璃层与文字也压得住。 */
+  background: var(--scrim-bg, rgba(6, 22, 14, 0.22));
   transition: opacity var(--dur-card, 200ms) var(--ease, ease);
 }
 </style>

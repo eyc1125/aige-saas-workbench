@@ -1162,7 +1162,8 @@ onMounted(() => reload(1));
   max-height: 46vh;
   overflow: auto;
   padding: var(--sp-2) 0;
-  background: var(--bg-surface);
+  /* 在外层玻璃卡里，底色半透明才不破连续性；同比卡片略实（diff 的等宽字要看得清） */
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 12px;
   line-height: 1.65;
