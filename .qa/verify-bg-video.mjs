@@ -308,6 +308,35 @@ const loginExpr = () => `(async () => {
     console.log('F chrome ' + chrome);
     report.chrome = JSON.parse(chrome);
 
+    // 浮层玻璃（主人本轮点名「每一个页面消息框，还有其他的，都是玻璃」）：
+    // ① 用户菜单 = el-dropdown 的 popper；② 退出确认 = el-message-box。
+    // 打开菜单后**点取消**，不真的退出，后面步骤不受影响。
+    const styleOf = (sel) =>
+      `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const c = getComputedStyle(el); return { bg: c.backgroundColor, blur: c.backdropFilter || c.webkitBackdropFilter || 'none' }; })()`;
+    await ev(
+      `(() => { const u = document.querySelector('.user'); if (u) u.click(); return !!u; })()`
+    );
+    await sleep(800);
+    const menuStyle = await ev(
+      `JSON.stringify({ menu: (${styleOf('.el-dropdown-menu')}), popper: (${styleOf('.el-dropdown__popper')}) || (${styleOf('.el-popper.is-light')}) })`
+    );
+    await shot('07-user-menu-desktop.png');
+    console.log('G dropdown ' + menuStyle);
+    report.glassDropdown = JSON.parse(menuStyle);
+
+    const logoutHit = await ev(
+      `(() => { const items = [...document.querySelectorAll('.el-dropdown-menu__item')]; const t = items.find((el) => /退出/.test(el.textContent || '')); if (!t) return 'no-item'; t.click(); return 'ok'; })()`
+    );
+    await sleep(900);
+    const boxStyle = JSON.parse(await ev(`JSON.stringify(${styleOf('.el-message-box')})`));
+    await shot('08-message-box-desktop.png');
+    console.log('H messageBox ' + logoutHit + ' ' + JSON.stringify(boxStyle));
+    report.glassMessageBox = { hit: logoutHit, box: boxStyle };
+    await ev(
+      `(() => { const btns = [...document.querySelectorAll('.el-message-box__btns button')]; const c = btns.find((el) => /取消/.test(el.textContent || '')) || btns[0]; if (!c) return 'no-btn'; c.click(); return 'canceled'; })()`
+    );
+    await sleep(700);
+
     await ev(
       `(() => { const v = document.querySelector('video'); if (v) v.dataset.keepProbe = '1'; return 'tagged'; })()`
     );
@@ -369,6 +398,24 @@ const loginExpr = () => `(async () => {
     );
     if (d2ov.overs.length) console.log('D2 overs ' + JSON.stringify(d2ov.overs.slice(0, 5)));
     report.steps.dashboardMobile = { probe: d2, overflow: d2ov };
+
+    // 移动端抽屉（主人本轮点名「侧边栏，我们展开这个，这边不是玻璃」）：
+    // 展开前先点汉堡按钮，读抽屉与抽屉里导航项的 computed 底色/模糊。
+    // 抽屉必须是**跟桌面侧栏同一档**（50% / blur(4px)），否则展开后是一块比侧栏白的板子。
+    const drawerOpenHit = await ev(
+      `(() => { const b = document.querySelector('.topbar__left .topbar__icon-btn'); if (!b) return 'no-btn'; b.click(); return 'ok'; })()`
+    );
+    await sleep(900);
+    const drawerStyle = await ev(
+      `(() => { const f = (el) => { if (!el) return null; const c = getComputedStyle(el); return { bg: c.backgroundColor, blur: c.backdropFilter || c.webkitBackdropFilter || 'none' }; }; const d = document.querySelector('.el-drawer'); return JSON.stringify({ drawer: f(d), navItem: f(d ? d.querySelector('.nav__item') : null), navActive: f(d ? d.querySelector('.nav__item--active') : null) }); })()`
+    );
+    await shot('09-drawer-mobile-390.png');
+    console.log('I drawer ' + drawerOpenHit + ' ' + drawerStyle);
+    report.drawerMobile = { hit: drawerOpenHit, style: JSON.parse(drawerStyle) };
+    await ev(
+      `(() => { const items = [...document.querySelectorAll('.el-drawer .nav__item')]; const t = items.find((el) => /网站管理/.test(el.textContent || '')) || items[0]; if (!t) return 'no-item'; t.click(); return 'ok'; })()`
+    );
+    await sleep(1200);
   }
 
   const mp4 = [];
