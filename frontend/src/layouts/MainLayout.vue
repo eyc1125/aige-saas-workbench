@@ -414,7 +414,10 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--bg-page);
+  /* 全站视频背景在最底层（App.vue 的 VideoBackground）——
+     这一层不能再铺不透明底色，否则会把视频整个盖住。
+     数据可读性由「视频上方的压暗层 + 卡片/侧栏自身的底色」保证。 */
+  background: transparent;
 }
 
 /* ==================== 侧边栏 ==================== */

@@ -1,8 +1,6 @@
 <template>
   <div class="login">
-    <!-- 背景一：全屏视频（装饰性 —— 自动播放 / 循环 / 静音 / 无控件，铺满不变形，不吃任何事件） -->
-    <VideoBackground />
-    <!-- 背景二：视频之上叠一层极淡的品牌色，让画面与整体色调统一（也提升卡片之外区域的可读性） -->
+    <!-- 视频背景由 App.vue 全站提供（含本页），这里只留一层品牌色统一色调 -->
     <div class="login__wash" aria-hidden="true" />
 
     <div class="login__card surface">
@@ -173,7 +171,6 @@ import { useRoute, useRouter } from 'vue-router';
 // 深路径导入：不要改回 'element-plus'（barrel 入口会阻止 tree-shaking，详见 main.js）
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { useAuthStore } from '@/stores/auth';
-import VideoBackground from '@/components/VideoBackground.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -377,7 +374,8 @@ function toggleRecovery() {
   min-height: 100vh;
   min-height: 100dvh;
   padding: var(--sp-5);
-  background: var(--bg-page);
+  /* 不再铺自己的底色：全站视频背景在最底层，铺了就把它盖住了 */
+  background: transparent;
   overflow: hidden;
 }
 
