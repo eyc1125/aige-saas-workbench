@@ -7,12 +7,16 @@
     ③ 固定在**最底层**，且 `pointer-events: none` —— 不吃任何鼠标事件，
        因此**不遮挡 UI、也不影响上层交互**
 
-  ⛔ 两个必须用 JS 兜的坑（只写模板属性会翻车）：
+  ⛔ 三个必须用 JS / 编码格式兜的坑：
     · `muted` —— Vue 的布尔属性在部分浏览器（Chrome / Safari）**不会真正写进 DOM**，
       DOM 里 muted=false 时自动播放会被浏览器策略直接拦掉（控制台报 NotAllowedError）。
       所以挂载后再补一次 `el.muted = true`。
     · `play()` —— 即便静音，个别环境仍可能拒绝；用 catch 静默吞掉。
       背景视频播不了不该影响任何人使用页面（此时露出兜底色 + 品牌色渐变，一样好看）。
+    · **编码必须是 H.264（`avc1`）**——`public/bg-video.mp4` 第一版是 HEVC/H.265（`hvc1`），
+      浏览器根本解不出来：`readyState=4`、时间轴在走，但 `videoWidth=0`、
+      `totalVideoFrames=0`，画面上永远只有兜底色（实测踩过，看着就像"没换背景"）。
+      换素材必须转码：`ffmpeg -i in.mp4 -an -c:v libx264 -pix_fmt yuv420p -crf 30 -movflags +faststart out.mp4`。
 
   ♿ 无障碍：尊重 `prefers-reduced-motion` —— 系统开了「减弱动态效果」就把画面停在首帧，
      避免全屏运动画面引发不适；正常用户看到的就是自动播放。
@@ -117,7 +121,12 @@ onBeforeUnmount(() => {
 .vbg {
   position: fixed; /* 要求 ②：铺满整个浏览器视口（而不是某个容器） */
   inset: 0;
-  z-index: 0; /* 要求 ③：压在最底层，上层内容只要 ≥1 就在它上面 */
+  /* 要求 ③：压在最底层。
+     ⛔ 这里必须用 -1，不能用 0：
+        z-index:0 属于「定位元素」，按 CSS 绘制顺序会盖在**静态内容**之上；
+        而像 404 页那种「整页静态文案」的页面就会被整层挡死（实测踩过）。
+        -1 让视频排到所有常规内容之前 —— 只在画布底色之上、任何内容之下。 */
+  z-index: -1;
   overflow: hidden;
   pointer-events: none; /* 要求 ③：完全不吃鼠标事件 → 不可能挡到任何交互 */
   background: var(--bg-page); /* 视频未就绪/不支持时的兜底色 */
