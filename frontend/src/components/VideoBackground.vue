@@ -165,7 +165,9 @@ function bindGestureRetry() {
 
 /** 真正出帧了：收掉该段的静态首帧图（少一层满屏贴图） */
 function onPlaying(i) {
-  started[i] = true;
+  // ⛔ 必须走 .value：started 是 ref，直接 started[i] = true 只是挂在 RefImpl 对象上，
+  //    模板读 unref(started)[i] 永远是 undefined → 首帧图永远收不掉（第 8 轮实测踩过）。
+  started.value[i] = true;
 }
 
 /** 真正发起播放：静音 + 忽略 reduce-motion；失败静默（由兜底流程接手） */
@@ -262,8 +264,8 @@ function switchTo(next) {
   }
   const nextVideo = videoEls[next];
   if (nextVideo) {
-    // 从头重播 → 重新垫回首帧图（前几帧解码出来之前不能是黑的）
-    started[next] = false;
+    // 从头重播 → 重新垫回首帧图（前几帧解码出来之前不能是黑的）；同样必须走 .value
+    started.value[next] = false;
     try {
       nextVideo.currentTime = 0;
     } catch {
