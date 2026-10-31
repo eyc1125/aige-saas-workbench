@@ -1240,6 +1240,29 @@ ffmpeg -y -ss 0.2 -i in.mp4 -vf scale=1280:-2 -frames:v 1 -q:v 4 bg-video-poster
 > 📌 教训：换素材前先 `ffprobe`；素材短就 repeat；多段用「层」不用「换 src」；
 > 所有兜底逻辑永远对准**正在显示的那一段**。
 
+### 17.28 多段背景「卡」的真凶：非激活的视频层还在合成
+
+**现象**：加完第二段背景后，滑动 / 切页偶发一点卡顿（第 5 轮优化后本来是顺的）。
+
+🔎 **根因**：`.vbg__video` 有 `transform: translateZ(0)`（第 5 轮为流畅度做的层提升），
+于是**两段各占一块 1440×900 的 GPU 贴图**。非激活段只写了 `opacity: 0`，可它仍然是个
+「独立合成层」—— 浏览器每帧照样把它合进来，全屏背景等于**双倍合成开销**。
+
+✅ **修法**：`.vbg__layer` 加 `visibility: hidden`，过渡写成
+`transition: opacity 900ms, visibility 0s linear 900ms`（淡出走完才隐藏、淡入立刻恢复可见）。
+交叉淡入淡出的观感**完全不变**，稳态只剩**一块视频**在合成。
+再加一条「视频真正出帧（`@playing`）后收掉满屏首帧图」—— 又少一层全屏贴图。
+
+⛔ **定时轮询别顺手重绘整幅图**：`loadServer` 每 10 秒只更新了「容器运行数」，
+却每次调 `renderCharts()` —— 折线图数据根本没动，却被整幅 `setOption(..., true)` 重建
+（带 400ms 动画），在视频背景上就是每 10 秒一次可感知的抖动。
+拆成 `renderLine()` / `renderDonut()`，环形图再用「运行/停止」快照比对，没变就不画。
+窗口 `resize` 同样改用 `requestAnimationFrame` 合并 —— ECharts 的 `resize()` 是整图重排 + 重绘，
+连续 resize 事件足以拖垮滚动。
+
+> 📌 教训：**透明 ≠ 不渲染**。`opacity:0` 的层照样参与合成，真想让它退出就得
+> `visibility:hidden`（或 `display:none`）；定时轮询只重绘「真的变了」的那部分。
+
 ---
 
 ## 十八、本次交付的部署实录

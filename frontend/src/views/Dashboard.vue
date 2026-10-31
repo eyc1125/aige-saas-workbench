@@ -747,14 +747,42 @@ function initCharts() {
   renderCharts();
 }
 
-function renderCharts() {
+/** 折线（CPU / 内存趋势）：只有趋势数据变了才重绘 */
+function renderLine() {
   if (lineChart) lineChart.setOption(buildLineOption(), true);
+}
+
+/** 环形（容器运行 / 停止）：只有这两个数变了才重绘 */
+function renderDonut() {
   if (donutChart) donutChart.setOption(buildDonutOption(), true);
+}
+
+/** 环形图当前展示的「运行/停止」快照，用于跳过无意义的重绘 */
+let donutKey = '';
+
+function renderCharts() {
+  renderLine();
+  renderDonut();
 }
 
 function resizeCharts() {
   lineChart?.resize();
   donutChart?.resize();
+}
+
+/**
+ * 窗口尺寸变化 → 重排图表。
+ * ⛔ 必须节流（第 8 轮流畅度）：拖窗口 / 手机旋屏会连续触发几十次 resize，
+ *    而 ECharts 的 resize 是整图重排 + 重绘，每次全跑必然掉帧。
+ *    用 rAF 合并成「一帧最多一次」。
+ */
+let resizeRaf = 0;
+function onResizeCharts() {
+  if (resizeRaf) return;
+  resizeRaf = requestAnimationFrame(() => {
+    resizeRaf = 0;
+    resizeCharts();
+  });
 }
 
 function disposeCharts() {
@@ -800,7 +828,7 @@ async function loadMetrics() {
       ),
     };
     metricsStats.value = data.stats || null;
-    renderCharts();
+    renderLine();
   } catch {
     // 拉取失败不清空已有曲线，避免界面闪一下变空
   }
@@ -827,7 +855,14 @@ async function loadServer() {
         },
       };
     }
-    renderCharts();
+    // ⛔ 第 8 轮流畅度：10 秒轮询只刷新了「容器运行数」，趋势数据根本没动。
+    //    以前这里无脑 renderCharts() → 每 10 秒把折线图整幅重建一次（带 400ms 动画），
+    //    在视频背景上就是一次可感知的抖动。现在只在环形图真正用到的两个数变化时才重绘。
+    const key = `${counts.value.containers?.running ?? 0}/${counts.value.containers?.stopped ?? 0}`;
+    if (key !== donutKey) {
+      donutKey = key;
+      renderDonut();
+    }
   } catch {
     // 静默：整体加载失败时会由 loadAll 给出错误态
   }
@@ -868,13 +903,17 @@ onMounted(async () => {
   // 趋势每 2 分钟刷新一次 —— 后端就是这个采样周期，刷得再快也没有新点，
   // 反而白占带宽（这条是「别让监控拖垮主流程」的同一原则）
   trendTimer = setInterval(loadMetrics, 120000);
-  window.addEventListener('resize', resizeCharts);
+  window.addEventListener('resize', onResizeCharts);
 });
 
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer);
   if (trendTimer) clearInterval(trendTimer);
-  window.removeEventListener('resize', resizeCharts);
+  window.removeEventListener('resize', onResizeCharts);
+  if (resizeRaf) {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = 0;
+  }
   disposeCharts();
 });
 

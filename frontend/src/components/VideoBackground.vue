@@ -59,7 +59,7 @@
     >
       <!-- 静态首帧兜底：垫在 video 之下。视频一旦开始播就被盖住（video 在 DOM 里更靠后）。
            微信里视频不播 / 自动播放被拦时，至少保证「有画面」，不出现白闪与空屏。 -->
-      <img class="vbg__poster" :src="item.poster" alt="" />
+      <img v-show="!started[i]" class="vbg__poster" :src="item.poster" alt="" />
       <video
         :ref="(el) => setVideo(el, i)"
         class="vbg__video"
@@ -74,6 +74,7 @@
         x5-video-player-fullscreen="false"
         disablepictureinpicture
         controlslist="nodownload noplaybackrate noremoteplayback"
+        @playing="onPlaying(i)"
         @ended="onEnded(i)"
         @timeupdate="onTimeUpdate(i)"
       />
@@ -115,6 +116,13 @@ const played = [];
 const loaded = [];
 /** 已经在后台预热的段（距结束 6 秒时把下一段拉起来） */
 const warmed = [];
+/**
+ * 该段视频是否**真的出过帧**。
+ * ⛔ 全屏静态首帧图是「兜底」：只有视频还没出画面时才需要它。
+ *    视频一旦 playing，这张满屏 <img> 就被压在下面白占一层贴图 —— 收掉它，
+ *    稳态下全屏背景只剩「一块视频」，合成开销立减（第 8 轮流畅度）。
+ */
+const started = ref([]);
 
 const reduceMotion =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -153,6 +161,11 @@ function bindGestureRetry() {
     events.forEach((e) => window.removeEventListener(e, onGesture));
     unbindGesture = null;
   };
+}
+
+/** 真正出帧了：收掉该段的静态首帧图（少一层满屏贴图） */
+function onPlaying(i) {
+  started[i] = true;
 }
 
 /** 真正发起播放：静音 + 忽略 reduce-motion；失败静默（由兜底流程接手） */
@@ -249,6 +262,8 @@ function switchTo(next) {
   }
   const nextVideo = videoEls[next];
   if (nextVideo) {
+    // 从头重播 → 重新垫回首帧图（前几帧解码出来之前不能是黑的）
+    started[next] = false;
     try {
       nextVideo.currentTime = 0;
     } catch {
@@ -385,12 +400,24 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   opacity: 0;
-  /* 900ms：比页面切换的 150ms 慢很多，是「镜头换景」而不是「闪一下」 */
-  transition: opacity 900ms var(--ease, ease);
+  /* ⛔ 关键（第 8 轮流畅度）：非激活段必须**真正退出绘制**。
+     只写 opacity:0 时，这一层依旧是全屏独立合成层（下面 .vbg__video 有 translateZ(0)），
+     浏览器每帧都要白合成一块 1440×900 的贴图 —— 两段并存 = 双倍 GPU 开销，
+     这正是「有一点卡」的主因（第 7 轮刚加第二段后出现的）。
+     visibility:hidden 之后该层不再绘制，稳态下全屏背景只剩**一块视频**在跑。 */
+  visibility: hidden;
+  /* 淡出走满 900ms 才隐藏；淡入时立刻恢复可见（见 --on，delay 0） */
+  transition:
+    opacity 900ms var(--ease, ease),
+    visibility 0s linear 900ms;
 }
 
 .vbg__layer--on {
   opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 900ms var(--ease, ease),
+    visibility 0s linear 0s;
 }
 
 /* 静态首帧：垫在 video 之下，撑满且不变形 */

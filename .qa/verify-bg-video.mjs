@@ -121,6 +121,8 @@ const probeExpr = () => `(() => {
   // 第 7 轮起背景是多段轮播（每段一个 <video>），探针要盯**当前显示的那一层**
   o.layers = document.querySelectorAll('.vbg__layer').length;
   o.activeLayer = [...document.querySelectorAll('.vbg__layer')].findIndex((el) => el.classList.contains('vbg__layer--on'));
+  // 第 8 轮：非激活层必须 visibility:hidden，否则每帧都要多合成一块全屏贴图（卡顿主因）
+  o.layerStates = [...document.querySelectorAll('.vbg__layer')].map((el) => { const s = getComputedStyle(el); return s.visibility + '/' + s.opacity + '/' + (el.querySelector('.vbg__poster') ? getComputedStyle(el.querySelector('.vbg__poster')).display : '-'); });
   o.bodyText = (document.body.textContent || '').replace(/[ ]+/g, ' ').trim().slice(0, 140);
   const v = document.querySelector('.vbg__layer--on video') || document.querySelector('video');
   if (v) {
@@ -359,8 +361,19 @@ const loginExpr = () => `(async () => {
     //    断言 activeLayer 变成另一段，且**新段确实在播**（paused=false / currentTime 在涨）；
     // ③ 再等它自己走一段，确认不会卡死在第二段。
     const layers0 = JSON.parse(await ev(probeExpr()));
-    console.log('K carousel layers=' + layers0.layers + ' active=' + layers0.activeLayer);
-    report.steps.carousel = { layers: layers0.layers, activeBefore: layers0.activeLayer };
+    console.log(
+      'K carousel layers=' +
+        layers0.layers +
+        ' active=' +
+        layers0.activeLayer +
+        ' states=' +
+        JSON.stringify(layers0.layerStates)
+    );
+    report.steps.carousel = {
+      layers: layers0.layers,
+      activeBefore: layers0.activeLayer,
+      layerStates: layers0.layerStates,
+    };
 
     if (layers0.layers > 1) {
       const kicked = await ev(
@@ -395,6 +408,8 @@ const loginExpr = () => `(async () => {
           ' frames=' +
           hAfter.frames
       );
+      console.log('N layer states after switch ' + JSON.stringify(after.layerStates));
+      report.steps.carousel.afterStates = after.layerStates;
       report.steps.carousel.kicked = kicked;
       report.steps.carousel.after = {
         activeLayer: after.activeLayer,
