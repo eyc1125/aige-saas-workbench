@@ -1203,6 +1203,43 @@ curl.exe -X POST "https://…/upload?fileName=app-release.apk&ticket=eyJ…" `
 > 📌 教训：所谓「有玻璃感」，前提是**底下的东西本身是清楚的**。
 > 在内容上盖白膜再去调玻璃参数，等于先毁素材再修观感 —— 顺序反了。
 
+### 17.27 微信导出的视频是 HEVC —— 换素材必须转码，多段要「每段一层」而不是换 src
+
+**现象**：新加的 `微信视频2026-10-31_025608_190.mp4` 放进 `public/` 后浏览器毫无反应，只剩兜底色。
+
+🔎 **根因**：`ffprobe` 显示 `codec_name=hevc / codec_tag_string=hvc1`，实测
+`canPlayType('video/mp4; codecs="hvc1"')` 返回**空串** —— 解不出来。同一个坑第 4 轮已经踩过
+（首版 `bg-video.mp4` 也是 HEVC）。微信导出的视频几乎都是 HEVC/H.265，
+**换素材第一件事是 `ffprobe` 查 codec，不是直接塞进 `public/`**。
+
+✅ **转码链路**（本机没 ffmpeg，服务器有 6.1.1）：
+
+```bash
+ffmpeg -y -i in.mp4 -an -vf scale=1280:-2 -c:v libx264 -profile:v high \
+  -pix_fmt yuv420p -crf 28 -preset medium -movflags +faststart bg-video-2.mp4
+ffmpeg -y -ss 0.2 -i in.mp4 -vf scale=1280:-2 -frames:v 1 -q:v 4 bg-video-poster-2.jpg
+```
+
+5.65MB / 1080p → **1.58MB / 720p**，poster 73KB。**poster 必须是该段自己的首帧**，
+否则视频没播起来时会出现「图文不对应」的错位。
+
+⛔ **多段别用「一个 video 换 src」**：换 src 会先黑屏、再重新解码首帧，每切一次闪一次。
+正确做法是**每段一个独立 `<video>` 层**（`.vbg__layer`），切换只做透明度交叉（900ms）——
+零黑屏、零重新解码。非当前段 `pause()`，暂停的视频不产生新帧，合成开销近似静态图。
+
+⛔ **短素材要 repeat**：第二段只有 5.13 秒，直接切会「一闪就过」。用 `repeat: 3` 连播约 15 秒；
+实现上**不用 `loop` 属性**（无法计数），监听 `ended` + `currentTime = 0` 自己回绕。
+
+⛔ **带宽别一次性拉满**：首段 `preload="auto"`，其余 `metadata`；只在「距当前段结束 6 秒」时
+把下一段 `preload='auto'` + `load()` 预热 —— 切段顺滑，又不至于一进页面就吃掉十来兆。
+
+⛔ **微信兜底要跟着「当前段」走**：`tryPlay` / 轮询 / `WeixinJSBridgeReady` / `loadeddata`
+全部改走 `videoEls[activeIndex]`；每次 `switchTo` 都要 `stopWeixinPoll()` + `startWeixinPoll()`，
+否则第二段会停在首帧不动。
+
+> 📌 教训：换素材前先 `ffprobe`；素材短就 repeat；多段用「层」不用「换 src」；
+> 所有兜底逻辑永远对准**正在显示的那一段**。
+
 ---
 
 ## 十八、本次交付的部署实录
