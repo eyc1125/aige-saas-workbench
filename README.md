@@ -1262,6 +1262,10 @@ ffmpeg -y -ss 0.2 -i in.mp4 -vf scale=1280:-2 -frames:v 1 -q:v 4 bg-video-poster
 
 > 📌 教训：**透明 ≠ 不渲染**。`opacity:0` 的层照样参与合成，真想让它退出就得
 > `visibility:hidden`（或 `display:none`）；定时轮询只重绘「真的变了」的那部分。
+>
+> 📌 同一处还踩了个**响应式坑**：`started` 是 `ref([])`，脚本里写 `started[i] = true`
+> 只是挂在 RefImpl 对象上，模板 `unref` 后读到的永远是 `undefined` —— 首帧图死活收不掉。
+> **ref 里的数组/对象，索引赋值必须写 `.value`**（`started.value[i] = true`）。
 
 ---
 
