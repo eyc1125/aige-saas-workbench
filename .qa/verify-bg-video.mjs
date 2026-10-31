@@ -118,8 +118,11 @@ const probeExpr = () => `(() => {
   const o = { iw: window.innerWidth, ih: window.innerHeight, cw: vw, docScrollW: document.documentElement.scrollWidth, bodyScrollW: document.body.scrollWidth };
   o.hOverflow = document.documentElement.scrollWidth > vw + 1;
   o.videoCount = document.querySelectorAll('video').length;
+  // 第 7 轮起背景是多段轮播（每段一个 <video>），探针要盯**当前显示的那一层**
+  o.layers = document.querySelectorAll('.vbg__layer').length;
+  o.activeLayer = [...document.querySelectorAll('.vbg__layer')].findIndex((el) => el.classList.contains('vbg__layer--on'));
   o.bodyText = (document.body.textContent || '').replace(/[ ]+/g, ' ').trim().slice(0, 140);
-  const v = document.querySelector('video');
+  const v = document.querySelector('.vbg__layer--on video') || document.querySelector('video');
   if (v) {
     const cs = getComputedStyle(v);
     const r = v.getBoundingClientRect();
@@ -238,9 +241,10 @@ const loginExpr = () => `(async () => {
   };
   const report = { meta: { origin: ORIGIN, ip: IP, mode: 'headless' }, steps: {} };
   const V = (p) => p.video || {};
+  // 第 7 轮：背景是多段轮播（每段一个 <video>），健康检查必须盯**当前显示的那一层**
   const videoHealth = () =>
     ev(
-      `(() => { const v = document.querySelector('video'); if (!v) return 'no-video'; const q = (typeof v.getVideoPlaybackQuality === 'function') ? v.getVideoPlaybackQuality() : null; return JSON.stringify({ nw: v.videoWidth, nh: v.videoHeight, rs: v.readyState, ct: Number(v.currentTime.toFixed(2)), frames: q ? q.totalVideoFrames : -1, dropped: q ? q.droppedVideoFrames : -1, err: v.error ? (v.error.code + ':' + v.error.message) : null }); })()`
+      `(() => { const v = document.querySelector('.vbg__layer--on video') || document.querySelector('video'); if (!v) return 'no-video'; const q = (typeof v.getVideoPlaybackQuality === 'function') ? v.getVideoPlaybackQuality() : null; return JSON.stringify({ src: v.currentSrc, nw: v.videoWidth, nh: v.videoHeight, rs: v.readyState, ct: Number(v.currentTime.toFixed(2)), paused: v.paused, frames: q ? q.totalVideoFrames : -1, dropped: q ? q.droppedVideoFrames : -1, err: v.error ? (v.error.code + ':' + v.error.message) : null }); })()`
     );
 
   await setVP(1440, 900, false);
@@ -338,16 +342,67 @@ const loginExpr = () => `(async () => {
     await sleep(700);
 
     await ev(
-      `(() => { const v = document.querySelector('video'); if (v) v.dataset.keepProbe = '1'; return 'tagged'; })()`
+      `(() => { const v = document.querySelector('.vbg__layer--on video') || document.querySelector('video'); if (v) v.dataset.keepProbe = '1'; return 'tagged'; })()`
     );
     const ctBefore = V(JSON.parse(await ev(probeExpr()))).currentTime;
     await ev(`(location.hash = '#/websites')`);
     await sleep(4500);
     const keep = await ev(
-      `(() => { const v = document.querySelector('video'); if (!v) return 'no-video'; return JSON.stringify({ tag: v.dataset.keepProbe || '', ct: Number(v.currentTime.toFixed(2)), paused: v.paused }); })()`
+      `(() => { const v = document.querySelector('.vbg__layer--on video') || document.querySelector('video'); if (!v) return 'no-video'; return JSON.stringify({ tag: v.dataset.keepProbe || '', ct: Number(v.currentTime.toFixed(2)), paused: v.paused }); })()`
     );
     console.log('E route-switch video ' + keep + ' ctBefore=' + ctBefore);
     report.steps.routeSwitch = { keep: JSON.parse(keep), ctBefore };
+
+    // ---- 第 7 轮新增：多段轮播验证 ----
+    // ① 层数必须是 2（App.vue 的 bgSources 有两段）；
+    // ② seek 到当前段末尾触发 ended（代替干等 22 秒），等交叉淡入完成后，
+    //    断言 activeLayer 变成另一段，且**新段确实在播**（paused=false / currentTime 在涨）；
+    // ③ 再等它自己走一段，确认不会卡死在第二段。
+    const layers0 = JSON.parse(await ev(probeExpr()));
+    console.log('K carousel layers=' + layers0.layers + ' active=' + layers0.activeLayer);
+    report.steps.carousel = { layers: layers0.layers, activeBefore: layers0.activeLayer };
+
+    if (layers0.layers > 1) {
+      const kicked = await ev(
+        `(() => {
+          const v = document.querySelector('.vbg__layer--on video');
+          if (!v) return 'no-video';
+          if (!Number.isFinite(v.duration) || v.duration <= 0) return 'no-duration';
+          try { v.currentTime = Math.max(0, v.duration - 0.25); } catch (e) { return 'seek-fail:' + e.message; }
+          return 'kicked:' + Number(v.duration.toFixed(2));
+        })()`
+      );
+      console.log('L kick ' + kicked);
+      await sleep(3200);
+      const after = JSON.parse(await ev(probeExpr()));
+      const hAfter = JSON.parse(await videoHealth());
+      const ctAfter2 = V(JSON.parse(await ev(probeExpr()))).currentTime;
+      await sleep(1500);
+      const ctAfter3 = V(JSON.parse(await ev(probeExpr()))).currentTime;
+      console.log(
+        'M carousel after active=' +
+          after.activeLayer +
+          ' src=' +
+          String(V(after).src || '')
+            .split('/')
+            .pop() +
+          ' paused=' +
+          V(after).paused +
+          ' ct=' +
+          V(after).currentTime +
+          '->' +
+          ctAfter3 +
+          ' frames=' +
+          hAfter.frames
+      );
+      report.steps.carousel.kicked = kicked;
+      report.steps.carousel.after = {
+        activeLayer: after.activeLayer,
+        video: V(after),
+        health: hAfter,
+        ctGrowth: Number((ctAfter3 - ctAfter2).toFixed(2)),
+      };
+    }
 
     await nav(ORIGIN + '/#/this-route-does-not-exist', 3500);
     const c1 = JSON.parse(await ev(probeExpr()));
@@ -425,9 +480,14 @@ const loginExpr = () => `(async () => {
       e.params.response &&
       String(e.params.response.url).indexOf('.mp4') >= 0
     )
-      mp4.push({ status: e.params.response.status, mime: e.params.response.mimeType });
+      mp4.push({
+        file: String(e.params.response.url).split('/').pop().split('?')[0],
+        status: e.params.response.status,
+        mime: e.params.response.mimeType,
+      });
   }
-  console.log('NET mp4 ' + JSON.stringify(mp4.slice(0, 3)));
+  const mp4Files = [...new Set(mp4.map((x) => x.file))];
+  console.log('NET mp4 ' + JSON.stringify({ files: mp4Files, sample: mp4.slice(0, 4) }));
   const jsErr = cdp.events
     .filter((x) => x.method === 'Runtime.exceptionThrown')
     .map((x) => String(x.params.exceptionDetails && x.params.exceptionDetails.text));
