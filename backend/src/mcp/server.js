@@ -546,7 +546,9 @@ async function startMcpServer() {
           message: `已保存到 ${result.path}（${result.size} 字节，sha256 ${result.sha256.slice(
             0,
             16
-          )}…${result.overwritten ? '，已覆盖原文件' : ''}）`,
+          )}…${result.overwritten ? '，已覆盖原文件' : ''}${
+            result.zipNormalized ? '，已修正 Windows zip 的路径分隔符' : ''
+          }）`,
           data: result,
         });
       } catch (err) {

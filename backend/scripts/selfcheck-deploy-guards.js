@@ -146,9 +146,137 @@ for (const cmd of allowed) {
 
 shouldThrow('拦住空命令', () => hostExec.assertCommand('   '));
 
-console.log('');
-if (failed) {
-  console.error(`❌ 部署类安全边界自检失败：${failed} 项`);
-  process.exit(1);
+// ---------- ⑤ Windows zip 反斜杠修正 ----------
+/**
+ * 用「0 字节文件 + stored 方式」手工拼一个最小 zip：
+ * 这样 CRC=0、压缩大小=0，不需要压缩库也不需要算 CRC，就能造出
+ * 带反斜杠条目名的真实 zip —— 正好用来验证「上传时自动改分隔符」这条修复。
+ */
+function buildZip(entryNames) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+
+  for (const name of entryNames) {
+    const nameBuf = Buffer.from(name, 'utf8');
+
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(0, 6);
+    lh.writeUInt16LE(0, 8); // stored
+    lh.writeUInt16LE(0, 10);
+    lh.writeUInt16LE(0x21, 12);
+    lh.writeUInt32LE(0, 14); // crc
+    lh.writeUInt32LE(0, 18);
+    lh.writeUInt32LE(0, 22);
+    lh.writeUInt16LE(nameBuf.length, 26);
+    lh.writeUInt16LE(0, 28);
+    const localOffset = offset;
+    const localChunk = Buffer.concat([lh, nameBuf]);
+    locals.push(localChunk);
+    offset += localChunk.length;
+
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0);
+    ch.writeUInt16LE(20, 4);
+    ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(0, 8);
+    ch.writeUInt16LE(0, 10);
+    ch.writeUInt16LE(0, 12);
+    ch.writeUInt16LE(0x21, 14);
+    ch.writeUInt32LE(0, 16);
+    ch.writeUInt32LE(0, 20);
+    ch.writeUInt32LE(0, 24);
+    ch.writeUInt16LE(nameBuf.length, 28);
+    ch.writeUInt16LE(0, 30);
+    ch.writeUInt16LE(0, 32);
+    ch.writeUInt16LE(0, 34);
+    ch.writeUInt16LE(0, 36);
+    ch.writeUInt32LE(0, 38);
+    ch.writeUInt32LE(localOffset, 42);
+    centrals.push(Buffer.concat([ch, nameBuf]));
+  }
+
+  const cd = Buffer.concat(centrals);
+  const cdOffset = offset;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entryNames.length, 8);
+  eocd.writeUInt16LE(entryNames.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(cdOffset, 16);
+  eocd.writeUInt16LE(0, 20);
+  return Buffer.concat([...locals, cd, eocd]);
 }
-console.log('✅ 部署类安全边界自检通过（越权样本全部拦住，合法样本全部放行）');
+
+console.log('');
+console.log('=== Windows zip 反斜杠修正（上传落盘时自动处理）===');
+
+(async () => {
+  const fsp = require('node:fs/promises');
+  const os = require('node:os');
+  const pathMod = require('node:path');
+  let zipNormalize;
+  try {
+    zipNormalize = require('../src/services/zipNormalize');
+  } catch (err) {
+    ng(`加载 zipNormalize 失败：${err.message}`);
+  }
+
+  if (zipNormalize) {
+    const dir = await fsp.mkdtemp(pathMod.join(os.tmpdir(), 'aige-zipcheck-'));
+    const target = pathMod.join(dir, 'win.zip');
+    const raw = buildZip(['assets\\big.bin', 'dist\\index.html', 'plain.txt']);
+
+    try {
+      await fsp.writeFile(target, raw);
+
+      const r = await zipNormalize.normalizeZipSeparators(target);
+      if (r.changed && r.fixed === 2) {
+        ok('识别并修正了 2 个反斜杠条目');
+      } else {
+        ng(`修正结果不符：${JSON.stringify(r)}`);
+      }
+
+      const after = await fsp.readFile(target);
+      if (after.length === raw.length) {
+        ok('文件长度不变（等长替换，不动压缩数据与偏移）');
+      } else {
+        ng(`文件长度变了：${raw.length} → ${after.length}`);
+      }
+      if (!after.includes('assets\\big.bin') && after.includes('assets/big.bin')) {
+        ok('条目名已变成 assets/big.bin');
+      } else {
+        ng('条目名没有被正确改写');
+      }
+
+      // 再跑一次必须「无事可做」，说明幂等、不会反复改
+      const again = await zipNormalize.normalizeZipSeparators(target);
+      if (!again.changed) ok('重复执行不会再改（幂等）');
+      else ng('重复执行仍然报 changed');
+
+      // 非 zip 文件必须原样不动
+      const txt = pathMod.join(dir, 'notzip.zip');
+      const sample = Buffer.from('this is not a zip file at all');
+      await fsp.writeFile(txt, sample);
+      const r2 = await zipNormalize.normalizeZipSeparators(txt);
+      const afterTxt = await fsp.readFile(txt);
+      if (!r2.changed && afterTxt.equals(sample)) ok('非 zip 文件原样保留，不误改');
+      else ng('非 zip 文件被动了');
+    } catch (err) {
+      ng(`zip 修正自检异常：${err.message}`);
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  console.log('');
+  if (failed) {
+    console.error(`❌ 部署类安全边界自检失败：${failed} 项`);
+    process.exit(1);
+  }
+  console.log('✅ 部署类安全边界自检通过（越权样本全部拦住，合法样本全部放行，zip 修正正确）');
+})();

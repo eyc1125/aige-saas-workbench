@@ -240,15 +240,22 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
     让使用者在**本机终端**执行（MCP 没有二进制通道，这一步绕不过去，但不需要任何令牌）。
   · 目录默认 \`/www/upload\`、必须在 \`/www\` 之下；扩展名白名单放行
     .zip/.tar.gz/.txt/.json/.env/.sql/.whl 等常规类型；单文件默认 200MB；默认不覆盖。
+  · **Windows 打的 zip 会自动修正**：PowerShell / .NET 用反斜杠分隔条目名，Linux 上
+    \`unzip\` 会以**退出码 1** 结束（其实已解压成功）→ 上传时已把 \`\\\` 换成 \`/\`，
+    所以部署脚本里带 \`set -e\` 也不会误判失败。返回里的 \`zipNormalized\` 会告诉你改没改。
   · ⛔ 不要再提「把文件改名成 .apk 骗过蒲公英」那种做法 —— 已经被白名单取代。
 - \`exec_command\` — 在**服务器宿主机上**执行 shell 命令（一次性容器 nsenter 进宿主机命名空间，
   所以 PATH / 工具链 / 目录都是宿主机的，不是在容器里空转）。
   · 返回 \`exitCode\` / \`stdout\` / \`stderr\` / \`durationMs\`；超时显式返回 \`status: "TIMEOUT"\`；
   · \`cwd\` 必须在 \`/www/wwwroot\` 之内（默认就是它）；高危命令有黑名单（删根 / 格盘 / 关机 /
     fork bomb / curl|sh / 反弹 shell 等）；
-  · 超时默认 120 秒、上限 600 秒；每次执行都写审计日志。
+  · 超时默认 120 秒、上限 600 秒；每次执行都写审计日志；
+  · PATH 里已补上 \`/www/server/nodejs/*/bin\`：**pnpm / yarn / pm2 / node 都能直接用**
+    （系统 \`/usr/bin\` 里没有 pnpm，不补就是 \`pnpm: command not found\`）。
   · ⚠️ 这是**全权能力**（等价于服务器终端）：只读令牌的连接里它不会出现。
   · 典型链路：\`upload_file\` 传包 → \`exec_command\` 解压 / 构建 / 重启容器 → \`get_site_logs\` 验证。
+    例：\`unzip -o /www/upload/site.zip -d /www/wwwroot/my-site\` → \`npm ci && npm run build\`
+    → \`pm2 restart my-site\`（或 \`docker compose up -d\`）。
 
 > 📌 **遇到「本 MCP 好像没有这个操作」时，先想这两个兜底，不要回答「做不到」**：
 > 宝塔侧的 → \`call_bt_api\`；Cloudflare 侧的 → \`call_cf_api\`。

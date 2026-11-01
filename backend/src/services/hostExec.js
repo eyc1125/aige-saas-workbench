@@ -326,8 +326,14 @@ async function run({ command, cwd, timeoutSeconds } = {}) {
     .randomBytes(3)
     .toString('hex')}`;
 
-  // 进入宿主机命名空间后，先 cd 到目标目录再执行 —— 与「在终端里先 cd 再敲命令」等价
-  const wrapped = `cd ${shQuote(workdir)} && ${cmd}`;
+  // 进入宿主机命名空间后：
+  //   ① 先把「宝塔装的 Node 工具链」补进 PATH（实测 `pnpm` 只在
+  //      /www/server/nodejs/vXX/bin 下，系统 /usr/bin 里没有 → 用 pnpm 的项目必然
+  //      `pnpm: command not found`，这是很典型的一种「部署不了」）；
+  //   ② 再 cd 到目标目录执行 —— 与「在终端里先 cd 再敲命令」等价。
+  const pathFix =
+    'for d in /www/server/nodejs/*/bin /www/server/nvm/versions/node/*/bin; do [ -d "$d" ] && PATH="$d:$PATH"; done; export PATH;';
+  const wrapped = `${pathFix} cd ${shQuote(workdir)} && ${cmd}`;
 
   const createBody = {
     Image: image,

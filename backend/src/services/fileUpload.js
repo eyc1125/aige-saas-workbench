@@ -26,6 +26,7 @@ const crypto = require('node:crypto');
 const { pipeline } = require('node:stream/promises');
 const { Transform } = require('node:stream');
 const { AppError, badRequest } = require('../utils/errors');
+const { normalizeZipSeparators } = require('./zipNormalize');
 
 /** 上传根：所有落盘路径都必须落在它之内（默认 /www，和宝塔的站点根同一层） */
 const UPLOAD_ROOT = normalizeRoot(process.env.UPLOAD_ROOT || '/www');
@@ -302,6 +303,19 @@ async function saveStream(stream, { fileName, targetDir, overwrite = false } = {
     throw new AppError(`写入文件失败：${err.message}`, 500, 'WRITE_FAILED');
   }
 
+  /**
+   * zip 落盘后顺手修一次路径分隔符。
+   * ⛔ 为什么放在这里：Windows 上 `Compress-Archive` 打的包用 `\` 作分隔符，
+   *    Linux `unzip` 会打印 warning 并以**退出码 1**结束 —— 文件其实解压成功了，
+   *    但部署脚本一带 `set -e` 就中断、AI 看到 exitCode=1 就判「部署失败」。
+   *    这是「上传了却搞不定」最典型的一种，所以在入口一次性抹平。
+   *    修不了（zip64 / 结构异常）就原样保留，绝不冒改坏包的风险。
+   */
+  let zip = null;
+  if (plan.ext === 'zip') {
+    zip = await normalizeZipSeparators(plan.finalPath).catch(() => null);
+  }
+
   return {
     path: plan.finalPath,
     dir: plan.dir,
@@ -310,6 +324,18 @@ async function saveStream(stream, { fileName, targetDir, overwrite = false } = {
     sha256: hash.digest('hex'),
     overwritten: already,
     extension: plan.ext,
+    zipNormalized: !!(zip && zip.changed),
+    ...(zip && zip.changed
+      ? {
+          zipNote:
+            '这个 zip 原本用反斜杠分隔路径（Windows 打包），已在落盘时改成 /，Linux 上 unzip 不会再报退出码 1',
+        }
+      : {}),
+    ...(zip && !zip.changed && zip.reason && zip.reason !== 'not-a-zip'
+      ? {
+          zipNote: `zip 路径分隔符未处理（${zip.reason}）；若解压报 backslashes 警告，可用 unzip -o ... || true`,
+        }
+      : {}),
   };
 }
 

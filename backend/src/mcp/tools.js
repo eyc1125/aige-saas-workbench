@@ -737,6 +737,8 @@ const TOOL_DEFINITIONS = [
 · 目标目录默认 \`/www/upload\`，必须在 \`/www\` 之下（可配），不接受相对路径与 .. 穿越
 · 扩展名白名单：.zip/.tar.gz/.tgz/.tar/.txt/.json/.env/.sql/.whl/.jar/.yml/.log/.png/.pdf/.apk… 等常规类型（可配），**不再靠伪装成 .apk 绕过限制**
 · 单文件默认上限 200MB（可配）；默认不覆盖，要替换必须显式 overwrite=true
+· **Windows 打的 zip 会自动把条目名的反斜杠换成 / **（PowerShell Compress-Archive 打的包在 Linux 上
+  unzip 会以退出码 1 结束、其实解压成功，带 set -e 的脚本会误判失败）；返回里的 zipNormalized 表示改没改
 · 请求体是文件原始字节（application/octet-stream），不要用 multipart/form-data`,
     inputSchema: {
       type: 'object',
