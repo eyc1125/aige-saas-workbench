@@ -206,6 +206,14 @@ jobs:
         working-directory: backend
         run: node scripts/selfcheck-permissions.js
 
+      - name: 部署类安全边界自检（upload_file / exec_command）
+        # 第 9 轮加的两个全权能力：写任意文件 + 在宿主机跑任意命令。
+        # 它们的全部安全性押在「目录必须在根内」「扩展名白名单」「高危命令黑名单」三个纯函数上。
+        # 这些规则一旦被放松，接口会**一切正常**地继续工作 —— 只是某天开始能往 /etc 写、
+        # 能跑 rm -rf / 了。所以每次 CI 都拿越权样本真跑一遍。
+        working-directory: backend
+        run: node scripts/selfcheck-deploy-guards.js
+
       - name: 自动自愈开关自检（真的拨一次开关）
         # health.js 写 auto_heal_enabled，但 settings.js 的白名单里一度没登记它 →
         # set() 抛「未知配置项」，「健康巡检」页的开关**从来没生效过**，

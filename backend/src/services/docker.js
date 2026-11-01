@@ -187,6 +187,18 @@ class DockerClient {
     await this._ensureVersion();
   }
 
+  /**
+   * 通用请求出口（先探测 API 版本，再走底层请求）。
+   * 给「不想为每个 Docker 接口都加一层包装」的内部服务用 —— 目前是
+   * `services/hostExec.js`（一次性容器 + nsenter 执行命令）。
+   * @param {string} path 形如 /containers/json
+   * @param {object} [opts] { method, body, headers, timeout, raw }
+   */
+  async request(path, opts) {
+    await this._ready();
+    return this._request(path, opts);
+  }
+
   // ==================== 容器 ====================
 
   /**

@@ -46,6 +46,8 @@ const {
 const config = require('../config');
 const settings = require('../services/settings');
 const pgyerService = require('../services/pgyer');
+const fileUpload = require('../services/fileUpload');
+const hostExec = require('../services/hostExec');
 const uploadTicket = require('./upload-ticket');
 const { TOOL_DEFINITIONS, callTool, READONLY_TOOLS } = require('./tools');
 const { SERVER_INFO, SERVER_INSTRUCTIONS } = require('./instructions');
@@ -373,7 +375,9 @@ async function startMcpServer() {
       const ticket = String(req.query.ticket || '').trim();
       if (!ticket) return authMiddleware(req, res, next);
       try {
-        req.uploadTicket = uploadTicket.verify(ticket, String(req.query.fileName || '').trim());
+        req.uploadTicket = uploadTicket.verify(ticket, String(req.query.fileName || '').trim(), {
+          kind: 'pgyer',
+        });
         req.mcpScope = SCOPE_FULL; // 票据只由全权令牌签发，等价于全权
         return next();
       } catch (err) {
@@ -451,6 +455,110 @@ async function startMcpServer() {
     }
   );
 
+  /**
+   * 通用文件上传入口（HTTP，给「有终端」的 AI / 脚本用）
+   * ------------------------------------------------------------------
+   * 与上面的 `/upload`（蒲公英专用，只认 .apk/.ipa/.hap）**分工明确**：
+   *   · 想发内测包 → `/upload`（会直接进蒲公英并生成下载页）
+   *   · 想放任何文件到服务器 → 这里（落盘到指定目录，返回绝对路径 + sha256）
+   *
+   * 用法（**AI 全自动**）：先调 `upload_file` 工具，它会返回一条**已内嵌一次性票据**的
+   *   curl 命令；在本机终端执行即可，全程不需要向任何人索要令牌。
+   * 用法（人工 / 脚本，带令牌）：直接带 `x-mcp-token` 头 POST 即可。
+   *
+   * ⛔ 用流式接收而不是 `express.raw()`：200MB 的包整块读进内存会顶爆容器，
+   *    而流式写盘只占一个临时文件的位置，内存基本恒定。
+   */
+  app.post(
+    '/upload-file',
+    (req, res, next) => {
+      const fileName = String(req.query.fileName || '').trim();
+      const targetDir = String(req.query.targetDir || '').trim();
+      // 只在调用方**明确带了** overwrite 时才参与票据比对 ——
+      // 没带就说明「以票据里签的为准」，不能因为"默认 false"跟票据的 true 冲突而误拒。
+      const hasOverwrite = req.query.overwrite !== undefined;
+      const overwrite = ['1', 'true', 'yes'].includes(
+        String(req.query.overwrite || '').toLowerCase()
+      );
+
+      const ticket = String(req.query.ticket || '').trim();
+      if (!ticket) return authMiddleware(req, res, next);
+      try {
+        req.uploadTicket = uploadTicket.verify(ticket, fileName, {
+          kind: 'file',
+          dir: targetDir,
+          ...(hasOverwrite ? { overwrite } : {}),
+        });
+        req.mcpScope = SCOPE_FULL; // 票据只由全权令牌签发，等价于全权
+        return next();
+      } catch (err) {
+        return res.status(err.status || 401).json({
+          code: err.code || 'BAD_UPLOAD_TICKET',
+          message: err.message,
+          data: null,
+        });
+      }
+    },
+    async (req, res) => {
+      if (req.mcpScope !== SCOPE_FULL) {
+        return res.status(403).json({
+          code: 'FORBIDDEN',
+          message: '上传会向服务器写文件，只读令牌不行，请改用全权令牌。',
+          data: null,
+        });
+      }
+
+      const fileName = String(req.query.fileName || req.headers['x-file-name'] || '').trim();
+      // 目标目录 / 覆盖开关：URL 里省略时回落到**票据里签下的值**。
+      // ⛔ 这样「拿到票据的人改不了落点」—— 票据签给哪个目录，就只能落到哪个目录。
+      const targetDir = String(req.query.targetDir || req.uploadTicket?.d || '').trim();
+      const overwrite = ['1', 'true', 'yes'].includes(
+        String(req.query.overwrite ?? (req.uploadTicket?.o ? '1' : '')).toLowerCase()
+      );
+
+      const contentType = String(req.headers['content-type'] || '');
+      if (/multipart\/form-data/i.test(contentType)) {
+        return res.status(400).json({
+          code: 'INVALID_CONTENT_TYPE',
+          message:
+            '不要用 multipart/form-data。请把文件的原始字节直接作为请求体（application/octet-stream），不是表单。',
+          data: null,
+        });
+      }
+
+      const declared = Number(req.headers['content-length']);
+      if (Number.isFinite(declared) && declared > fileUpload.MAX_BYTES) {
+        return res.status(413).json({
+          code: 'FILE_TOO_LARGE',
+          message: `文件超过单文件上限 ${fileUpload.MAX_MB}MB（本次 ${Math.round(
+            declared / 1024 / 1024
+          )}MB）。可换更小的包，或用环境变量 UPLOAD_MAX_MB 调大上限。`,
+          data: null,
+        });
+      }
+
+      try {
+        const result = await fileUpload.saveStream(req, { fileName, targetDir, overwrite });
+        // 票据用后即废 —— 放在**上传成功之后**：失败还能拿同一张重试，更实用
+        if (req.uploadTicket) uploadTicket.consume(req.uploadTicket);
+        return res.json({
+          code: 0,
+          message: `已保存到 ${result.path}（${result.size} 字节，sha256 ${result.sha256.slice(
+            0,
+            16
+          )}…${result.overwritten ? '，已覆盖原文件' : ''}）`,
+          data: result,
+        });
+      } catch (err) {
+        return res.status(err.status || 500).json({
+          code: err.code || 'ERROR',
+          message: err.message,
+          data: err.detail || null,
+        });
+      }
+    }
+  );
+
   // 兜底错误处理：让任何异常都以 JSON 回去，而不是 Express 默认的 HTML 错误页
   // （客户端拿到 HTML 时只会说「返回了非 JSON」，排查方向会被带偏）
   app.use((err, _req, res, _next) => {
@@ -466,6 +574,12 @@ async function startMcpServer() {
       data: null,
     });
   });
+
+  // 启动自检：两个新能力的"地基"是否到位。
+  //   · 上传根没挂到宿主机 → 上传会写进容器内层，宿主机上找不到文件（必须喊出来）
+  //   · 宿主机执行要挑一个带 nsenter 的运行时镜像（不 await：拉镜像可能慢，不能拖住启动）
+  fileUpload.selfCheck();
+  hostExec.warmUp();
 
   return new Promise((resolve) => {
     const httpServer = app.listen(config.mcpPort, '0.0.0.0', () => {

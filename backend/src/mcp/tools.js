@@ -21,6 +21,8 @@ const deployService = require('../services/deploy');
 const healthService = require('../services/health');
 const githubService = require('../services/github');
 const pgyerService = require('../services/pgyer');
+const fileUpload = require('../services/fileUpload');
+const hostExec = require('../services/hostExec');
 const uploadTicket = require('./upload-ticket');
 const { listTemplates } = require('../services/apps');
 const { writeLog } = require('../utils/logger');
@@ -722,6 +724,89 @@ const TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'upload_file',
+    description: `把**任意常规文件**放到服务器上的指定目录（部署代码包 / SQL / 配置 / 数据文件都走它）。返回服务器**绝对路径、文件大小、sha256**。
+
+两种用法，按「文件在哪」选：
+· 文件已经在公网网址上 → 传 \`downloadUrl\`，服务器自己下载并落盘，**一次调用直接拿到结果**。
+· 文件在使用者本机 → 传 \`filePath\`（最好再带上 fileName / targetDir），工具会返回一条**已内嵌一次性票据**的 curl 命令；在**本机终端**执行它即可，命令的 JSON 响应里就是绝对路径 / 大小 / sha256。
+  ⛔ MCP 协议是 JSON-RPC 文本、没有二进制通道，本机文件必须由本机终端把字节送出去 —— 这一步绕不过去，但票据已经内嵌在 URL 里，不需要再找任何人要令牌。
+
+规则：
+· 目标目录默认 \`/www/upload\`，必须在 \`/www\` 之下（可配），不接受相对路径与 .. 穿越
+· 扩展名白名单：.zip/.tar.gz/.tgz/.tar/.txt/.json/.env/.sql/.whl/.jar/.yml/.log/.png/.pdf/.apk… 等常规类型（可配），**不再靠伪装成 .apk 绕过限制**
+· 单文件默认上限 200MB（可配）；默认不覆盖，要替换必须显式 overwrite=true
+· 请求体是文件原始字节（application/octet-stream），不要用 multipart/form-data`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description:
+            '使用者**本机**文件的绝对路径（如 C:\\Users\\me\\Desktop\\deploy.zip 或 /home/me/deploy.zip）。给了它才会返回可直接执行的命令',
+        },
+        fileName: {
+          type: 'string',
+          description:
+            '落到服务器上的文件名（含扩展名，如 deploy.zip）。省略时从 filePath 取最后一段',
+        },
+        targetDir: {
+          type: 'string',
+          description: '服务器上的目标目录（绝对路径，必须在 /www 之下）。默认 /www/upload',
+        },
+        overwrite: {
+          type: 'boolean',
+          description: '目标文件已存在时是否覆盖。默认 false（已存在会报 FILE_EXISTS）',
+        },
+        fileSizeBytes: {
+          type: 'number',
+          description: '文件字节数（可选，用于提前判断是否超过上限）',
+        },
+        downloadUrl: {
+          type: 'string',
+          description:
+            '文件已经在公网网址上时用它：服务器自己下载并落盘，一次调用直接返回路径 / 大小 / sha256',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'exec_command',
+    description: `在**服务器宿主机上**执行一条 shell 命令（不是在容器里空转 —— 用一次性容器 nsenter 进宿主机命名空间执行，PATH / 工具链 / 目录都是宿主机的）。
+
+典型用途：解压部署包、改文件权限、跑构建、重启容器、查服务状态、清理临时文件。
+
+返回：\`exitCode\` / \`stdout\` / \`stderr\` / \`durationMs\` / \`timedOut\`；超时会**显式**返回 \`status: "TIMEOUT"\`。
+
+安全边界（刻意的，不要试图绕）：
+· \`cwd\` 解析后必须落在 \`/www/wwwroot\` 之内（默认就是它，可配 EXEC_ROOT）
+· 高危命令黑名单直接拒绝：删根 / 格盘 / 关机重启 / fork bomb / curl|sh / 反弹 shell / 清历史 等
+· 超时默认 120 秒、上限 600 秒；到点强制终止容器
+· 每次执行都写审计日志（命令、目录、退出码、耗时）
+
+⚠️ 这是**全权能力**（等价于服务器终端），只读令牌用不了它。`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description: '要执行的命令（交给宿主机的 /bin/sh -c，支持管道 / && / 多行）',
+        },
+        cwd: {
+          type: 'string',
+          description: '工作目录（绝对路径，必须在 /www/wwwroot 之内）。默认 /www/wwwroot',
+        },
+        timeoutSeconds: {
+          type: 'number',
+          description: '超时秒数：默认 120，最大 600。到点强制终止并返回 TIMEOUT',
+        },
+      },
+      required: ['command'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ============================================================
@@ -819,6 +904,12 @@ const WRITE_TOOLS = new Set([
 
   // 自愈修复
   'apply_health_fix',
+
+  // 通用文件上传（第 9 轮）：会往服务器写文件，并签发「可直接写服务器」的一次性票据
+  'upload_file',
+
+  // 宿主机命令执行（第 9 轮）：等价于服务器终端，天然是全权能力
+  'exec_command',
 
   // 万能兜底：可以触达宝塔任意写接口，必须算写
   'call_bt_api',
@@ -1530,7 +1621,7 @@ const TOOL_HANDLERS = {
     //    客户端根本填不上，那条命令等于死路（Agent 只能回头找主人要令牌）。
     //    票据边界见 upload-ticket.js：有有效期（默认 30 分钟、可用 UPLOAD_TICKET_TTL_MINUTES 调）
     //    / 一次性 / 绑文件名 / 反推不出主令牌。
-    const issued = uploadTicket.issue(rawName);
+    const issued = uploadTicket.issue(rawName, { kind: 'pgyer' });
     // 把「更新说明」「传完是否设为最新版」也拼进 URL —— 开发迭代时这两个是高频需求，
     // 让一条命令全带过去，省掉上传完再分别调 update_pgyer_build / set_pgyer_newest_build
     const extraQuery = [];
@@ -1857,6 +1948,216 @@ const TOOL_HANDLERS = {
       `${basis}。${shown.length} 条：${lines}`
     );
   },
+
+  /**
+   * 38. 通用文件上传（第 9 轮新增）
+   * ------------------------------------------------------------------
+   * 两条路，按「文件在哪」选：
+   *   ① 文件已经在一个公网网址上 → 给 downloadUrl，服务器自己下载 + 落盘，
+   *      **一次调用直接拿到** 绝对路径 / 大小 / sha256；
+   *   ② 文件在使用者本机 → 给 filePath，返回一条**已内嵌一次性票据**的 curl 命令。
+   *      MCP 协议本身是 JSON-RPC 文本，没有二进制通道 —— 这一步必须由本机终端把字节送出来，
+   *      绕不过去（命令执行完，响应里就是 绝对路径 / 大小 / sha256）。
+   *
+   * ⛔ 不再走「伪装成 .apk 混过蒲公英校验」那种绕法：扩展名按白名单放行，
+   *    白名单里没有的类型就是不给传。
+   */
+  async upload_file({ filePath, fileName, targetDir, overwrite, fileSizeBytes, downloadUrl } = {}) {
+    const rawPath = String(filePath || '').trim();
+    const fromPath = rawPath ? rawPath.split(/[\\/]/).filter(Boolean).pop() || '' : '';
+    const name = String(fileName || fromPath || '').trim();
+
+    if (!name) {
+      throw Object.assign(
+        new Error(
+          '需要文件名：请传 fileName（如 deploy.zip），或传 filePath 让我从路径里取最后一段'
+        ),
+        { expected: true, status: 400 }
+      );
+    }
+
+    // 目录与文件名在这里先校验一遍：不合规就当场报，别等命令发出去才失败
+    const dir = fileUpload.resolveDir(targetDir);
+    const plan = fileUpload.prepare({ fileName: name, targetDir: dir });
+    const willOverwrite = !!overwrite;
+
+    // ---------- 路 ①：服务器自己去下载 ----------
+    const url = String(downloadUrl || '').trim();
+    if (url) {
+      if (!/^https?:\/\//i.test(url)) {
+        throw Object.assign(new Error('downloadUrl 必须是 http / https 地址'), {
+          expected: true,
+          status: 400,
+        });
+      }
+      let res;
+      try {
+        res = await fetch(url, {
+          redirect: 'follow',
+          signal: AbortSignal.timeout(300000),
+        });
+      } catch (err) {
+        throw new Error(`下载失败：${err.message}（地址：${url}）`, { cause: err });
+      }
+      if (!res.ok) {
+        throw new Error(`下载失败：对方返回 HTTP ${res.status}（地址：${url}）`);
+      }
+      const declared = Number(res.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > fileUpload.MAX_BYTES) {
+        throw Object.assign(
+          new Error(
+            `文件 ${Math.round(declared / 1024 / 1024)}MB 超过单文件上限 ${fileUpload.MAX_MB}MB`
+          ),
+          { expected: true, status: 413 }
+        );
+      }
+      const { Readable } = require('node:stream');
+      const saved = await fileUpload.saveStream(Readable.fromWeb(res.body), {
+        fileName: name,
+        targetDir: dir,
+        overwrite: willOverwrite,
+      });
+      return {
+        ...ok(
+          { mode: 'server-download', sourceUrl: url, ...saved },
+          `已下载并保存到 ${saved.path}（${saved.size} 字节，sha256 ${saved.sha256.slice(0, 16)}…）`
+        ),
+        audit: {
+          before: { path: saved.path, existed: saved.overwritten },
+          after: { path: saved.path, size: saved.size, sha256: saved.sha256 },
+        },
+      };
+    }
+
+    // ---------- 路 ②：本机文件 → 签发一次性票据 + 一条可直接执行的命令 ----------
+    if (!rawPath) {
+      throw Object.assign(
+        new Error('需要二选一：filePath（文件在你这台电脑上）或 downloadUrl（文件已在公网网址上）'),
+        { expected: true, status: 400 }
+      );
+    }
+
+    const issued = uploadTicket.issue(name, {
+      kind: 'file',
+      dir,
+      overwrite: willOverwrite,
+    });
+    const qs = [
+      `fileName=${encodeURIComponent(name)}`,
+      `targetDir=${encodeURIComponent(dir)}`,
+      `ticket=${encodeURIComponent(issued.ticket)}`,
+      ...(willOverwrite ? ['overwrite=1'] : []),
+    ].join('&');
+    const endpoint = `${MCP_PUBLIC_BASE}/upload-file?${qs}`;
+
+    // 默认直连源站：走 Cloudflare 时，上行慢的大文件会被它的 100 秒上限掐断
+    let host;
+    try {
+      host = new URL(MCP_PUBLIC_BASE).hostname;
+    } catch {
+      host = '';
+    }
+    const resolve = host && MCP_ORIGIN_IP ? `--resolve "${host}:443:${MCP_ORIGIN_IP}"` : '';
+
+    const isWinPath = /^[a-zA-Z]:[\\/]/.test(rawPath) || rawPath.includes('\\');
+    const winTarget = rawPath;
+    const nixTarget = isWinPath ? `/path/to/${name}` : rawPath;
+
+    const winCmd = [
+      `curl.exe -X POST "${endpoint}" \``,
+      '  -H "Content-Type: application/octet-stream" `',
+      ...(resolve ? [`  ${resolve} \``] : []),
+      `  --data-binary "@${winTarget}"`,
+    ].join('\n');
+    const nixCmd = [
+      `curl -X POST "${endpoint}" \\`,
+      '  -H "Content-Type: application/octet-stream" \\',
+      ...(resolve ? [`  ${resolve} \\`] : []),
+      `  --data-binary "@${nixTarget}"`,
+    ].join('\n');
+
+    const size = Number(fileSizeBytes) || 0;
+    const tooBig = size > fileUpload.MAX_BYTES;
+
+    return {
+      ...ok(
+        {
+          mode: 'command',
+          endpoint,
+          fileName: name,
+          targetDir: dir,
+          targetPath: plan.finalPath,
+          overwrite: willOverwrite,
+          auth: `URL 里已内嵌一次性票据（${issued.ttlSeconds} 秒内有效、只能用一次、只能传「${name}」到「${dir}」）—— 不需要再配任何鉴权头`,
+          uploadTicket: {
+            embedded: true,
+            expiresAt: issued.expiresAt,
+            ttlSeconds: issued.ttlSeconds,
+            boundFileName: name,
+            boundDir: dir,
+            boundOverwrite: willOverwrite,
+          },
+          body: '文件的原始字节（application/octet-stream）—— 不要用 multipart/form-data',
+          fileSizeBytes: size || null,
+          maxBytes: fileUpload.MAX_BYTES,
+          oversized: tooBig,
+          bypassCloudflare: resolve || null,
+          commands: {
+            windowsPowerShell: winCmd,
+            linuxMac: nixCmd,
+          },
+          next:
+            '在**本机终端**执行上面任意一条命令；命令成功后返回的 JSON 里就是服务器的绝对路径、文件大小与 sha256（' +
+            plan.finalPath +
+            '）。',
+          note: tooBig
+            ? `⚠️ 你给的文件大小 ${Math.round(size / 1024 / 1024)}MB 超过上限 ${fileUpload.MAX_MB}MB，会失败`
+            : undefined,
+        },
+        `已签好上传命令：把「${name}」传到 ${dir}。在本机终端执行返回的 curl 命令即可，响应里带绝对路径 / 大小 / sha256`
+      ),
+      audit: { after: { mode: 'command', targetPath: plan.finalPath, fileName: name } },
+    };
+  },
+
+  /**
+   * 39. 在宿主机上执行命令（第 9 轮新增）
+   * ------------------------------------------------------------------
+   * 真正的「服务器终端」：用一次性容器 nsenter 进宿主机命名空间执行，
+   * 因此 PATH / 工具链 / 目录全是宿主机的（详见 services/hostExec.js）。
+   *
+   * 安全边界：cwd 必须在 EXEC_ROOT（默认 /www/wwwroot）内、高危命令黑名单、
+   * 超时强制终止并显式回 TIMEOUT、每次执行都写审计日志。
+   */
+  async exec_command({ command, cwd, timeoutSeconds } = {}) {
+    const r = await hostExec.run({ command, cwd, timeoutSeconds });
+
+    const data = {
+      ...r,
+      status: r.timedOut ? 'TIMEOUT' : 'OK',
+    };
+
+    const message = r.timedOut
+      ? `命令超时（超过 ${r.timeoutSeconds} 秒）已被强制终止 —— TIMEOUT（exitCode=${r.exitCode}，容器=${r.container}）`
+      : r.exitCode === 0
+        ? `命令执行成功（exitCode 0，耗时 ${r.durationMs}ms，cwd=${r.cwd}）`
+        : `命令执行结束但退出码为 ${r.exitCode}（耗时 ${r.durationMs}ms）—— 看 stderr / stdout 定位原因`;
+
+    return {
+      success: !r.timedOut && r.exitCode === 0,
+      data,
+      message,
+      audit: {
+        after: {
+          command: r.command,
+          cwd: r.cwd,
+          exitCode: r.exitCode,
+          timedOut: r.timedOut,
+          durationMs: r.durationMs,
+        },
+      },
+    };
+  },
 };
 
 /** 人类可读字节数（与 baota 服务里的实现保持一致） */
@@ -1931,14 +2232,14 @@ async function callTool(name, args = {}, ctx = {}) {
     return { success: false, data: null, message: `未知工具：${name}` };
   }
 
-  // ⛔ get_upload_help 会**签发上传票据**，而票据可以上传安装包（属于写能力）——
+  // ⛔ get_upload_help / upload_file 都会**签发上传票据**，而票据可以上传文件（属于写能力）——
   //    只读令牌不给签，否则等于用只读令牌换来一个能写的票据，绕过了只读边界。
-  if (name === 'get_upload_help' && ctx.scope && ctx.scope !== 'full') {
+  if ((name === 'get_upload_help' || name === 'upload_file') && ctx.scope && ctx.scope !== 'full') {
     return {
       success: false,
       data: null,
       message:
-        '这个工具会签发「上传票据」（票据可以上传安装包，属于写能力），只读令牌用不了 —— 请改用全权令牌。',
+        '这个工具会签发「上传票据」（票据可以向服务器写文件，属于写能力），只读令牌用不了 —— 请改用全权令牌。',
     };
   }
 

@@ -30,6 +30,10 @@ services:
     volumes:
       # Docker Socket：容器管理功能依赖它（只读挂载即可满足 API 调用）
       - /var/run/docker.sock:/var/run/docker.sock
+      # 站点根目录直通：`upload_file` 把文件写到这个目录下（默认 /www/upload），
+      # 返回的绝对路径就是**宿主机上的真实路径**；`read_file` / `list_directory` 也读它。
+      # ⛔ 不挂这一行，上传会悄悄写进容器内层，宿主机上根本找不到文件。
+      - /www:/www
       # SQLite 数据 + 部署应用的数据目录，持久化到宿主机 ./data
       - ./data:/app/data
     healthcheck:

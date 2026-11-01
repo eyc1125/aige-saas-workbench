@@ -43,7 +43,7 @@
 
 | 令牌 | 能调用的工具 | 怎么来 |
 | --- | --- | --- |
-| **全权令牌** | 全部 42 个 | 默认就有；「重新生成令牌」可换一把 |
+| **全权令牌** | 全部 44 个 | 默认就有；「重新生成令牌」可换一把 |
 | **只读令牌** | 23 个（下表列出的那些） | **系统设置 → MCP 连接 → 生成只读令牌** |
 
 **只读令牌能用的 23 个**：`get_server_status`、`list_ssl_certs`、`run_health_checks`、
@@ -53,14 +53,14 @@
 `list_repo_commits`、`get_ci_status`、`list_distributed_apps`、`get_distributed_app`、
 `get_upload_help`、`list_crontabs`。
 
-**被挡在门外的 19 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
+**被挡在门外的 21 个写操作**：`create_website`、`delete_website`、`apply_ssl`、
 `save_nginx_config`、`add_dns_record`、`update_dns_record`、`delete_dns_record`、
 `purge_cloudflare_cache`、`restart_container`、`manage_container`、`deploy_app`、
-`apply_health_fix`、`call_bt_api`、`call_cf_api`、
+`apply_health_fix`、`upload_file`、`exec_command`、`call_bt_api`、`call_cf_api`、
 `upload_app_to_pgyer`、`update_pgyer_build`、`set_pgyer_newest_build`、
 `delete_pgyer_build`、`delete_pgyer_app`。
 
-AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会白试）；即使强行业务调用，
+AI 在只读连接下看到的工具清单里**根本没有这 21 个**（不会白试）；即使强行业务调用，
 服务端也会返回 `isError: true` 与「只读令牌无权调用…」。
 
 > `run_health_checks` 归只读是个**有意的取舍**：它会写告警记录、可能外发通知，
@@ -73,7 +73,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会
 
 ---
 
-## 二、能力清单（42 个工具 · 按用途分组）
+## 二、能力清单（44 个工具 · 按用途分组）
 
 ### ① 巡检与自愈
 
@@ -229,6 +229,42 @@ AI 在只读连接下看到的工具清单里**根本没有这 19 个**（不会
 
 > 📌 **遇到「本 MCP 好像没有这个操作」时，先想这两个兜底，不要回答「做不到」** ——
 > 宝塔侧用 `call_bt_api`、Cloudflare 侧用 `call_cf_api`。
+
+### ⑪ 文件上传与命令执行（第 9 轮新增 · 部署一个项目的最后两块拼图）
+
+| 工具 | 关键参数 | 做什么 |
+| --- | --- | --- |
+| `upload_file` | `filePath?` `fileName?` `targetDir?` `overwrite?` `fileSizeBytes?` `downloadUrl?` | 把任意常规文件放到服务器指定目录，返回**绝对路径 / 大小 / sha256** |
+| `exec_command` | `command` `cwd?` `timeoutSeconds?` | 在**宿主机**上执行 shell 命令，返回 `exitCode / stdout / stderr / durationMs`；超时显式回 `status: "TIMEOUT"` |
+
+**`upload_file` 的两条路（按「文件在哪」选）**
+
+| 文件在哪 | 传什么 | 结果 |
+| --- | --- | --- |
+| 已经在公网网址上 | `downloadUrl` | 服务器自己下载并落盘，**一次调用直接返回** 路径 / 大小 / sha256 |
+| 在使用者本机 | `filePath`（+ `fileName` / `targetDir`） | 返回一条**已内嵌一次性票据**的 curl 命令；在本机终端执行，命令的 JSON 响应里就是 路径 / 大小 / sha256 |
+
+> ⛔ MCP 协议是 JSON-RPC 文本、**没有二进制通道**，所以「本机文件」这一步必须由本机终端把字节送出去 ——
+> 这不是偷懒，是协议边界。票据已经内嵌在 URL 里，不需要再找任何人要令牌。
+
+规则：目标目录默认 `/www/upload`、必须在 `/www` 之下（`UPLOAD_ROOT` 可配）；
+扩展名白名单放行 `.zip/.tar.gz/.tgz/.tar/.txt/.json/.env/.sql/.whl/.jar/.yml/.log/.png/.pdf/.apk` 等常规类型
+（`UPLOAD_ALLOWED_EXT` 可配；刻意**不含** `.php/.jsp/.asp` 这类「传上去就能被 Web 执行」的）；
+单文件默认上限 200MB（`UPLOAD_MAX_MB`）；默认**不覆盖**，要替换必须显式 `overwrite=true`。
+
+**`exec_command` 的实现与边界**
+
+- 后端跑在 Alpine 容器里，容器内**没有**宿主机那套工具链 —— 所以不是「在容器里假装执行」，
+  而是用一次性容器 `nsenter -t 1 -m -u -i -n -p` 进入宿主机命名空间再执行，
+  等价于在服务器终端里敲命令；容器用完即删（名字 `aige-exec-*`）。
+- `cwd` 解析后必须落在 `/www/wwwroot`（`EXEC_ROOT` 可配）之内；
+- 高危命令黑名单：删根 / 格盘 / 关机重启 / fork bomb / `curl|sh` / 反弹 shell / 清历史 等，命中直接 403；
+- 超时默认 120 秒、上限 600 秒，到点 `kill` 容器并显式返回 `status: "TIMEOUT"`（不是含糊的失败）；
+- 每次执行都写审计日志（命令 / 目录 / 退出码 / 耗时 / 是否超时）。
+- ⚠️ 这是**全权能力**（等价于服务器终端），只读令牌的连接里不会出现。
+
+> 🛠 这两条的安全边界由 `backend/scripts/selfcheck-deploy-guards.js` 每次 CI 真跑断言
+> （越权样本必须拦住、合法样本必须放行），本地 `npm run check:deploy`。
 
 ---
 
