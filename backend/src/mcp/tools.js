@@ -331,7 +331,7 @@ const TOOL_DEFINITIONS = [
   {
     name: 'read_file',
     description:
-      '读取服务器上的文本文件（限定在宝塔可管理的路径内）。带 lines 参数时只返回末尾若干行，适合看日志；不传则返回全文。',
+      '读取**服务器上**的文本文件（限定在宝塔可管理的路径内）。带 lines 参数时只返回末尾若干行，适合看日志；不传则返回全文。⛔ 读的是服务器磁盘，不是使用者电脑 —— 要读本机文件请先把文件用 upload_file 传上来。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2253,14 +2253,19 @@ async function callTool(name, args = {}, ctx = {}) {
     return { success: false, data: null, message: `未知工具：${name}` };
   }
 
-  // ⛔ get_upload_help / upload_file 都会**签发上传票据**，而票据可以上传文件（属于写能力）——
-  //    只读令牌不给签，否则等于用只读令牌换来一个能写的票据，绕过了只读边界。
-  if ((name === 'get_upload_help' || name === 'upload_file') && ctx.scope && ctx.scope !== 'full') {
+  // ⛔ 只读令牌的**最底层兜底**：真正的第一道门在 server.js（ListTools 不返回 + CallTool 拒绝），
+  //    但那是"协议层"；只要有人在进程内直接调 callTool（自检脚本、将来的定时任务），
+  //    就会绕过它。这里按 WRITE_TOOLS 再拦一次，保证「写能力」在任何调用路径上都不给只读令牌。
+  //    get_upload_help 虽然归在只读（只生成命令文本），但它会**签发能写服务器的票据**，
+  //    所以也要按写来拦 —— 否则等于用只读令牌换来一个能写的出口。
+  const needsFullScope = WRITE_TOOLS.has(name) || name === 'get_upload_help';
+  if (needsFullScope && ctx.scope && ctx.scope !== 'full') {
     return {
       success: false,
       data: null,
-      message:
-        '这个工具会签发「上传票据」（票据可以向服务器写文件，属于写能力），只读令牌用不了 —— 请改用全权令牌。',
+      message: `${name} 会修改服务器或线上状态${
+        name === 'get_upload_help' || name === 'upload_file' ? '（会签发可写服务器的上传票据）' : ''
+      }，只读令牌用不了 —— 请改用全权令牌。`,
     };
   }
 

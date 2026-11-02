@@ -273,6 +273,29 @@ console.log('=== Windows zip 反斜杠修正（上传落盘时自动处理）===
     }
   }
 
+  // ---------- ⑥ 只读令牌在「最底层」也拦得住 ----------
+  // 协议层（server.js）本来就会拒；但进程内直接调 callTool 时也得拦，
+  // 否则将来谁写个定时任务/脚本，就等于开了个后门。
+  console.log('');
+  console.log('=== 只读令牌兜底（callTool 层，不依赖协议层）===');
+  try {
+    const tools = require('../src/mcp/tools');
+    const r = await tools.callTool('exec_command', { command: 'pwd' }, { scope: 'readonly' });
+    if (r && r.success === false && /只读令牌/.test(r.message)) {
+      ok('只读令牌调 exec_command 被 callTool 直接拒绝');
+    } else {
+      ng(`只读令牌竟然调通了 exec_command：${JSON.stringify(r).slice(0, 120)}`);
+    }
+    const r2 = await tools.callTool('upload_file', { fileName: 'a.zip' }, { scope: 'readonly' });
+    if (r2 && r2.success === false && /只读令牌/.test(r2.message)) {
+      ok('只读令牌调 upload_file 被 callTool 直接拒绝');
+    } else {
+      ng('只读令牌竟然调通了 upload_file');
+    }
+  } catch (err) {
+    ng(`只读令牌兜底自检异常：${err.message}`);
+  }
+
   console.log('');
   if (failed) {
     console.error(`❌ 部署类安全边界自检失败：${failed} 项`);
