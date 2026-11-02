@@ -205,8 +205,9 @@ const SERVER_INSTRUCTIONS = `# 艾哥SaaS工作台 · 服务器运维与发布�
 - \`list_distributed_apps\` — 账号下的应用清单：当前版本号、版本编号、安装包体积、上传时间，
   以及**下载页地址与二维码地址**
 - \`get_distributed_app\` — 某个应用的全部历史版本（先用上面那个拿 appKey）
-- \`get_upload_help\` — **把「使用者本机的安装包」传上来的唯一路径**：返回一条可直接复制执行的
-  命令（端点、鉴权头、字段都填好）。传入 filePath 效果最好
+- \`get_upload_help\` — **把「使用者本机的安装包」发到蒲公英**（会直接生成新版本 + 下载页）：
+  返回一条可直接复制执行的命令（端点、票据、字段都填好）。传入 filePath 效果最好。
+  ⛔ 它只收 .apk / .ipa / .hap；要传代码包 / SQL / 配置，用 \`upload_file\`（见 ⑪）。
 - \`upload_app_to_pgyer\` — 上传安装包（**包已经在一个公网网址上**时用它：给 downloadUrl，
   服务端先下载再传）。包在本机请改用 \`get_upload_help\`
 - \`update_pgyer_build\` — 改某个版本的更新说明 / 版本号 / 安装方式 / 安装密码

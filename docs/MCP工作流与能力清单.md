@@ -152,7 +152,7 @@ AI 在只读连接下看到的工具清单里**根本没有这 21 个**（不会
 | --- | --- | --- |
 | `list_distributed_apps` | `limit?` | 账号下的应用清单：当前版本号 / 版本编号 / 体积 / 上传时间 + **下载页与二维码地址** |
 | `get_distributed_app` | `appKey` | 某个应用的**真实历史版本**（appKey 从上面那个工具拿）：每条含各自的 `buildKey` / 版本号 / 版本编号 / 体积 / 上传时间，新的在前。⚠️ 历史条目的 `qrCodeUrl` 为 `null` 属正常（蒲公英只对当前版本下发二维码） |
-| `get_upload_help` | `filePath?` `fileSizeBytes?` | **把「本机文件」传上来的唯一路径**：返回一条**已内嵌一次性票据**的 curl 命令（5 分钟有效 / 一次性 / 绑文件名 / 反推不出主人令牌），**AI 直接复制执行即可，不需要向任何人索要令牌**。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码。⚠️ 全权令牌才有；只读令牌会被拒 |
+| `get_upload_help` | `filePath?` `fileSizeBytes?` | **把本机安装包发到蒲公英**（会直接生成新版本 + 下载页）：返回一条**已内嵌一次性票据**的 curl 命令（5 分钟有效 / 一次性 / 绑文件名 / 反推不出主人令牌），**AI 直接复制执行即可，不需要向任何人索要令牌**。传 `filePath` 时路径与文件名会填好，中文名自动 URL 编码。⚠️ 全权令牌才有；只读令牌会被拒。⛔ 只收 .apk/.ipa/.hap —— 要传代码包/配置请用 `upload_file` |
 | `upload_app_to_pgyer` | `downloadUrl` `fileName?` `updateDescription?` | 把**网址上的**安装包传到蒲公英（服务端先下载再上传，全程不落盘），单包 ≤ 100MB |
 | `update_pgyer_build` | `buildKey` `updateDescription?` `version?` `installType?` `password?` | 改更新说明 / 版本号 / 安装方式 / 安装密码（**只带明确给了的字段**） |
 | `set_pgyer_newest_build` | `buildKey` `isNewest?` | 设 / 取消「最新版本」标记（比删了重传安全） |
