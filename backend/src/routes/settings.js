@@ -238,24 +238,36 @@ Trae / Cursor / Claude Desktop / Windsurf / VS Code 用的是同一套结构；
 ## 二、接上之后，直接说人话就行
 - 「看看服务器现在什么状态」            → get_server_status
 - 「体检一遍，有问题顺手修掉」           → run_health_checks + apply_health_fix
+- 「把这份代码部署到 xxx 站点」          → upload_file（拿命令→本机执行）+ exec_command（解压/构建/重启）
 - 「帮我部署一个 n8n，域名 n8n.example.com」 → deploy_app
 - 「给 xxx.com 加一条 A 记录指向本机」      → add_dns_record
 - 「哪个网站的证书快过期了」               → list_ssl_certs
 - 「xxx.com 打不开了，排查一下」           → get_site_logs + get_nginx_config
 - 「网站改了内容访客还是旧版」             → purge_cloudflare_cache
 
-## 三、能力范围
+## 三、部署一个项目（标准三步，AI 照做即可）
+1) upload_file(filePath="D:\\\\项目\\\\dist.zip", fileName="dist.zip",
+               targetDir="/www/wwwroot/<站点目录>", overwrite=true)
+   → 返回一条**已内嵌票据**的 curl 命令；在**本机终端**执行它，
+     响应里就是服务器的绝对路径 / 文件大小 / sha256
+2) exec_command("unzip -o /www/upload/dist.zip -d /www/wwwroot/<站点目录>")
+   （Windows 打的 zip 会被自动修正路径分隔符，不会再出现 unzip 退出码 1）
+3) exec_command("cd /www/wwwroot/<站点目录> && npm ci && npm run build")
+   → exec_command("pm2 restart <应用名>") 或 docker compose up -d
+   （纯静态站点可跳过构建与重启，到第 2 步就完成了）
+
+## 四、能力范围
 ${groupListText()}
 
-## 四、重要约定
+## 五、重要约定
 1. **一个 MCP 就够**：不需要再单独挂「宝塔面板 MCP」或「Cloudflare MCP」——已全部覆盖，
-   并且额外多了「一键部署应用」和「自愈巡检」。
-2. **一个 MCP 全包**：宝塔 / Cloudflare / **蒲公英** 都不用再单独接。
-   蒲公英的**上传**由本工作台承担 —— 网页「应用分发」页可以直接拖安装包，
-   AI 也可以在本机用 \`POST /api/distribute/upload\` 把文件直接推上来
-   （安装包只在内存里过一遍，**不会留在本工作台服务器上**）。
-3. **只有 GitHub 是纯只读**：能看提交与 CI 状态，不能建 Issue / 提 PR / 重跑 CI。
-4. **碰不到你本机的文件**：MCP 工具都跑在服务器上，读文件读的是服务器上的路径。
+   并且额外多了「一键部署应用」「自愈巡检」「通用文件上传」「宿主机命令执行」。
+2. **本机文件怎么传上来**：MCP 协议没有二进制通道，所以 \`upload_file\` 会返回一条
+   **带一次性票据的 curl 命令**，在**本机终端**执行即可（不需要再配令牌）。
+   安装包（.apk/.ipa/.hap）走 \`get_upload_help\`（直接进蒲公英生成下载页）。
+3. **能跑命令**：\`exec_command\` 在**宿主机**执行（cwd 限定 \`/www/wwwroot\`），
+   解压 / 构建 / 重启 / 看日志都行；只读令牌用不了它。
+4. **只有 GitHub 是纯只读**：能看提交与 CI 状态，不能建 Issue / 提 PR / 重跑 CI。
 5. **自愈有熔断**：同一修复动作 30 分钟内最多 3 次；被熔断说明问题没真正解决，该去看日志。
 6. **危险操作会先确认**：删除站点、清缓存、改 Nginx 配置等，AI 应先说明影响范围。
 7. **不碰无关项目**：服务器上还跑着其他项目，除非你明确要求，AI 不应操作它们。

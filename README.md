@@ -169,8 +169,8 @@ docker compose logs -f backend
 ```
 [db] SQLite 就绪：/app/data/workbench.db（驱动：better-sqlite3）
 [api] REST 接口已启动：http://0.0.0.0:3000/api
-[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 42 个工具）
-[mcp] 已注册 42 个工具，分组一致
+[mcp] SSE 服务已启动：http://0.0.0.0:3001/sse（共 44 个工具）
+[mcp] 已注册 44 个工具，分组一致
 [health] 自动自愈当前关闭（可在「健康巡检」页开启）
 ```
 

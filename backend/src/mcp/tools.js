@@ -600,7 +600,7 @@ const TOOL_DEFINITIONS = [
   {
     name: 'get_upload_help',
     description:
-      '【把「本机文件」传到蒲公英的唯一可行路径】返回一条**可直接复制执行**的命令，把使用者本机的安装包 POST 到本工作台的上传入口。适用场景：安装包在使用者的电脑上（MCP 协议本身传不了二进制，所以必须由**本机终端**把文件送出去）。可选传 filePath，命令里的路径与文件名会直接填好。返回的命令默认带 --resolve **直连源站**，绕过 Cloudflare 的 100 秒请求上限（大文件走 Cloudflare 会被掐断）。',
+      '【把「本机安装包」发到蒲公英】返回一条**可直接复制执行**的 curl 命令，把使用者本机的 .apk / .ipa / .hap POST 到工作台的蒲公英上传入口（会直接在上面生成新版本 + 下载页）。可选传 filePath，命令里的路径与文件名会直接填好。返回的命令默认带 --resolve **直连源站**，绕过 Cloudflare 的 100 秒请求上限（大文件走 Cloudflare 会被掐断）。⛔ 它只收安装包；**要传代码包 / SQL / 配置等部署文件，请用 upload_file**（那个走通用落盘，不经过蒲公英）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -633,11 +633,13 @@ const TOOL_DEFINITIONS = [
     description: `把**公网网址上**的安装包上传到蒲公英（内测分发）：传 downloadUrl，服务端先下载再上传，全程不落我们的盘。
 
 ⛔ **安装包在使用者本机时，不要用这个工具** —— 它只收 URL，服务器读不到那台电脑的磁盘。
-本机文件请走 get_upload_help（那条路是通的、已实测跑过）：
+本机安装包请走 get_upload_help（那条路是通的、已实测跑过）：
 1) 调 get_upload_help（带上 filePath）→ 拿到一条**已内嵌一次性票据**的命令（不需要令牌）；
 2) 在**本机终端**执行它 —— 一次性票据**已内嵌在 URL 里，不需要再配任何令牌**；
    文件原始字节直接作为请求体（**不要用 multipart**）；
 3) 响应里会**直接带回 buildKey / 下载页 / 二维码**，不用再查一次。
+
+⚠️ 如果只是想把文件放到服务器上（不是发内测包），用 \`upload_file\`，不要用这个。
 
 限制：只支持 .apk / .ipa / .hap，单包 ≤ 100MB；上传是**新增版本**，不覆盖旧版本。`,
     inputSchema: {
@@ -739,7 +741,15 @@ const TOOL_DEFINITIONS = [
 · 单文件默认上限 200MB（可配）；默认不覆盖，要替换必须显式 overwrite=true
 · **Windows 打的 zip 会自动把条目名的反斜杠换成 / **（PowerShell Compress-Archive 打的包在 Linux 上
   unzip 会以退出码 1 结束、其实解压成功，带 set -e 的脚本会误判失败）；返回里的 zipNormalized 表示改没改
-· 请求体是文件原始字节（application/octet-stream），不要用 multipart/form-data`,
+· 请求体是文件原始字节（application/octet-stream），不要用 multipart/form-data
+
+**典型调用**
+· 本机部署包（会返回一条 curl 命令，执行后响应里是 路径/大小/sha256）：
+  \`{ "filePath": "D:\\\\项目\\\\dist.zip", "fileName": "dist.zip", "targetDir": "/www/wwwroot/my-site", "overwrite": true }\`
+· 公网文件（服务器自己下载，**一次调用直接返回**）：
+  \`{ "downloadUrl": "https://example.com/dist.tar.gz", "fileName": "dist.tar.gz", "targetDir": "/www/upload" }\`
+· SQL / 配置（小文件，同上）：
+  \`{ "filePath": "/home/me/dump.sql", "fileName": "dump.sql", "targetDir": "/www/upload" }\``,
     inputSchema: {
       type: 'object',
       properties: {
@@ -788,7 +798,16 @@ const TOOL_DEFINITIONS = [
 · 超时默认 120 秒、上限 600 秒；到点强制终止容器
 · 每次执行都写审计日志（命令、目录、退出码、耗时）
 
-⚠️ 这是**全权能力**（等价于服务器终端），只读令牌用不了它。`,
+⚠️ 这是**全权能力**（等价于服务器终端），只读令牌用不了它。
+
+**典型调用**
+· 解压部署包：\`{ "command": "unzip -o /www/upload/dist.zip -d /www/wwwroot/my-site" }\`
+· 构建：\`{ "command": "npm ci && npm run build", "cwd": "/www/wwwroot/my-site", "timeoutSeconds": 600 }\`
+· 重启：\`{ "command": "pm2 restart my-site" }\` 或 \`{ "command": "docker compose up -d", "cwd": "/www/wwwroot/my-site" }\`
+· 看状态：\`{ "command": "systemctl status nginx --no-pager | head -20" }\`
+
+⛔ **不要执行需要交互输入的命令**（\`apt install\` / \`nano\` / \`vim\` / \`passwd\` / 不带 \`-y\` 的包管理命令）——
+   它们会一直等输入直到超时。要装软件请用带 \`-y\` 或非交互参数的形式。`,
     inputSchema: {
       type: 'object',
       properties: {
